@@ -4,15 +4,20 @@ import re
 import hashlib
 import os
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
+import base64
+import json
 
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')  # Para generación de imágenes
+STABILITY_API_KEY = os.getenv('STABILITY_API_KEY')  # Alternativa para imágenes
 
 print(f"DEBUG: NEWS_API_KEY presente: {bool(NEWS_API_KEY)}")
 print(f"DEBUG: FB_PAGE_ID presente: {bool(FB_PAGE_ID)}")
 print(f"DEBUG: FB_ACCESS_TOKEN presente: {bool(FB_ACCESS_TOKEN)}")
+print(f"DEBUG: OPENAI_API_KEY presente: {bool(OPENAI_API_KEY)}")
 
 if not all([NEWS_API_KEY, FB_PAGE_ID, FB_ACCESS_TOKEN]):
     print("ERROR: Variables faltantes")
@@ -30,6 +35,180 @@ FUENTES_PREMIUM = {
 HISTORIAL_URLS = set()
 MAX_HISTORIAL = 100
 
+def generar_imagen_ia(titulo, descripcion, categoria):
+    """
+    Genera una imagen usando IA basada en el contexto de la noticia.
+    Soporta OpenAI DALL-E o Stability AI como fallback.
+    """
+    # Crear prompt optimizado para la imagen
+    prompt = crear_prompt_imagen(titulo, descripcion, categoria)
+    print(f"[IMAGEN] Generando imagen con prompt: {prompt[:100]}...")
+    
+    try:
+        # Intentar con OpenAI DALL-E primero
+        if OPENAI_API_KEY:
+            return generar_imagen_openai(prompt)
+        # Fallback a Stability AI
+        elif STABILITY_API_KEY:
+            return generar_imagen_stability(prompt)
+        else:
+            print("[IMAGEN] No hay API keys configuradas para generación de imágenes")
+            return None
+    except Exception as e:
+        print(f"[ERROR] Generando imagen: {e}")
+        return None
+
+def crear_prompt_imagen(titulo, descripcion, categoria):
+    """Crea un prompt optimizado para generación de imágenes."""
+    # Extraer palabras clave
+    texto = f"{titulo} {descripcion}".lower()
+    
+    # Estilos según categoría
+    estilos = {
+        'crisis': "fotoperiodismo dramático, iluminación cinematográfica, tonos oscuros, composición seria",
+        'economia': "infografía moderna, gráficos elegantes, paleta azul y plateada, estilo corporativo profesional",
+        'tech': "futurista, neon, alta tecnología, diseño limpio, iluminación azul y morada, render 3D",
+        'politica': "fotoperiodismo, edificios gubernamentales, banderas, estilo documental, iluminación natural",
+        'emergencia': "fotoperiodismo de acción, luces de emergencia, composición dinámica, tonos rojos y naranjas",
+        'general': "fotoperiodismo profesional, iluminación natural, composición equilibrada, estilo Reuters/AP"
+    }
+    
+    estilo = estilos.get(categoria, estilos['general'])
+    
+    # Limpiar y optimizar el prompt
+    prompt_limpio = f"{titulo}. {descripcion[:200]}"
+    prompt_final = f"Noticia: {prompt_limpio}. Estilo: {estilo}. Alta calidad, 4K, profesional, sin texto, sin logos, sin marcas de agua."
+    
+    return prompt_final[:1000]  # Limitar longitud
+
+def generar_imagen_openai(prompt):
+    """Genera imagen usando OpenAI DALL-E 3."""
+    url = "https://api.openai.com/v1/images/generations"
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": "dall-e-3",
+        "prompt": prompt,
+        "size": "1024x1024",
+        "quality": "standard",
+        "n": 1
+    }
+    
+    response = requests.post(url, headers=headers, json=data, timeout=60)
+    result = response.json()
+    
+    if response.status_code == 200 and 'data' in result:
+        image_url = result['data'][0]['url']
+        # Descargar la imagen temporalmente
+        return descargar_imagen_temp(image_url)
+    else:
+        print(f"[ERROR] OpenAI: {result.get('error', {}).get('message', 'Error desconocido')}")
+        return None
+
+def generar_imagen_stability(prompt):
+    """Genera imagen usando Stability AI como alternativa."""
+    url = "https://api.stability.ai/v2beta/stable-image/generate/core"
+    headers = {
+        "Authorization": f"Bearer {STABILITY_API_KEY}",
+        "Accept": "image/*"
+    }
+    files = {
+        "prompt": (None, prompt),
+        "output_format": (None, "png")
+    }
+    
+    response = requests.post(url, headers=headers, files=files, timeout=60)
+    
+    if response.status_code == 200:
+        # Guardar imagen temporalmente
+        temp_path = f"/tmp/stability_{hashlib.md5(prompt.encode()).hexdigest()[:8]}.png"
+        with open(temp_path, 'wb') as f:
+            f.write(response.content)
+        return temp_path
+    else:
+        print(f"[ERROR] Stability AI: {response.status_code}")
+        return None
+
+def descargar_imagen_temp(image_url):
+    """Descarga imagen desde URL y guarda temporalmente."""
+    try:
+        response = requests.get(image_url, timeout=30)
+        if response.status_code == 200:
+            temp_path = f"/tmp/openai_{hashlib.md5(image_url.encode()).hexdigest()[:8]}.png"
+            with open(temp_path, 'wb') as f:
+                f.write(response.content)
+            return temp_path
+    except Exception as e:
+        print(f"[ERROR] Descargando imagen: {e}")
+    return None
+
+def obtener_imagen_noticia(articulo):
+    """
+    Obtiene imagen de la noticia: 
+    1. Primero intenta usar la imagen original de la noticia
+    2. Si no hay o es de baja calidad, genera una con IA
+    """
+    url_imagen = articulo.get('urlToImage')
+    titulo = articulo.get('title', '')
+    descripcion = articulo.get('description', '')
+    categoria = articulo.get('categoria', 'general')
+    
+    # Verificar si la imagen original es válida
+    if url_imagen and verificar_imagen_valida(url_imagen):
+        print(f"[IMAGEN] Usando imagen original: {url_imagen[:60]}...")
+        return url_imagen
+    
+    # Generar imagen con IA
+    print("[IMAGEN] Generando imagen con IA...")
+    imagen_local = generar_imagen_ia(titulo, descripcion, categoria)
+    
+    if imagen_local:
+        # Subir imagen a Facebook para obtener URL pública
+        return subir_imagen_a_facebook(imagen_local)
+    
+    return None
+
+def verificar_imagen_valida(url):
+    """Verifica si la URL de imagen es accesible y válida."""
+    try:
+        response = requests.head(url, timeout=10, allow_redirects=True)
+        if response.status_code == 200:
+            content_type = response.headers.get('content-type', '')
+            return 'image' in content_type
+    except:
+        pass
+    return False
+
+def subir_imagen_a_facebook(image_path):
+    """Sube imagen temporal a Facebook y retorna URL pública."""
+    try:
+        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos"
+        
+        with open(image_path, 'rb') as img:
+            files = {'file': img}
+            data = {
+                'access_token': FB_ACCESS_TOKEN,
+                'published': 'false'  # No publicar, solo subir
+            }
+            
+            response = requests.post(url, files=files, data=data, timeout=30)
+            result = response.json()
+            
+            if response.status_code == 200 and 'id' in result:
+                # Obtener URL de la imagen subida
+                photo_id = result['id']
+                url_photo = f"https://graph.facebook.com/v19.0/{photo_id}?access_token={FB_ACCESS_TOKEN}&fields=images"
+                response_photo = requests.get(url_photo, timeout=10)
+                data_photo = response_photo.json()
+                
+                if 'images' in data_photo and len(data_photo['images']) > 0:
+                    return data_photo['images'][0]['source']
+    except Exception as e:
+        print(f"[ERROR] Subiendo imagen a Facebook: {e}")
+    return None
+
 def buscar_noticias_frescas():
     print(f"\n{'='*60}")
     print(f"BUSCANDO NOTICIAS - {datetime.now().strftime('%H:%M:%S')}")
@@ -38,7 +217,6 @@ def buscar_noticias_frescas():
     fecha_hoy = datetime.now().strftime('%Y-%m-%d')
     fecha_ayer = (datetime.now().timestamp() - 86400)
     
-    # Búsquedas simplificadas para probar
     busquedas_todas = [
         ('noticias', 'general'),
         ('actualidad', 'general'),
@@ -51,7 +229,7 @@ def buscar_noticias_frescas():
     todas_noticias = []
     
     for query, categoria in busquedas_hoy:
-        url = f"https://newsapi.org/v2/everything?q={query}&language=es&from={datetime.fromtimestamp(fecha_ayer).strftime('%Y-%m-%d')}&to={fecha_hoy}&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}"
+        url = f"https://newsapi.org/v2/everything?q={quote(query)}&language=es&from={datetime.fromtimestamp(fecha_ayer).strftime('%Y-%m-%d')}&to={fecha_hoy}&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}"
         
         try:
             print(f"[BÚSQUEDA] {categoria}: {query[:40]}...")
@@ -144,6 +322,10 @@ def calcular_score(art, categoria):
     
     if categoria in ['crisis', 'emergencia']:
         score += 15
+    
+    # Bonus si tiene imagen
+    if art.get('urlToImage'):
+        score += 5
     
     return score
 
@@ -376,19 +558,36 @@ def publicar_en_facebook():
     print(f"\n[SELECCIONADA] {noticia['title'][:60]}...")
     print(f"  Score: {noticia['score']} | Categoría: {categoria}")
     
+    # Obtener o generar imagen
+    imagen_url = obtener_imagen_noticia(noticia)
+    
     mensaje = redactar_noticia(noticia, categoria)
     print(f"DEBUG: Mensaje generado, longitud: {len(mensaje)} caracteres")
     
     try:
         print("[INFO] Publicando en Facebook...")
-        url_fb = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
-        print(f"DEBUG: URL de Facebook: {url_fb[:50]}...")
         
-        payload = {
-            'message': mensaje,
-            'access_token': FB_ACCESS_TOKEN,
-            'link': noticia['url']
-        }
+        if imagen_url:
+            # Publicación CON imagen que redirige al enlace de la noticia
+            print(f"[IMAGEN] Adjuntando imagen: {imagen_url[:60]}...")
+            url_fb = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
+            
+            payload = {
+                'message': mensaje,
+                'access_token': FB_ACCESS_TOKEN,
+                'link': noticia['url'],  # Esto hace que la imagen sea clickeable
+                'picture': imagen_url,   # URL de la imagen a mostrar
+                'name': noticia['title'][:100],  # Título del link
+                'description': noticia['description'][:200],  # Descripción del link
+            }
+        else:
+            # Publicación SIN imagen (modo texto como antes)
+            url_fb = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
+            payload = {
+                'message': mensaje,
+                'access_token': FB_ACCESS_TOKEN,
+                'link': noticia['url']
+            }
         
         print(f"DEBUG: Enviando request a Facebook...")
         response = requests.post(url_fb, data=payload, timeout=30)
@@ -398,7 +597,9 @@ def publicar_en_facebook():
         print(f"[DEBUG] Response: {result}")
         
         if response.status_code == 200 and 'id' in result:
-            print(f"✅ PUBLICADO: {result['id']}")
+            print(f"✅ PUBLICADO CON ÉXITO: {result['id']}")
+            if imagen_url:
+                print(f"   📷 Incluye imagen generada/adjunta")
             return True
         else:
             error_msg = result.get('error', {}).get('message', 'Error desconocido')

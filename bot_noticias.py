@@ -170,7 +170,7 @@ def descargar_imagen_temp(image_url, prefix="img"):
 def obtener_imagen_noticia(articulo):
     """
     Obtiene la mejor imagen disponible:
-    1. Intenta usar imagen original de la noticia
+    1. Intenta usar imagen original de la noticia (descargándola)
     2. Si no existe o es inválida, genera con IA
     """
     url_imagen = articulo.get('urlToImage')
@@ -180,91 +180,151 @@ def obtener_imagen_noticia(articulo):
     
     print(f"[IMAGEN] Verificando imagen original...")
     
-    # Verificar imagen original
-    if url_imagen and verificar_imagen_valida(url_imagen):
-        print(f"[IMAGEN] Usando imagen original de la noticia")
-        return url_imagen
+    # Intentar descargar imagen original
+    if url_imagen:
+        temp_path = descargar_imagen_temp(url_imagen, "original")
+        if temp_path and os.path.exists(temp_path):
+            # Verificar que el archivo tenga contenido
+            if os.path.getsize(temp_path) > 1024:
+                print(f"[IMAGEN] Usando imagen original descargada")
+                return temp_path
+            else:
+                os.remove(temp_path)
     
-    print(f"[IMAGEN] Imagen original no disponible o inválida, generando con IA...")
+    print(f"[IMAGEN] Generando imagen con IA...")
     
     # Generar con IA
     imagen_local = generar_imagen_ia(titulo, descripcion, categoria)
-    
-    if imagen_local:
-        # Subir a Facebook para obtener URL pública
-        url_fb = subir_imagen_a_facebook(imagen_local)
-        # Limpiar archivo temporal
-        try:
-            os.remove(imagen_local)
-            print(f"[IMAGEN] Archivo temporal eliminado")
-        except:
-            pass
-        return url_fb
-    
-    return None
+    return imagen_local
 
-def verificar_imagen_valida(url):
-    """Verifica si la URL de imagen es accesible y válida."""
+def subir_imagen_y_publicar(mensaje, image_path, link_url):
+    """
+    Sube la imagen a Facebook y publica con el mensaje y link.
+    Método: Crear post con foto adjunta y link en el mensaje.
+    """
     try:
-        if not url or not url.startswith('http'):
-            return False
+        print(f"[IMAGEN] Subiendo imagen y publicando...")
         
-        response = requests.head(url, timeout=10, allow_redirects=True)
-        if response.status_code == 200:
-            content_type = response.headers.get('content-type', '')
-            content_length = int(response.headers.get('content-length', 0))
-            
-            # Debe ser imagen y tener tamaño razonable (>1KB)
-            if 'image' in content_type and content_length > 1024:
-                print(f"[IMAGEN] Imagen original válida: {content_type}, {content_length} bytes")
-                return True
-    except Exception as e:
-        print(f"[IMAGEN] Error verificando imagen: {e}")
-    return False
-
-def subir_imagen_a_facebook(image_path):
-    """Sube imagen a Facebook y retorna URL pública."""
-    try:
-        print(f"[IMAGEN] Subiendo imagen a Facebook...")
+        # Método 1: Publicar foto con el link en el mensaje (recomendado)
         url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos"
         
         with open(image_path, 'rb') as img:
             files = {'file': ('image.png', img, 'image/png')}
             data = {
+                'message': f"{mensaje}\n\n🔗 Lee más: {link_url}",
                 'access_token': FB_ACCESS_TOKEN,
-                'published': 'false',  # Solo subir, no publicar aún
-                'temporary': 'true'
+                'published': 'true'
             }
             
             response = requests.post(url, files=files, data=data, timeout=60)
             result = response.json()
             
             if response.status_code == 200 and 'id' in result:
-                photo_id = result['id']
-                print(f"[IMAGEN] Foto subida con ID: {photo_id}")
-                
-                # Obtener URL de la imagen
-                url_photo = f"https://graph.facebook.com/v19.0/{photo_id}?access_token={FB_ACCESS_TOKEN}&fields=images"
-                response_photo = requests.get(url_photo, timeout=30)
-                data_photo = response_photo.json()
-                
-                if 'images' in data_photo and len(data_photo['images']) > 0:
-                    # Usar la imagen de mayor calidad
-                    best_image = max(data_photo['images'], key=lambda x: x.get('width', 0) * x.get('height', 0))
-                    image_url = best_image.get('source')
-                    print(f"[IMAGEN] URL obtenida: {image_url[:60]}...")
-                    return image_url
-                else:
-                    print(f"[ERROR] No se encontraron imágenes en la respuesta: {data_photo}")
+                print(f"✅ PUBLICADO CON IMAGEN: {result['id']}")
+                return True, result
             else:
                 error_msg = result.get('error', {}).get('message', 'Error desconocido')
-                print(f"[ERROR] Facebook upload: {error_msg}")
+                print(f"❌ ERROR MÉTODO 1: {error_msg}")
+                
+                # Si falla, intentar método alternativo
+                return publicar_link_con_imagen_externa(mensaje, image_path, link_url)
                 
     except Exception as e:
-        print(f"[ERROR] Subiendo imagen a Facebook: {e}")
+        print(f"❌ ERROR: {e}")
+        return False, None
+
+def publicar_link_con_imagen_externa(mensaje, image_path, link_url):
+    """
+    Método alternativo: Subir imagen, obtener URL de Facebook, luego publicar feed.
+    """
+    try:
+        print("[IMAGEN] Intentando método alternativo...")
+        
+        # Paso 1: Subir imagen sin publicar
+        url_upload = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos"
+        
+        with open(image_path, 'rb') as img:
+            files = {'file': ('image.png', img, 'image/png')}
+            data = {
+                'access_token': FB_ACCESS_TOKEN,
+                'published': 'false',
+                'temporary': 'true'
+            }
+            
+            response_upload = requests.post(url_upload, files=files, data=data, timeout=60)
+            result_upload = response_upload.json()
+            
+            if response_upload.status_code != 200 or 'id' not in result_upload:
+                print(f"❌ ERROR subiendo imagen: {result_upload}")
+                return False, None
+            
+            photo_id = result_upload['id']
+            print(f"[IMAGEN] Foto subida con ID: {photo_id}")
+            
+            # Obtener URL de la imagen
+            url_photo = f"https://graph.facebook.com/v19.0/{photo_id}?access_token={FB_ACCESS_TOKEN}&fields=images"
+            response_photo = requests.get(url_photo, timeout=30)
+            data_photo = response_photo.json()
+            
+            if 'images' not in data_photo or not data_photo['images']:
+                print(f"❌ ERROR obteniendo URL de imagen")
+                return False, None
+            
+            image_url = data_photo['images'][0]['source']
+            print(f"[IMAGEN] URL obtenida: {image_url[:60]}...")
+            
+            # Paso 2: Publicar en feed con la imagen de Facebook
+            url_feed = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
+            payload = {
+                'message': mensaje,
+                'access_token': FB_ACCESS_TOKEN,
+                'link': link_url,
+                'picture': image_url  # Ahora sí es URL de Facebook
+            }
+            
+            response_feed = requests.post(url_feed, data=payload, timeout=60)
+            result_feed = response_feed.json()
+            
+            if response_feed.status_code == 200 and 'id' in result_feed:
+                print(f"✅ PUBLICADO: {result_feed['id']}")
+                return True, result_feed
+            else:
+                error_msg = result_feed.get('error', {}).get('message', 'Error desconocido')
+                print(f"❌ ERROR en feed: {error_msg}")
+                return False, result_feed
+                
+    except Exception as e:
+        print(f"❌ ERROR método alternativo: {e}")
         import traceback
         traceback.print_exc()
-    return None
+        return False, None
+
+def publicar_solo_texto(mensaje, link_url):
+    """Método fallback: publicar solo texto con link."""
+    try:
+        print("[INFO] Publicando solo texto con link...")
+        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
+        
+        payload = {
+            'message': mensaje,
+            'access_token': FB_ACCESS_TOKEN,
+            'link': link_url
+        }
+        
+        response = requests.post(url, data=payload, timeout=60)
+        result = response.json()
+        
+        if response.status_code == 200 and 'id' in result:
+            print(f"✅ PUBLICADO (solo texto): {result['id']}")
+            return True, result
+        else:
+            error_msg = result.get('error', {}).get('message', 'Error desconocido')
+            print(f"❌ ERROR: {error_msg}")
+            return False, result
+            
+    except Exception as e:
+        print(f"❌ ERROR: {e}")
+        return False, None
 
 def buscar_noticias_frescas():
     print(f"\n{'='*60}")
@@ -559,7 +619,6 @@ def redactar_noticia(noticia, categoria):
 {cuerpo}
 
 📡 Fuente: {fuente}
-🔗 {url}
 
 {hashtags}
 
@@ -613,57 +672,36 @@ def publicar_en_facebook():
     
     # Obtener imagen (original o generada con IA)
     print("[PROCESO] Obteniendo imagen para la publicación...")
-    imagen_url = obtener_imagen_noticia(noticia)
+    imagen_path = obtener_imagen_noticia(noticia)
     
     mensaje = redactar_noticia(noticia, categoria)
     print(f"DEBUG: Mensaje generado, longitud: {len(mensaje)} caracteres")
     
     try:
-        print("[INFO] Publicando en Facebook...")
+        exito = False
+        resultado = None
         
-        if imagen_url:
-            # Publicación CON imagen clickeable
-            print(f"[INFO] Publicando con imagen...")
-            url_fb = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
+        if imagen_path and os.path.exists(imagen_path):
+            # Intentar publicar con imagen
+            print("[INFO] Intentando publicar con imagen...")
+            exito, resultado = subir_imagen_y_publicar(mensaje, imagen_path, noticia['url'])
             
-            payload = {
-                'message': mensaje,
-                'access_token': FB_ACCESS_TOKEN,
-                'link': noticia['url'],           # Hace la imagen clickeable
-                'picture': imagen_url,            # URL de la imagen
-                'name': noticia['title'][:100],   # Título del preview
-                'description': noticia['description'][:200],  # Descripción del preview
-                'caption': 'Ver noticia completa' # Texto del link
-            }
-        else:
-            # Publicación SIN imagen (modo texto)
-            print("[INFO] Publicando sin imagen...")
-            url_fb = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
-            payload = {
-                'message': mensaje,
-                'access_token': FB_ACCESS_TOKEN,
-                'link': noticia['url']
-            }
+            # Limpiar archivo temporal
+            try:
+                os.remove(imagen_path)
+                print(f"[LIMPIEZA] Archivo temporal eliminado")
+            except Exception as e:
+                print(f"[AVISO] No se pudo eliminar archivo temporal: {e}")
         
-        print(f"DEBUG: Enviando request a Facebook...")
-        response = requests.post(url_fb, data=payload, timeout=60)
-        result = response.json()
+        if not exito:
+            # Fallback a publicación solo texto
+            print("[INFO] Fallback a publicación sin imagen...")
+            exito, resultado = publicar_solo_texto(mensaje, noticia['url'])
         
-        print(f"[DEBUG] Status: {response.status_code}")
-        print(f"[DEBUG] Response: {result}")
-        
-        if response.status_code == 200 and 'id' in result:
-            print(f"✅ PUBLICADO CON ÉXITO: {result['id']}")
-            if imagen_url:
-                print(f"   📷 Incluye imagen: {'(IA generada)' if 'fbcdn.net' in imagen_url else '(Original)'}")
-            return True
-        else:
-            error_msg = result.get('error', {}).get('message', 'Error desconocido')
-            print(f"❌ ERROR DE FACEBOOK: {error_msg}")
-            return False
+        return exito
             
     except Exception as e:
-        print(f"❌ ERROR: {e}")
+        print(f"❌ ERROR CRÍTICO: {e}")
         import traceback
         traceback.print_exc()
         return False
@@ -677,7 +715,7 @@ if __name__ == "__main__":
     
     try:
         resultado = publicar_en_facebook()
-        print(f"DEBUG: Resultado: {resultado}")
+        print(f"DEBUG: Resultado final: {resultado}")
         exit_code = 0 if resultado else 1
     except Exception as e:
         print(f"ERROR CRÍTICO: {e}")

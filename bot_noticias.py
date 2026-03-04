@@ -2,10 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 Bot de Noticias Automático para Facebook
-- Busca noticias de actualidad
-- Reescribe con OpenAI (estilo profesional, SEO)
-- Genera imagen con IA (Stability o OpenAI)
-- Publica en Facebook
+- Redacción extensa e informativa con OpenAI
+- Más hashtags para alcance orgánico
+- Optimizado para público hispanohablante
 """
 
 import os
@@ -24,7 +23,7 @@ from bs4 import BeautifulSoup
 
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
-FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
+FB_ACCESS_TOKEN = os.getenv('B_ACCESS_TOKEN')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 STABILITY_API_KEY = os.getenv('STABILITY_API_KEY')
 
@@ -34,7 +33,7 @@ if not all([FB_PAGE_ID, FB_ACCESS_TOKEN, OPENAI_API_KEY]):
     raise ValueError("Faltan: FB_PAGE_ID, FB_ACCESS_TOKEN u OPENAI_API_KEY")
 
 # ============================================================================
-# FUENTES RSS (URLs corregidas sin espacios)
+# FUENTES RSS
 # ============================================================================
 
 FUENTES_RSS = {
@@ -55,37 +54,34 @@ MAX_HISTORIAL = 100
 
 def buscar_noticias():
     print("\n" + "="*60)
-    print("🔍 BUSCANDO NOTICIAS")
+    print("🔍 BUSCANDO NOTICIAS DE ACTUALIDAD")
     print("="*60)
     
     todas = []
     
-    # NewsAPI
     if NEWS_API_KEY:
         try:
             n = buscar_newsapi()
             todas.extend(n)
-            print(f"✓ NewsAPI: {len(n)}")
+            print(f"✓ NewsAPI: {len(n)} noticias")
         except Exception as e:
             print(f"✗ NewsAPI: {e}")
     
-    # RSS
     for nombre, url in FUENTES_RSS.items():
         try:
             n = buscar_rss(url, nombre)
             todas.extend(n)
-            print(f"✓ {nombre}: {len(n)}")
+            print(f"✓ {nombre}: {len(n)} noticias")
         except Exception as e:
             print(f"✗ {nombre}: {str(e)[:50]}")
     
-    # Filtrar duplicados y ya publicadas
     unicas = {}
     for n in todas:
         if n['url'] not in HISTORIAL_URLS and len(n['titulo']) > 20:
             unicas[n['url']] = n
     
     resultado = list(unicas.values())
-    print(f"\n📊 Total únicas: {len(resultado)}")
+    print(f"\n📊 Total únicas disponibles: {len(resultado)}")
     return resultado
 
 def buscar_newsapi():
@@ -118,7 +114,7 @@ def buscar_rss(url_rss, nombre_fuente):
         
         noticias.append({
             'titulo': entry.title,
-            'descripcion': desc[:300],
+            'descripcion': desc[:500],
             'contenido': entry.get('content', [{}])[0].get('value', desc),
             'url': entry.link,
             'fuente': nombre_fuente,
@@ -143,9 +139,11 @@ def seleccionar_mejor_noticia(noticias):
     for i, n in enumerate(noticias[:10], 1):
         resumen += f"{i}. {n['titulo'][:80]} ({n['fuente']})\n"
     
-    prompt = f"""Selecciona la NOTICIA MÁS IMPORTANTE de actualidad mundial:
+    prompt = f"""Eres editor de un medio internacional en español. Selecciona la NOTICIA MÁS RELEVANTE para público hispanohablante:
 
 {resumen}
+
+Prioriza: impacto global, relevancia para Latinoamérica/España, actualidad.
 
 Responde SOLO con el número (1-10):"""
 
@@ -170,7 +168,7 @@ Responde SOLO con el número (1-10):"""
         numero = int(re.search(r'\d+', seleccion).group()) - 1
         
         if 0 <= numero < len(noticias):
-            print(f"✓ Seleccionada: #{numero + 1}")
+            print(f"✓ Seleccionada noticia #{numero + 1}")
             return noticias[numero]
             
     except Exception as e:
@@ -179,35 +177,45 @@ Responde SOLO con el número (1-10):"""
     return noticias[0]
 
 # ============================================================================
-# 3. REESCRITURA PROFESIONAL
+# 3. REESCRITURA EXTENSA Y PROFESIONAL
 # ============================================================================
 
 def reescribir_noticia(noticia):
     print("\n" + "="*60)
-    print("✍️ REESCRIBIENDO NOTICIA")
+    print("✍️ OPENAI: CREANDO ARTÍCULO EXTENSO")
     print("="*60)
     
-    prompt = f"""Actúa como editor jefe de medio internacional. Reescribe profesionalmente:
+    prompt = f"""Actúa como editor jefe de un medio digital internacional en ESPAÑOL. Crea un ARTÍCULO COMPLETO Y EXTENSO basado en esta noticia.
 
-TÍTULO ORIGINAL: {noticia['titulo']}
-FUENTE: {noticia['fuente']}
-TEXTO: {noticia['descripcion'][:600]}
+NOTICIA ORIGINAL:
+Título: {noticia['titulo']}
+Fuente: {noticia['fuente']}
+Texto base: {noticia['descripcion'][:800]}
 
-REQUISITOS:
-- Título SEO: 60-80 caracteres, impactante
-- Redacción: Estilo periodístico profesional, 3-4 párrafos
-- SEO: Incluir palabras clave naturales
-- Tono: Serio, autoritario, neutral
-- NO inventar hechos
+INSTRUCCIONES PARA EL ARTÍCULO:
+1. EXTENSIÓN: Mínimo 5-6 párrafos desarrollados (400-600 palabras)
+2. ESTRUCTURA PROFESIONAL:
+   - Titular SEO: Impactante, 60-80 caracteres, palabras clave al inicio
+   - Lead: Primer párrafo que responda qué, quién, cuándo, dónde, por qué
+   - Desarrollo: Contexto histórico, implicaciones, análisis de impacto
+   - Perspectivas: Qué sigue, posibles consecuencias
+   - Cierre: Resumen de la importancia de la noticia
 
-JSON:
+3. TONO: Periodístico serio, informativo, autoritario, pero accesible
+4. SEO: Integrar naturalmente palabras clave en el texto
+5. PÚBLICO: Hispanohablante de Latinoamérica y España
+6. NO inventar hechos, solo expandir y contextualizar la información real
+
+HASHTAGS: Generar 8-10 hashtags relevantes para alcance orgánico (mezcla de populares y específicos)
+
+JSON DE SALIDA:
 {{
-    "titulo_seo": "Título optimizado",
-    "contenido": "Texto profesional completo",
-    "resumen": "Resumen corto redes sociales",
-    "palabras_clave": ["kw1", "kw2", "kw3", "kw4", "kw5"],
-    "categoria": "politica/economia/tecnologia/salud/internacional/deportes",
-    "hashtags": "#Tag1 #Tag2 #Tag3"
+    "titulo_seo": "Título optimizado para SEO y engagement",
+    "articulo_completo": "Artículo extenso de 5-6 párrafos profesionales",
+    "resumen_redes": "Resumen atractivo de 2-3 líneas para redes sociales",
+    "palabras_clave": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+    "categoria": "politica/economia/tecnologia/salud/internacional/deportes/entretenimiento",
+    "hashtags": "#Tag1 #Tag2 #Tag3 #Tag4 #Tag5 #Tag6 #Tag7 #Tag8"
 }}"""
 
     try:
@@ -218,12 +226,12 @@ JSON:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "gpt-4o-mini",
+                "model": "gpt-4o",  # Modelo más potente para textos extensos
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.7,
-                "max_tokens": 2000
+                "max_tokens": 2500
             },
-            timeout=60
+            timeout=90
         )
         
         resultado = r.json()
@@ -233,46 +241,43 @@ JSON:
         if json_match:
             datos = json.loads(json_match.group())
             
+            # Verificar que el artículo sea extenso
+            palabras = len(datos['articulo_completo'].split())
+            print(f"✓ Artículo generado: ~{palabras} palabras")
             print(f"✓ Título: {datos['titulo_seo'][:60]}...")
             print(f"✓ Categoría: {datos['categoria']}")
-            print(f"✓ Keywords: {', '.join(datos['palabras_clave'])}")
+            print(f"✓ Hashtags: {datos['hashtags']}")
             
             return datos
             
     except Exception as e:
         print(f"⚠️ Error reescritura: {e}")
     
-    # Fallback
+    # Fallback mejorado
     return {
         'titulo_seo': noticia['titulo'],
-        'contenido': noticia['descripcion'],
-        'resumen': noticia['descripcion'][:100],
-        'palabras_clave': ['noticias', 'actualidad', 'internacional'],
+        'articulo_completo': noticia['descripcion'] + "\n\nEsta noticia de " + noticia['fuente'] + " destaca por su relevancia en el ámbito internacional. Los expertos señalan que este tipo de acontecimientos tendrá repercusiones significativas en los próximos días. La comunidad internacional permanece atenta a los desarrollos posteriores. Se recomienda seguir las fuentes oficiales para obtener información actualizada.",
+        'resumen_redes': noticia['descripcion'][:150],
+        'palabras_clave': ['noticias', 'actualidad', 'internacional', 'mundo', 'hoy'],
         'categoria': 'general',
-        'hashtags': '#Noticias #Actualidad'
+        'hashtags': '#Noticias #Actualidad #Internacional #Mundo #Hoy #News #ÚltimaHora #Información'
     }
 
 # ============================================================================
-# 4. GENERACIÓN DE IMÁGEN CON IA (SOLO IA, NUNCA DESCARGA ORIGINAL)
+# 4. GENERACIÓN DE IMÁGEN CON IA
 # ============================================================================
 
 def generar_imagen(titulo, keywords, categoria):
-    """
-    Genera imagen SOLO con IA (Stability primero, DALL-E fallback)
-    NUNCA descarga imagen original de la noticia
-    """
     print("\n" + "="*60)
     print("🎨 GENERANDO IMAGEN CON IA")
     print("="*60)
     
-    # OPCIÓN 1: Stability AI
     if STABILITY_API_KEY:
         print("Intentando Stability AI...")
         ruta = generar_stability(titulo, keywords, categoria)
         if ruta:
             return ruta
     
-    # OPCIÓN 2: OpenAI DALL-E (siempre disponible)
     print("Intentando OpenAI DALL-E...")
     ruta = generar_dalle(titulo, keywords, categoria)
     if ruta:
@@ -282,22 +287,23 @@ def generar_imagen(titulo, keywords, categoria):
     return None
 
 def generar_stability(titulo, keywords, categoria):
-    """Genera imagen con Stability AI"""
     try:
+        import time
         kw_text = ', '.join(keywords[:3])
         
         estilos = {
-            'politica': 'professional political photojournalism, documentary, serious, Reuters style',
-            'economia': 'business news photography, corporate, financial, blue professional',
-            'tecnologia': 'futuristic tech visualization, modern innovation, clean design',
+            'politica': 'professional political photojournalism, documentary, serious, Reuters AP style',
+            'economia': 'business news photography, corporate, financial district, professional',
+            'tecnologia': 'futuristic tech visualization, innovation, clean modern design',
             'salud': 'medical healthcare photography, hospital, clinical professional',
             'internacional': 'global news photojournalism, world events, international affairs',
-            'deportes': 'sports action photography, stadium, dynamic, energetic'
+            'deportes': 'sports action photography, stadium, dynamic, energetic',
+            'entretenimiento': 'celebrity news photography, entertainment industry, glamour'
         }
         
-        estilo = estilos.get(categoria, 'professional news photography, photojournalism')
+        estilo = estilos.get(categoria, 'professional news photography, editorial')
         
-        prompt = f"Editorial news image: {titulo}. Themes: {kw_text}. Style: {estilo}. NO text, NO logos, NO watermarks, photorealistic, 4K."
+        prompt = f"Editorial news image for Spanish-speaking audience: {titulo}. Visual themes: {kw_text}. Style: {estilo}. NO text, NO logos, NO watermarks, photorealistic, 4K quality."
         
         print(f"Prompt: {prompt[:100]}...")
         
@@ -316,13 +322,12 @@ def generar_stability(titulo, keywords, categoria):
         )
         
         if r.status_code == 200:
-            import time
             ruta = f"/tmp/stability_{int(time.time())}.png"
             with open(ruta, 'wb') as f:
                 f.write(r.content)
             
             if os.path.exists(ruta) and os.path.getsize(ruta) > 1024:
-                print(f"✓ Stability: {os.path.basename(ruta)} ({os.path.getsize(ruta)} bytes)")
+                print(f"✓ Stability: {os.path.basename(ruta)}")
                 return ruta
         else:
             print(f"✗ Stability HTTP {r.status_code}")
@@ -333,28 +338,26 @@ def generar_stability(titulo, keywords, categoria):
     return None
 
 def generar_dalle(titulo, keywords, categoria):
-    """Genera imagen con OpenAI DALL-E 3"""
     try:
         import time
-        
         kw_text = ', '.join(keywords[:3])
         
         estilos = {
-            'politica': 'professional political photojournalism, documentary style',
-            'economia': 'business news photography, corporate professional',
+            'politica': 'professional political photojournalism, documentary style, serious editorial',
+            'economia': 'business news photography, corporate professional setting',
             'tecnologia': 'modern tech innovation, futuristic clean design',
             'salud': 'medical healthcare photography, professional clinical',
             'internacional': 'global news photojournalism, world affairs',
-            'deportes': 'sports photography, stadium atmosphere, dynamic'
+            'deportes': 'sports photography, stadium atmosphere, dynamic',
+            'entretenimiento': 'entertainment news photography, media event'
         }
         
         estilo = estilos.get(categoria, 'professional news photography, editorial')
         
-        prompt = f"Create a professional news editorial image for: {titulo}. Visual themes: {kw_text}. Style: {estilo}. The image must have absolutely NO text, NO logos, NO watermarks, NO words, NO letters. Photorealistic, high quality, suitable for international news publication."
+        prompt = f"Create a professional news editorial image for Spanish-speaking audience about: {titulo}. Visual elements: {kw_text}. Style: {estilo}. NO text, NO logos, NO watermarks, NO words. Photorealistic, high quality, suitable for international news publication."
         
         print(f"Prompt DALL-E: {prompt[:100]}...")
         
-        # Generar imagen
         r = requests.post(
             "https://api.openai.com/v1/images/generations",
             headers={
@@ -364,7 +367,7 @@ def generar_dalle(titulo, keywords, categoria):
             json={
                 "model": "dall-e-3",
                 "prompt": prompt[:1000],
-                "size": "1792x1024",  # Formato horizontal 16:9
+                "size": "1792x1024",
                 "quality": "standard",
                 "n": 1
             },
@@ -377,7 +380,6 @@ def generar_dalle(titulo, keywords, categoria):
             img_url = resultado['data'][0]['url']
             print(f"✓ DALL-E URL obtenida, descargando...")
             
-            # Descargar imagen generada
             img_r = requests.get(img_url, timeout=30)
             if img_r.status_code == 200:
                 ruta = f"/tmp/dalle_{int(time.time())}.png"
@@ -385,10 +387,10 @@ def generar_dalle(titulo, keywords, categoria):
                     f.write(img_r.content)
                 
                 if os.path.exists(ruta) and os.path.getsize(ruta) > 1024:
-                    print(f"✓ DALL-E: {os.path.basename(ruta)} ({os.path.getsize(ruta)} bytes)")
+                    print(f"✓ DALL-E: {os.path.basename(ruta)}")
                     return ruta
         else:
-            error = resultado.get('error', {}).get('message', 'Error desconocido')
+            error = resultado.get('error', {}).get('message', 'Error')
             print(f"✗ DALL-E error: {error}")
             
     except Exception as e:
@@ -400,26 +402,25 @@ def generar_dalle(titulo, keywords, categoria):
 # 5. PUBLICACIÓN EN FACEBOOK
 # ============================================================================
 
-def publicar_facebook(titulo, contenido, resumen, palabras_clave, hashtags, imagen_ruta, url_fuente, nombre_fuente):
-    """
-    Publica en Facebook con imagen generada por IA
-    """
+def publicar_facebook(titulo, articulo, resumen, palabras_clave, hashtags, imagen_ruta, url_fuente, nombre_fuente):
     print("\n" + "="*60)
     print("📘 PUBLICANDO EN FACEBOOK")
     print("="*60)
     
-    # Mensaje principal (conciso para foto)
+    # Mensaje para foto (más corto)
     mensaje_foto = f"""📰 {titulo}
 
 {resumen}
 
-{hashtags}
+🔍 {hashtags}
+
+✍️ Artículo completo en los comentarios ⬇️
 
 — Verdad Hoy | {datetime.now().strftime('%d/%m/%Y')}"""
     
     post_id = None
     
-    # MÉTODO 1: Con imagen (subir archivo local)
+    # PUBLICAR CON IMAGEN
     if imagen_ruta and os.path.exists(imagen_ruta):
         print(f"Subiendo foto: {os.path.basename(imagen_ruta)}")
         
@@ -449,23 +450,23 @@ def publicar_facebook(titulo, contenido, resumen, palabras_clave, hashtags, imag
         except Exception as e:
             print(f"✗ Error subiendo foto: {e}")
     
-    # MÉTODO 2: Solo texto (fallback)
+    # SIN IMAGEN (fallback)
     if not post_id:
         print("Publicando solo texto...")
         
         try:
             url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
             
-            mensaje_largo = f"""📰 {titulo}
+            mensaje_texto = f"""📰 {titulo}
 
-{contenido}
+{articulo[:1500]}...
 
 {hashtags}
 
 — Verdad Hoy | {datetime.now().strftime('%d/%m/%Y')}"""
             
             data = {
-                'message': mensaje_largo,
+                'message': mensaje_texto,
                 'access_token': FB_ACCESS_TOKEN,
                 'link': url_fuente
             }
@@ -484,30 +485,84 @@ def publicar_facebook(titulo, contenido, resumen, palabras_clave, hashtags, imag
             print(f"✗ Error: {e}")
             return False
     
-    # Agregar comentario con fuente
+    # COMENTARIOS: Artículo completo + Fuente
     if post_id:
-        agregar_comentario(post_id, url_fuente, nombre_fuente)
+        import time
+        time.sleep(3)
+        
+        # Comentario 1: Artículo completo
+        comentario_articulo(post_id, articulo, titulo)
+        
+        time.sleep(2)
+        
+        # Comentario 2: Fuente
+        agregar_comentario_fuente(post_id, url_fuente, nombre_fuente)
+        
         return True
     
     return False
 
-def agregar_comentario(post_id, url_fuente, nombre_fuente):
-    """Agrega comentario con link a fuente original"""
+def comentario_articulo(post_id, articulo, titulo):
+    """Agrega el artículo completo en comentarios (si es muy largo, lo divide)"""
     try:
-        import time
-        time.sleep(2)  # Esperar a que se cree el post
-        
-        print("Agregando comentario con fuente...")
+        print("Agregando artículo completo en comentario...")
         
         post_clean = post_id.split('_')[-1] if '_' in post_id else post_id
-        
         url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}_{post_clean}/comments"
         
-        mensaje = f"""📎 Fuente original: {nombre_fuente}
+        # Si el artículo es muy largo, dividir en partes
+        max_length = 8000  # Límite aproximado de Facebook
+        
+        if len(articulo) > max_length:
+            partes = [articulo[i:i+max_length] for i in range(0, len(articulo), max_length)]
+            
+            for i, parte in enumerate(partes, 1):
+                mensaje = f"📄 Continuación ({i}/{len(partes)}):\n\n{parte}"
+                
+                r = requests.post(url, data={
+                    'message': mensaje,
+                    'access_token': FB_ACCESS_TOKEN
+                }, timeout=30)
+                
+                if r.status_code != 200:
+                    print(f"⚠️ Error parte {i}: {r.status_code}")
+                
+                time.sleep(1)
+        else:
+            mensaje = f"""📄 ARTÍCULO COMPLETO:
+
+{articulo}
+
+_Lee la fuente original en el siguiente comentario_ ⬇️"""
+            
+            r = requests.post(url, data={
+                'message': mensaje,
+                'access_token': FB_ACCESS_TOKEN
+            }, timeout=30)
+            
+            if r.status_code == 200:
+                print("✓ Artículo agregado")
+            else:
+                print(f"⚠️ Error: {r.status_code}")
+                
+    except Exception as e:
+        print(f"⚠️ Error artículo: {e}")
+
+def agregar_comentario_fuente(post_id, url_fuente, nombre_fuente):
+    """Agrega comentario con link a fuente"""
+    try:
+        print("Agregando fuente original...")
+        
+        post_clean = post_id.split('_')[-1] if '_' in post_id else post_id
+        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}_{post_clean}/comments"
+        
+        mensaje = f"""📎 FUENTE ORIGINAL: {nombre_fuente}
 
 🔗 {url_fuente}
 
-_Síguenos para más noticias internacionales_"""
+📲 Síguenos para más noticias internacionales en español
+
+#Noticias #Actualidad #Internacional #MundoHoy #Información #Periodismo #NewsEnEspañol"""
         
         r = requests.post(url, data={
             'message': mensaje,
@@ -515,12 +570,12 @@ _Síguenos para más noticias internacionales_"""
         }, timeout=30)
         
         if r.status_code == 200:
-            print("✓ Comentario agregado")
+            print("✓ Fuente agregada")
         else:
-            print(f"⚠️ Error comentario: {r.status_code}")
+            print(f"⚠️ Error fuente: {r.status_code}")
             
     except Exception as e:
-        print(f"⚠️ Error comentario: {e}")
+        print(f"⚠️ Error fuente: {e}")
 
 # ============================================================================
 # LIMPIEZA
@@ -544,39 +599,40 @@ def limpiar():
 
 def main():
     print("\n" + "="*60)
-    print("🚀 BOT DE NOTICIAS - IA GENERATIVA")
+    print("🚀 BOT DE NOTICIAS - REDACCIÓN EXTENSA")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
     try:
-        # 1. Buscar noticias
+        # 1. Buscar
         noticias = buscar_noticias()
         if not noticias:
             print("❌ No hay noticias")
             return False
         
-        # 2. Seleccionar la mejor
+        # 2. Seleccionar
         seleccionada = seleccionar_mejor_noticia(noticias)
         HISTORIAL_URLS.add(seleccionada['url'])
         
-        print(f"\n📌 Seleccionada: {seleccionada['titulo'][:70]}")
+        print(f"\n📌 Noticia seleccionada:")
+        print(f"   {seleccionada['titulo'][:70]}")
         print(f"   Fuente: {seleccionada['fuente']}")
         
-        # 3. Reescribir profesionalmente
+        # 3. Reescribir (ARTÍCULO EXTENSO)
         reescrita = reescribir_noticia(seleccionada)
         
-        # 4. Generar imagen con IA (SIEMPRE, nunca descarga original)
+        # 4. Generar imagen
         imagen_ruta = generar_imagen(
             reescrita['titulo_seo'],
             reescrita['palabras_clave'],
             reescrita['categoria']
         )
         
-        # 5. Publicar en Facebook
+        # 5. Publicar
         exito = publicar_facebook(
             titulo=reescrita['titulo_seo'],
-            contenido=reescrita['contenido'],
-            resumen=reescrita['resumen'],
+            articulo=reescrita['articulo_completo'],
+            resumen=reescrita['resumen_redes'],
             palabras_clave=reescrita['palabras_clave'],
             hashtags=reescrita['hashtags'],
             imagen_ruta=imagen_ruta,
@@ -584,7 +640,7 @@ def main():
             nombre_fuente=seleccionada['fuente']
         )
         
-        # 6. Limpiar temporales
+        # 6. Limpiar
         if imagen_ruta and os.path.exists(imagen_ruta):
             try:
                 os.remove(imagen_ruta)

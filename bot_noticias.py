@@ -315,33 +315,65 @@ def generar_imagen_con_stability(titulo, palabras_clave, categoria):
             temp_path = f"/tmp/stability_{int(time.time())}.png"
             with open(temp_path, 'wb') as f:
                 f.write(response.content)
-            print(f"[IMAGEN] ✓ Generada: {temp_path} ({os.path.getsize(temp_path)} bytes)")
+            print(f"[IMAGEN] ✓ Generada (Stability): {temp_path} ({os.path.getsize(temp_path)} bytes)")
             return temp_path
         else:
-            print(f"[IMAGEN] ✗ Error HTTP: {response.status_code}")
+            print(f"[IMAGEN] ✗ Error HTTP Stability: {response.status_code}")
             return None
             
     except Exception as e:
         print(f"[ERROR] Stability: {e}")
         return None
 
+def generar_imagen_con_dalle(titulo, palabras_clave, categoria):
+    """
+    Genera imagen usando OpenAI DALL-E 3 basada en el contexto.
+    Retorna PATH LOCAL del archivo.
+    """
+    if not OPENAI_API_KEY:
+        return None
+    
+    keywords_str = ', '.join(palabras_clave[:3])
+    prompt = f"Professional news illustration for: {titulo}. Keywords: {keywords_str}. Category: {categoria}. High quality, photorealistic, cinematic lighting, NO text, NO logos, 16:9 aspect ratio."
+    
+    try:
+        url = "https://api.openai.com/v1/images/generations"
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            "model": "dall-e-3",
+            "prompt": prompt,
+            "n": 1,
+            "size": "1024x1024", # DALL-E 3 solo soporta cuadrado o 1792x1024
+            "quality": "standard"
+        }
+        
+        response = requests.post(url, headers=headers, json=data, timeout=60)
+        result = response.json()
+        
+        if response.status_code == 200 and 'data' in result:
+            img_url = result['data'][0]['url']
+            return descargar_imagen(img_url, "dalle")
+        else:
+            print(f"[IMAGEN] ✗ Error OpenAI DALL-E: {result.get('error', {}).get('message', 'Error desconocido')}")
+            return None
+            
+    except Exception as e:
+        print(f"[ERROR] OpenAI DALL-E: {e}")
+        return None
+
 def obtener_imagen_local(noticia, noticia_reescrita):
     """
-    Obtiene una imagen SIEMPRE como archivo local.
-    NUNCA retorna una URL.
+    Obtiene una imagen SIEMPRE generada por IA (Stability o OpenAI).
+    NUNCA descarga la imagen original de la noticia.
     """
     imagen_path = None
     
-    # 1. Intentar descargar imagen original
-    if noticia.get('image_url'):
-        imagen_path = descargar_imagen(noticia['image_url'], "original")
-        if imagen_path:
-            print(f"[IMAGEN] Usando imagen original descargada")
-            return imagen_path
-    
-    # 2. Generar con Stability si no hay original
-    if not imagen_path and STABILITY_API_KEY:
-        print(f"[IMAGEN] Generando imagen con IA...")
+    # 1. Intentar generar con Stability AI (Prioridad)
+    if STABILITY_API_KEY:
+        print(f"[IMAGEN] Generando imagen con Stability AI...")
         imagen_path = generar_imagen_con_stability(
             noticia_reescrita['titulo'],
             noticia_reescrita['palabras_clave'],
@@ -350,7 +382,18 @@ def obtener_imagen_local(noticia, noticia_reescrita):
         if imagen_path:
             return imagen_path
     
-    print(f"[IMAGEN] No se pudo obtener imagen")
+    # 2. Fallback: Intentar generar con OpenAI (DALL-E 3) si Stability falla o no hay API Key
+    if not imagen_path and OPENAI_API_KEY:
+        print(f"[IMAGEN] Generando imagen con OpenAI (DALL-E 3)...")
+        imagen_path = generar_imagen_con_dalle(
+            noticia_reescrita['titulo'],
+            noticia_reescrita['palabras_clave'],
+            noticia_reescrita['categoria']
+        )
+        if imagen_path:
+            return imagen_path
+    
+    print(f"[IMAGEN] No se pudo generar imagen con ninguna IA")
     return None
 
 def publicar_en_facebook(titulo, contenido, resumen_seo, palabras_clave, imagen_path, url_fuente, nombre_fuente):

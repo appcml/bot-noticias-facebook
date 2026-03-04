@@ -1,9 +1,9 @@
-name: Publicar Noticias con Imágenes
+name: Publicar Noticias con Imágenes IA
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Cada 6 horas
-  workflow_dispatch:        # Permite ejecución manual
+    - cron: '0 * * * *'  # Cada hora (cambiado de cada 6 horas)
+  workflow_dispatch:      # Permite ejecución manual
 
 jobs:
   publicar:
@@ -20,7 +20,7 @@ jobs:
       
       - name: Instalar dependencias
         run: |
-          pip install -r requirements.txt
+          pip install requests feedparser beautifulsoup4
       
       - name: Ejecutar bot de noticias
         env:

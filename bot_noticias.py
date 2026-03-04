@@ -38,17 +38,13 @@ def buscar_noticias_frescas():
     fecha_hoy = datetime.now().strftime('%Y-%m-%d')
     fecha_ayer = (datetime.now().timestamp() - 86400)
     
+    # Búsquedas simplificadas para probar
     busquedas_todas = [
-        ('guerra OR ataque OR conflicto OR misil OR bombardeo', 'crisis'),
-        ('iran OR israel OR gaza OR medio oriente', 'crisis'),
-        ('trump OR biden OR elecciones OR casa blanca', 'politica'),
-        ('gobierno OR congreso OR senado OR ley OR votacion', 'politica'),
-        ('economia OR inflacion OR dolar OR peso OR mercado', 'economia'),
-        ('bolsa OR wall street OR fed OR reserva federal', 'economia'),
-        ('inteligencia artificial OR chatgpt OR openai OR google', 'tech'),
-        ('ciberseguridad OR hacker OR virus OR ransomware', 'tech'),
-        ('terremoto OR sismo OR huracan OR inundacion', 'emergencia'),
-        ('accidente OR incendio OR explosion OR emergencia', 'emergencia')
+        ('noticias', 'general'),
+        ('actualidad', 'general'),
+        ('mundo', 'general'),
+        ('internacional', 'general'),
+        ('politica', 'politica')
     ]
     
     busquedas_hoy = random.sample(busquedas_todas, min(5, len(busquedas_todas)))

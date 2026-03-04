@@ -1,28 +1,25 @@
-name: Publicar Noticias con Imágenes IA
+name: Bot Noticias - Redacción Extensa
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Cada hora (cambiado de cada 6 horas)
-  workflow_dispatch:      # Permite ejecución manual
+    - cron: '0 * * * *'  # Cada hora
+  workflow_dispatch:
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout código
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
       - name: Instalar dependencias
-        run: |
-          pip install requests feedparser beautifulsoup4
+        run: pip install requests feedparser beautifulsoup4
       
-      - name: Ejecutar bot de noticias
+      - name: Ejecutar Bot
         env:
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}

@@ -20,17 +20,13 @@ jobs:
       
       - name: Instalar dependencias
         run: |
-          pip install requests
+          pip install -r requirements.txt
       
       - name: Ejecutar bot de noticias
         env:
-          # Variables obligatorias
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
-          
-          # Variables para generación de imágenes (una de las dos o ambas)
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
-          
-        run: python bot.py
+        run: python bot_noticias.py

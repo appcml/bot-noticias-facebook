@@ -1,195 +1,217 @@
-mport requests
-import random
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Bot de Noticias Automático para Facebook
+- Busca noticias de actualidad
+- Reescribe con OpenAI (estilo profesional, SEO)
+- Genera imagen con IA (Stability o OpenAI)
+- Publica en Facebook
+"""
+
+import os
+import sys
+import json
 import re
 import hashlib
-import os
-from datetime import datetime
-from urllib.parse import urlparse, quote
-import json
-import time
+import requests
 import feedparser
+from datetime import datetime
 from bs4 import BeautifulSoup
 
-# Variables de entorno
+# ============================================================================
+# CONFIGURACIÓN
+# ============================================================================
+
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 STABILITY_API_KEY = os.getenv('STABILITY_API_KEY')
 
-print(f"DEBUG: Variables cargadas - FB: {bool(FB_ACCESS_TOKEN)}, OpenAI: {bool(OPENAI_API_KEY)}, Stability: {bool(STABILITY_API_KEY)}")
+print(f"DEBUG: FB={bool(FB_PAGE_ID)}, OpenAI={bool(OPENAI_API_KEY)}, Stability={bool(STABILITY_API_KEY)}")
 
 if not all([FB_PAGE_ID, FB_ACCESS_TOKEN, OPENAI_API_KEY]):
-    raise ValueError("Faltan variables obligatorias: FB_PAGE_ID, FB_ACCESS_TOKEN, OPENAI_API_KEY")
+    raise ValueError("Faltan: FB_PAGE_ID, FB_ACCESS_TOKEN u OPENAI_API_KEY")
 
-# Fuentes RSS de medios importantes
+# ============================================================================
+# FUENTES RSS (URLs corregidas sin espacios)
+# ============================================================================
+
 FUENTES_RSS = {
-    'bbc': 'http://feeds.bbci.co.uk/news/world/rss.xml',
-    'reuters': 'http://feeds.reuters.com/reuters/worldnews',
-    'cnn': 'http://rss.cnn.com/rss/edition_world.rss',
-    'elpais': 'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
-    'clarin': 'https://www.clarin.com/rss/lo-ultimo/',
-    'infobae': 'https://www.infobae.com/feeds/rss/',
+    'BBC Mundo': 'http://feeds.bbci.co.uk/news/world/rss.xml',
+    'Reuters': 'http://feeds.reuters.com/reuters/worldnews',
+    'CNN World': 'http://rss.cnn.com/rss/edition_world.rss',
+    'El País': 'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
+    'Clarín': 'https://www.clarin.com/rss/lo-ultimo/',
+    'Infobae': 'https://www.infobae.com/feeds/rss/',
 }
 
 HISTORIAL_URLS = set()
 MAX_HISTORIAL = 100
 
-def buscar_noticias_multiples_fuentes():
-    """
-    Busca noticias en múltiples fuentes: NewsAPI + RSS de medios importantes
-    """
-    print(f"\n{'='*60}")
-    print(f"BUSCANDO NOTICIAS EN MÚLTIPLES FUENTES - {datetime.now().strftime('%H:%M:%S')}")
-    print(f"{'='*60}")
+# ============================================================================
+# 1. BÚSQUEDA DE NOTICIAS
+# ============================================================================
+
+def buscar_noticias():
+    print("\n" + "="*60)
+    print("🔍 BUSCANDO NOTICIAS")
+    print("="*60)
     
-    todas_noticias = []
+    todas = []
     
-    # 1. Buscar en NewsAPI
-    try:
-        noticias_api = buscar_newsapi()
-        todas_noticias.extend(noticias_api)
-    except Exception as e:
-        print(f"[ERROR] NewsAPI: {e}")
-    
-    # 2. Buscar en RSS de medios
-    for fuente, url_rss in FUENTES_RSS.items():
+    # NewsAPI
+    if NEWS_API_KEY:
         try:
-            print(f"[RSS] Consultando {fuente}...")
-            noticias_rss = parsear_rss(url_rss, fuente)
-            todas_noticias.extend(noticias_rss)
-            print(f"  ✓ {len(noticias_rss)} noticias de {fuente}")
+            n = buscar_newsapi()
+            todas.extend(n)
+            print(f"✓ NewsAPI: {len(n)}")
         except Exception as e:
-            print(f"  ✗ Error en {fuente}: {e}")
+            print(f"✗ NewsAPI: {e}")
     
-    # Eliminar duplicados por URL
-    noticias_unicas = {}
-    for noticia in todas_noticias:
-        url_hash = hashlib.md5(noticia['url'].encode()).hexdigest()[:16]
-        if url_hash not in noticias_unicas:
-            noticia['url_hash'] = url_hash
-            noticias_unicas[url_hash] = noticia
+    # RSS
+    for nombre, url in FUENTES_RSS.items():
+        try:
+            n = buscar_rss(url, nombre)
+            todas.extend(n)
+            print(f"✓ {nombre}: {len(n)}")
+        except Exception as e:
+            print(f"✗ {nombre}: {str(e)[:50]}")
     
-    noticias_lista = list(noticias_unicas.values())
-    print(f"\n[INFO] Total noticias únicas: {len(noticias_lista)}")
+    # Filtrar duplicados y ya publicadas
+    unicas = {}
+    for n in todas:
+        if n['url'] not in HISTORIAL_URLS and len(n['titulo']) > 20:
+            unicas[n['url']] = n
     
-    # Filtrar las mejores (no publicadas antes, con contenido)
-    noticias_filtradas = [n for n in noticias_lista 
-                         if n['url'] not in HISTORIAL_URLS 
-                         and len(n.get('content', '')) > 200]
-    
-    # Ordenar por relevancia (simulado por ahora)
-    noticias_filtradas.sort(key=lambda x: x.get('score', 50), reverse=True)
-    
-    print(f"[INFO] Noticias disponibles: {len(noticias_filtradas)}")
-    return noticias_filtradas[:5]
+    resultado = list(unicas.values())
+    print(f"\n📊 Total únicas: {len(resultado)}")
+    return resultado
 
 def buscar_newsapi():
-    """Busca noticias en NewsAPI"""
-    if not NEWS_API_KEY:
-        return []
-    
-    url = f"https://newsapi.org/v2/top-headlines?category=general&language=es&pageSize=20&apiKey={NEWS_API_KEY}"
-    response = requests.get(url, timeout=15)
-    data = response.json()
+    url = f"https://newsapi.org/v2/top-headlines?language=es&pageSize=30&apiKey={NEWS_API_KEY}"
+    r = requests.get(url, timeout=15)
+    data = r.json()
     
     noticias = []
-    if data.get('status') == 'ok':
-        for art in data.get('articles', []):
-            if es_noticia_valida(art):
-                noticias.append({
-                    'title': art['title'],
-                    'description': art.get('description', ''),
-                    'content': art.get('content', art.get('description', '')),
-                    'url': art['url'],
-                    'source': art.get('source', {}).get('name', 'NewsAPI'),
-                    'image_url': art.get('urlToImage'),  # Solo para descargar, no para FB
-                    'published': art.get('publishedAt', ''),
-                    'score': 70
-                })
+    for art in data.get('articles', []):
+        if art.get('title') and '[Removed]' not in art['title']:
+            noticias.append({
+                'titulo': art['title'],
+                'descripcion': art.get('description', ''),
+                'contenido': art.get('content', art.get('description', '')),
+                'url': art['url'],
+                'fuente': art.get('source', {}).get('name', 'NewsAPI'),
+                'fecha': art.get('publishedAt', '')
+            })
     return noticias
 
-def parsear_rss(url_rss, fuente_nombre):
-    """Parsea feed RSS y extrae noticias"""
-    response = requests.get(url_rss, timeout=15, headers={
-        'User-Agent': 'Mozilla/5.0 (compatible; BotNoticias/1.0)'
-    })
+def buscar_rss(url_rss, nombre_fuente):
+    r = requests.get(url_rss, timeout=15, headers={'User-Agent': 'Mozilla/5.0'})
+    feed = feedparser.parse(r.content)
     
-    feed = feedparser.parse(response.content)
     noticias = []
-    
-    for entry in feed.entries[:10]:
-        # Extraer imagen si existe en el RSS
-        image_url = None
-        if 'media_content' in entry:
-            image_url = entry.media_content[0].get('url')
-        elif 'links' in entry:
-            for link in entry.links:
-                if link.get('type', '').startswith('image/'):
-                    image_url = link.href
-                    break
+    for entry in feed.entries[:15]:
+        desc = entry.get('summary', entry.get('description', ''))
+        if '<' in desc:
+            desc = BeautifulSoup(desc, 'html.parser').get_text()
         
-        # Limpiar HTML de la descripción
-        descripcion = entry.get('summary', entry.get('description', ''))
-        descripcion_limpia = BeautifulSoup(descripcion, 'html.parser').get_text()
-        
-        noticia = {
-            'title': entry.title,
-            'description': descripcion_limpia[:300],
-            'content': entry.get('content', [{}])[0].get('value', descripcion_limpia),
+        noticias.append({
+            'titulo': entry.title,
+            'descripcion': desc[:300],
+            'contenido': entry.get('content', [{}])[0].get('value', desc),
             'url': entry.link,
-            'source': fuente_nombre.upper(),
-            'image_url': image_url,  # Solo para descargar, NO para Facebook
-            'published': entry.get('published', ''),
-            'score': 60
-        }
-        
-        if len(noticia['title']) > 20:
-            noticias.append(noticia)
+            'fuente': nombre_fuente,
+            'fecha': entry.get('published', '')
+        })
     
     return noticias
 
-def es_noticia_valida(art):
-    """Valida si una noticia tiene contenido suficiente"""
-    if not art.get('title') or "[Removed]" in art['title']:
-        return False
-    if len(art['title']) < 20:
-        return False
-    return True
+# ============================================================================
+# 2. SELECCIÓN CON OPENAI
+# ============================================================================
 
-def reescribir_noticia_con_openai(titulo_original, contenido_original, fuente):
-    """
-    Usa OpenAI para reescribir la noticia con estilo editorial profesional y optimización SEO.
-    """
-    print(f"[OPENAI] Reescribiendo noticia...")
+def seleccionar_mejor_noticia(noticias):
+    print("\n" + "="*60)
+    print("🤖 SELECCIONANDO MEJOR NOTICIA")
+    print("="*60)
     
-    prompt = f"""Actúa como un editor profesional de un diario digital y experto en SEO. Reescribe la siguiente noticia manteniendo los hechos pero con un estilo informativo, neutral y periodístico de alta calidad, optimizado para posicionamiento orgánico en redes sociales.
-
-REGLAS:
-- Mantén la información factual exacta.
-- Usa un tono profesional y objetivo.
-- Estructura: titular impactante, bajada (resumen), desarrollo con contexto, cierre.
-- Incluye 3-5 palabras clave relevantes en el contenido de forma natural para SEO.
-- NO inventes datos, solo reescribe con mejor estilo.
-- Longitud: 3-4 párrafos.
-- Incluye la fuente al final del contenido.
-
-NOTICIA ORIGINAL:
-Título: {titulo_original}
-Contenido: {contenido_original[:800]}
-Fuente: {fuente}
-
-Genera la respuesta en este formato JSON:
-{{
-    "titulo": "Título reescrito profesional y SEO-friendly",
-    "contenido": "Texto completo reescrito en párrafos, con palabras clave integradas",
-    "resumen_seo": "Resumen corto y atractivo para redes sociales (max 200 caracteres), con palabras clave principales",
-    "palabras_clave": ["palabra1", "palabra2", "palabra3", "palabra4", "palabra5"],
-    "categoria": "politica/economia/tecnologia/internacional/deportes"
-}}"""
+    if len(noticias) == 1:
+        return noticias[0]
     
+    resumen = ""
+    for i, n in enumerate(noticias[:10], 1):
+        resumen += f"{i}. {n['titulo'][:80]} ({n['fuente']})\n"
+    
+    prompt = f"""Selecciona la NOTICIA MÁS IMPORTANTE de actualidad mundial:
+
+{resumen}
+
+Responde SOLO con el número (1-10):"""
+
     try:
-        response = requests.post(
+        r = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+                "max_tokens": 5
+            },
+            timeout=30
+        )
+        
+        resultado = r.json()
+        seleccion = resultado['choices'][0]['message']['content'].strip()
+        numero = int(re.search(r'\d+', seleccion).group()) - 1
+        
+        if 0 <= numero < len(noticias):
+            print(f"✓ Seleccionada: #{numero + 1}")
+            return noticias[numero]
+            
+    except Exception as e:
+        print(f"⚠️ Error selección: {e}")
+    
+    return noticias[0]
+
+# ============================================================================
+# 3. REESCRITURA PROFESIONAL
+# ============================================================================
+
+def reescribir_noticia(noticia):
+    print("\n" + "="*60)
+    print("✍️ REESCRIBIENDO NOTICIA")
+    print("="*60)
+    
+    prompt = f"""Actúa como editor jefe de medio internacional. Reescribe profesionalmente:
+
+TÍTULO ORIGINAL: {noticia['titulo']}
+FUENTE: {noticia['fuente']}
+TEXTO: {noticia['descripcion'][:600]}
+
+REQUISITOS:
+- Título SEO: 60-80 caracteres, impactante
+- Redacción: Estilo periodístico profesional, 3-4 párrafos
+- SEO: Incluir palabras clave naturales
+- Tono: Serio, autoritario, neutral
+- NO inventar hechos
+
+JSON:
+{{
+    "titulo_seo": "Título optimizado",
+    "contenido": "Texto profesional completo",
+    "resumen": "Resumen corto redes sociales",
+    "palabras_clave": ["kw1", "kw2", "kw3", "kw4", "kw5"],
+    "categoria": "politica/economia/tecnologia/salud/internacional/deportes",
+    "hashtags": "#Tag1 #Tag2 #Tag3"
+}}"""
+
+    try:
+        r = requests.post(
             "https://api.openai.com/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
@@ -199,216 +221,197 @@ Genera la respuesta en este formato JSON:
                 "model": "gpt-4o-mini",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.7,
-                "max_tokens": 1500
+                "max_tokens": 2000
             },
             timeout=60
         )
         
-        resultado = response.json()
+        resultado = r.json()
+        texto = resultado['choices'][0]['message']['content']
         
-        if response.status_code == 200 and 'choices' in resultado:
-            texto_respuesta = resultado['choices'][0]['message']['content']
+        json_match = re.search(r'\{.*\}', texto, re.DOTALL)
+        if json_match:
+            datos = json.loads(json_match.group())
             
-            # Extraer JSON de la respuesta
-            try:
-                json_match = re.search(r'\{.*\}', texto_respuesta, re.DOTALL)
-                if json_match:
-                    datos = json.loads(json_match.group())
-                    print(f"[OPENAI] ✓ Noticia reescrita - Categoría: {datos.get('categoria', 'general')}")
-                    print(f"[OPENAI] ✓ Palabras clave: {', '.join(datos.get('palabras_clave', []))}")
-                    return datos
-            except Exception as e:
-                print(f"[OPENAI] Error parseando JSON: {e}")
-        
-        # Fallback
-        return {
-            'titulo': titulo_original,
-            'contenido': contenido_original[:500] + f"\nFuente: {fuente}",
-            'resumen_seo': contenido_original[:200],
-            'palabras_clave': ['noticias', 'actualidad', 'internacional'],
-            'categoria': 'general'
-        }
-        
-    except Exception as e:
-        print(f"[ERROR] OpenAI reescritura: {e}")
-        return None
-
-def descargar_imagen(url_imagen, prefix="img"):
-    """
-    Descarga imagen desde URL y guarda como archivo local.
-    NUNCA retorna la URL, siempre el path local o None.
-    """
-    if not url_imagen:
-        return None
-    
-    try:
-        print(f"[DESCARGA] Descargando imagen...")
-        response = requests.get(url_imagen, timeout=20, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-        
-        if response.status_code == 200 and len(response.content) > 1024:
-            # Detectar extensión
-            content_type = response.headers.get('content-type', '')
-            if 'png' in content_type:
-                ext = 'png'
-            elif 'jpeg' in content_type or 'jpg' in content_type:
-                ext = 'jpg'
-            else:
-                ext = 'png'
+            print(f"✓ Título: {datos['titulo_seo'][:60]}...")
+            print(f"✓ Categoría: {datos['categoria']}")
+            print(f"✓ Keywords: {', '.join(datos['palabras_clave'])}")
             
-            temp_path = f"/tmp/{prefix}_{int(time.time())}_{hashlib.md5(url_imagen.encode()).hexdigest()[:8]}.{ext}"
-            
-            with open(temp_path, 'wb') as f:
-                f.write(response.content)
-            
-            print(f"[DESCARGA] ✓ Imagen guardada: {temp_path} ({os.path.getsize(temp_path)} bytes)")
-            return temp_path
-        else:
-            print(f"[DESCARGA] ✗ Respuesta inválida: {response.status_code}, {len(response.content)} bytes")
+            return datos
             
     except Exception as e:
-        print(f"[DESCARGA] ✗ Error: {e}")
+        print(f"⚠️ Error reescritura: {e}")
     
-    return None
-
-def generar_imagen_con_stability(titulo, palabras_clave, categoria):
-    """
-    Genera imagen usando Stability AI basada en el contexto.
-    Retorna PATH LOCAL del archivo, NUNCA una URL.
-    """
-    if not STABILITY_API_KEY:
-        print("[IMAGEN] No hay API key de Stability")
-        return None
-    
-    keywords_str = ', '.join(palabras_clave[:3])
-    
-    estilos = {
-        'politica': 'professional news photography, political scene, documentary style, serious tone',
-        'economia': 'business news style, charts and city background, professional blue tones',
-        'tecnologia': 'futuristic tech visualization, modern, clean design, innovation',
-        'internacional': 'global news photojournalism, world events, professional Reuters style',
-        'deportes': 'sports action photography, dynamic, energetic, stadium atmosphere',
-        'general': 'general news photography, diverse subjects, neutral tone, high quality'
+    # Fallback
+    return {
+        'titulo_seo': noticia['titulo'],
+        'contenido': noticia['descripcion'],
+        'resumen': noticia['descripcion'][:100],
+        'palabras_clave': ['noticias', 'actualidad', 'internacional'],
+        'categoria': 'general',
+        'hashtags': '#Noticias #Actualidad'
     }
-    
-    estilo = estilos.get(categoria, estilos['general'])
-    
-    prompt = f"News illustration about: {titulo}. Keywords: {keywords_str}. Style: {estilo}. High quality, 4K, photorealistic, NO text, NO logos, professional news media style."
-    
-    try:
-        url = "https://api.stability.ai/v2beta/stable-image/generate/core"
-        headers = {
-            "Authorization": f"Bearer {STABILITY_API_KEY}",
-            "Accept": "image/*"
-        }
-        
-        files = {
-            "prompt": (None, prompt[:500]),
-            "output_format": (None, "png"),
-            "aspect_ratio": (None, "16:9")
-        }
-        
-        response = requests.post(url, headers=headers, files=files, timeout=60)
-        
-        if response.status_code == 200:
-            temp_path = f"/tmp/stability_{int(time.time())}.png"
-            with open(temp_path, 'wb') as f:
-                f.write(response.content)
-            print(f"[IMAGEN] ✓ Generada (Stability): {temp_path} ({os.path.getsize(temp_path)} bytes)")
-            return temp_path
-        else:
-            print(f"[IMAGEN] ✗ Error HTTP Stability: {response.status_code}")
-            return None
-            
-    except Exception as e:
-        print(f"[ERROR] Stability: {e}")
-        return None
 
-def generar_imagen_con_dalle(titulo, palabras_clave, categoria):
-    """
-    Genera imagen usando OpenAI DALL-E 3 basada en el contexto.
-    Retorna PATH LOCAL del archivo.
-    """
-    if not OPENAI_API_KEY:
-        return None
-    
-    keywords_str = ', '.join(palabras_clave[:3])
-    prompt = f"Professional news illustration for: {titulo}. Keywords: {keywords_str}. Category: {categoria}. High quality, photorealistic, cinematic lighting, NO text, NO logos, 16:9 aspect ratio."
-    
-    try:
-        url = "https://api.openai.com/v1/images/generations"
-        headers = {
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "model": "dall-e-3",
-            "prompt": prompt,
-            "n": 1,
-            "size": "1024x1024", # DALL-E 3 solo soporta cuadrado o 1792x1024
-            "quality": "standard"
-        }
-        
-        response = requests.post(url, headers=headers, json=data, timeout=60)
-        result = response.json()
-        
-        if response.status_code == 200 and 'data' in result:
-            img_url = result['data'][0]['url']
-            return descargar_imagen(img_url, "dalle")
-        else:
-            print(f"[IMAGEN] ✗ Error OpenAI DALL-E: {result.get('error', {}).get('message', 'Error desconocido')}")
-            return None
-            
-    except Exception as e:
-        print(f"[ERROR] OpenAI DALL-E: {e}")
-        return None
+# ============================================================================
+# 4. GENERACIÓN DE IMÁGEN CON IA (SOLO IA, NUNCA DESCARGA ORIGINAL)
+# ============================================================================
 
-def obtener_imagen_local(noticia, noticia_reescrita):
+def generar_imagen(titulo, keywords, categoria):
     """
-    Obtiene una imagen SIEMPRE generada por IA (Stability o OpenAI).
-    NUNCA descarga la imagen original de la noticia.
+    Genera imagen SOLO con IA (Stability primero, DALL-E fallback)
+    NUNCA descarga imagen original de la noticia
     """
-    imagen_path = None
+    print("\n" + "="*60)
+    print("🎨 GENERANDO IMAGEN CON IA")
+    print("="*60)
     
-    # 1. Intentar generar con Stability AI (Prioridad)
+    # OPCIÓN 1: Stability AI
     if STABILITY_API_KEY:
-        print(f"[IMAGEN] Generando imagen con Stability AI...")
-        imagen_path = generar_imagen_con_stability(
-            noticia_reescrita['titulo'],
-            noticia_reescrita['palabras_clave'],
-            noticia_reescrita['categoria']
-        )
-        if imagen_path:
-            return imagen_path
+        print("Intentando Stability AI...")
+        ruta = generar_stability(titulo, keywords, categoria)
+        if ruta:
+            return ruta
     
-    # 2. Fallback: Intentar generar con OpenAI (DALL-E 3) si Stability falla o no hay API Key
-    if not imagen_path and OPENAI_API_KEY:
-        print(f"[IMAGEN] Generando imagen con OpenAI (DALL-E 3)...")
-        imagen_path = generar_imagen_con_dalle(
-            noticia_reescrita['titulo'],
-            noticia_reescrita['palabras_clave'],
-            noticia_reescrita['categoria']
-        )
-        if imagen_path:
-            return imagen_path
+    # OPCIÓN 2: OpenAI DALL-E (siempre disponible)
+    print("Intentando OpenAI DALL-E...")
+    ruta = generar_dalle(titulo, keywords, categoria)
+    if ruta:
+        return ruta
     
-    print(f"[IMAGEN] No se pudo generar imagen con ninguna IA")
+    print("❌ No se pudo generar imagen")
     return None
 
-def publicar_en_facebook(titulo, contenido, resumen_seo, palabras_clave, imagen_path, url_fuente, nombre_fuente):
-    """
-    Publica en Facebook: foto + mensaje, y comentario con link.
-    imagen_path DEBE ser un archivo local, NUNCA una URL.
-    """
-    print(f"\n[FACEBOOK] Iniciando publicación...")
+def generar_stability(titulo, keywords, categoria):
+    """Genera imagen con Stability AI"""
+    try:
+        kw_text = ', '.join(keywords[:3])
+        
+        estilos = {
+            'politica': 'professional political photojournalism, documentary, serious, Reuters style',
+            'economia': 'business news photography, corporate, financial, blue professional',
+            'tecnologia': 'futuristic tech visualization, modern innovation, clean design',
+            'salud': 'medical healthcare photography, hospital, clinical professional',
+            'internacional': 'global news photojournalism, world events, international affairs',
+            'deportes': 'sports action photography, stadium, dynamic, energetic'
+        }
+        
+        estilo = estilos.get(categoria, 'professional news photography, photojournalism')
+        
+        prompt = f"Editorial news image: {titulo}. Themes: {kw_text}. Style: {estilo}. NO text, NO logos, NO watermarks, photorealistic, 4K."
+        
+        print(f"Prompt: {prompt[:100]}...")
+        
+        r = requests.post(
+            "https://api.stability.ai/v2beta/stable-image/generate/core",
+            headers={
+                "Authorization": f"Bearer {STABILITY_API_KEY}",
+                "Accept": "image/*"
+            },
+            files={
+                "prompt": (None, prompt[:500]),
+                "output_format": (None, "png"),
+                "aspect_ratio": (None, "16:9")
+            },
+            timeout=60
+        )
+        
+        if r.status_code == 200:
+            import time
+            ruta = f"/tmp/stability_{int(time.time())}.png"
+            with open(ruta, 'wb') as f:
+                f.write(r.content)
+            
+            if os.path.exists(ruta) and os.path.getsize(ruta) > 1024:
+                print(f"✓ Stability: {os.path.basename(ruta)} ({os.path.getsize(ruta)} bytes)")
+                return ruta
+        else:
+            print(f"✗ Stability HTTP {r.status_code}")
+            
+    except Exception as e:
+        print(f"✗ Stability error: {e}")
     
-    # Preparar mensaje principal para la publicación con imagen
-    hashtags = ' '.join([f"#{kw.replace(' ', '')}" for kw in palabras_clave[:4]])
-    
-    mensaje_principal = f"""📰 {titulo}
+    return None
 
-{resumen_seo}
+def generar_dalle(titulo, keywords, categoria):
+    """Genera imagen con OpenAI DALL-E 3"""
+    try:
+        import time
+        
+        kw_text = ', '.join(keywords[:3])
+        
+        estilos = {
+            'politica': 'professional political photojournalism, documentary style',
+            'economia': 'business news photography, corporate professional',
+            'tecnologia': 'modern tech innovation, futuristic clean design',
+            'salud': 'medical healthcare photography, professional clinical',
+            'internacional': 'global news photojournalism, world affairs',
+            'deportes': 'sports photography, stadium atmosphere, dynamic'
+        }
+        
+        estilo = estilos.get(categoria, 'professional news photography, editorial')
+        
+        prompt = f"Create a professional news editorial image for: {titulo}. Visual themes: {kw_text}. Style: {estilo}. The image must have absolutely NO text, NO logos, NO watermarks, NO words, NO letters. Photorealistic, high quality, suitable for international news publication."
+        
+        print(f"Prompt DALL-E: {prompt[:100]}...")
+        
+        # Generar imagen
+        r = requests.post(
+            "https://api.openai.com/v1/images/generations",
+            headers={
+                "Authorization": f"Bearer {OPENAI_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "dall-e-3",
+                "prompt": prompt[:1000],
+                "size": "1792x1024",  # Formato horizontal 16:9
+                "quality": "standard",
+                "n": 1
+            },
+            timeout=60
+        )
+        
+        resultado = r.json()
+        
+        if r.status_code == 200 and 'data' in resultado:
+            img_url = resultado['data'][0]['url']
+            print(f"✓ DALL-E URL obtenida, descargando...")
+            
+            # Descargar imagen generada
+            img_r = requests.get(img_url, timeout=30)
+            if img_r.status_code == 200:
+                ruta = f"/tmp/dalle_{int(time.time())}.png"
+                with open(ruta, 'wb') as f:
+                    f.write(img_r.content)
+                
+                if os.path.exists(ruta) and os.path.getsize(ruta) > 1024:
+                    print(f"✓ DALL-E: {os.path.basename(ruta)} ({os.path.getsize(ruta)} bytes)")
+                    return ruta
+        else:
+            error = resultado.get('error', {}).get('message', 'Error desconocido')
+            print(f"✗ DALL-E error: {error}")
+            
+    except Exception as e:
+        print(f"✗ DALL-E error: {e}")
+    
+    return None
+
+# ============================================================================
+# 5. PUBLICACIÓN EN FACEBOOK
+# ============================================================================
+
+def publicar_facebook(titulo, contenido, resumen, palabras_clave, hashtags, imagen_ruta, url_fuente, nombre_fuente):
+    """
+    Publica en Facebook con imagen generada por IA
+    """
+    print("\n" + "="*60)
+    print("📘 PUBLICANDO EN FACEBOOK")
+    print("="*60)
+    
+    # Mensaje principal (conciso para foto)
+    mensaje_foto = f"""📰 {titulo}
+
+{resumen}
 
 {hashtags}
 
@@ -416,17 +419,191 @@ def publicar_en_facebook(titulo, contenido, resumen_seo, palabras_clave, imagen_
     
     post_id = None
     
-    try:
-        # Verificar que imagen_path sea un archivo local válido
-        if imagen_path and os.path.exists(imagen_path) and os.path.isfile(imagen_path):
-            print(f"[FACEBOOK] Subiendo foto desde archivo local: {imagen_path}")
-            
+    # MÉTODO 1: Con imagen (subir archivo local)
+    if imagen_ruta and os.path.exists(imagen_ruta):
+        print(f"Subiendo foto: {os.path.basename(imagen_ruta)}")
+        
+        try:
             url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos"
             
-            with open(imagen_path, 'rb') as img:
-                files = {
-                    'file': (os.path.basename(imagen_path), img, 'image/png')
-                }
+            with open(imagen_ruta, 'rb') as foto:
+                files = {'file': ('noticia.png', foto, 'image/png')}
                 data = {
-                    'message': mensaje_principal, # Solo el mensa
-(Content truncated due to size limit. Use line ranges to read remaining content)
+                    'message': mensaje_foto,
+                    'access_token': FB_ACCESS_TOKEN,
+                    'published': 'true'
+                }
+                
+                r = requests.post(url, files=files, data=data, timeout=60)
+                resultado = r.json()
+                
+                print(f"Status: {r.status_code}")
+                
+                if r.status_code == 200 and 'id' in resultado:
+                    post_id = resultado.get('post_id') or resultado['id']
+                    print(f"✓ PUBLICADO CON FOTO: {post_id}")
+                else:
+                    error = resultado.get('error', {}).get('message', 'Error')
+                    print(f"✗ Error foto: {error}")
+                    
+        except Exception as e:
+            print(f"✗ Error subiendo foto: {e}")
+    
+    # MÉTODO 2: Solo texto (fallback)
+    if not post_id:
+        print("Publicando solo texto...")
+        
+        try:
+            url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
+            
+            mensaje_largo = f"""📰 {titulo}
+
+{contenido}
+
+{hashtags}
+
+— Verdad Hoy | {datetime.now().strftime('%d/%m/%Y')}"""
+            
+            data = {
+                'message': mensaje_largo,
+                'access_token': FB_ACCESS_TOKEN,
+                'link': url_fuente
+            }
+            
+            r = requests.post(url, data=data, timeout=60)
+            resultado = r.json()
+            
+            if r.status_code == 200 and 'id' in resultado:
+                post_id = resultado['id']
+                print(f"✓ PUBLICADO (texto): {post_id}")
+            else:
+                print(f"✗ Error: {resultado}")
+                return False
+                
+        except Exception as e:
+            print(f"✗ Error: {e}")
+            return False
+    
+    # Agregar comentario con fuente
+    if post_id:
+        agregar_comentario(post_id, url_fuente, nombre_fuente)
+        return True
+    
+    return False
+
+def agregar_comentario(post_id, url_fuente, nombre_fuente):
+    """Agrega comentario con link a fuente original"""
+    try:
+        import time
+        time.sleep(2)  # Esperar a que se cree el post
+        
+        print("Agregando comentario con fuente...")
+        
+        post_clean = post_id.split('_')[-1] if '_' in post_id else post_id
+        
+        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}_{post_clean}/comments"
+        
+        mensaje = f"""📎 Fuente original: {nombre_fuente}
+
+🔗 {url_fuente}
+
+_Síguenos para más noticias internacionales_"""
+        
+        r = requests.post(url, data={
+            'message': mensaje,
+            'access_token': FB_ACCESS_TOKEN
+        }, timeout=30)
+        
+        if r.status_code == 200:
+            print("✓ Comentario agregado")
+        else:
+            print(f"⚠️ Error comentario: {r.status_code}")
+            
+    except Exception as e:
+        print(f"⚠️ Error comentario: {e}")
+
+# ============================================================================
+# LIMPIEZA
+# ============================================================================
+
+def limpiar():
+    try:
+        import time
+        for archivo in os.listdir('/tmp'):
+            if archivo.startswith(('stability_', 'dalle_')):
+                try:
+                    os.remove(f'/tmp/{archivo}')
+                except:
+                    pass
+    except:
+        pass
+
+# ============================================================================
+# FLUJO PRINCIPAL
+# ============================================================================
+
+def main():
+    print("\n" + "="*60)
+    print("🚀 BOT DE NOTICIAS - IA GENERATIVA")
+    print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("="*60)
+    
+    try:
+        # 1. Buscar noticias
+        noticias = buscar_noticias()
+        if not noticias:
+            print("❌ No hay noticias")
+            return False
+        
+        # 2. Seleccionar la mejor
+        seleccionada = seleccionar_mejor_noticia(noticias)
+        HISTORIAL_URLS.add(seleccionada['url'])
+        
+        print(f"\n📌 Seleccionada: {seleccionada['titulo'][:70]}")
+        print(f"   Fuente: {seleccionada['fuente']}")
+        
+        # 3. Reescribir profesionalmente
+        reescrita = reescribir_noticia(seleccionada)
+        
+        # 4. Generar imagen con IA (SIEMPRE, nunca descarga original)
+        imagen_ruta = generar_imagen(
+            reescrita['titulo_seo'],
+            reescrita['palabras_clave'],
+            reescrita['categoria']
+        )
+        
+        # 5. Publicar en Facebook
+        exito = publicar_facebook(
+            titulo=reescrita['titulo_seo'],
+            contenido=reescrita['contenido'],
+            resumen=reescrita['resumen'],
+            palabras_clave=reescrita['palabras_clave'],
+            hashtags=reescrita['hashtags'],
+            imagen_ruta=imagen_ruta,
+            url_fuente=seleccionada['url'],
+            nombre_fuente=seleccionada['fuente']
+        )
+        
+        # 6. Limpiar temporales
+        if imagen_ruta and os.path.exists(imagen_ruta):
+            try:
+                os.remove(imagen_ruta)
+            except:
+                pass
+        limpiar()
+        
+        print("\n" + "="*60)
+        print(f"{'✅ ÉXITO' if exito else '❌ FALLO'}")
+        print("="*60)
+        
+        return exito
+        
+    except Exception as e:
+        print(f"\n❌ ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+if __name__ == "__main__":
+    exito = main()
+    sys.exit(0 if exito else 1)

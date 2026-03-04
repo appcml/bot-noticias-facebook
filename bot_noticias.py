@@ -404,10 +404,12 @@ def publicar_en_facebook(titulo, contenido, palabras_clave, imagen_path, url_fue
                     error = result.get('error', {}).get('message', 'Error desconocido')
                     print(f"[FACEBOOK] ✗ Error subiendo foto: {error}")
                     # Intentar sin imagen
-                    post_id = publicar_solo_texto(mensaje, url_fuente)
+                    # Si falla la publicación con imagen, intentar sin imagen pero sin la URL de la fuente en el mensaje
+                    post_id = publicar_solo_texto(mensaje, None)
         else:
             print(f"[FACEBOOK] No hay imagen local válida, publicando solo texto")
-            post_id = publicar_solo_texto(mensaje, url_fuente)
+            # Si no hay imagen local válida, publicar solo texto sin la URL de la fuente en el mensaje
+            post_id = publicar_solo_texto(mensaje, None)
         
         # Agregar comentario con link
         if post_id:
@@ -423,7 +425,7 @@ def publicar_en_facebook(titulo, contenido, palabras_clave, imagen_path, url_fue
         traceback.print_exc()
         return False
 
-def publicar_solo_texto(mensaje, url_fuente):
+def publicar_solo_texto(mensaje, url_fuente=None):
     """Publica solo texto con link como fallback"""
     try:
         print(f"[FACEBOOK] Publicando solo texto...")
@@ -432,7 +434,7 @@ def publicar_solo_texto(mensaje, url_fuente):
         data = {
             'message': mensaje,
             'access_token': FB_ACCESS_TOKEN,
-            'link': url_fuente  # Esto creará un link preview
+            'link': url_fuente if url_fuente else None  # Esto creará un link preview si url_fuente no es None
         }
         
         response = requests.post(url, data=data, timeout=60)

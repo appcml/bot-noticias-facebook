@@ -1,25 +1,24 @@
-name: Publicar Noticias
+name: Publicar noticias
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
-  workflow_dispatch:
+    - cron: "*/30 * * * *"
 
 jobs:
-  publicar:
+  run-bot:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Descargar repositorio
+      - name: Clonar repositorio
         uses: actions/checkout@v3
 
       - name: Instalar Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
+          python-version: 3.10
 
       - name: Instalar dependencias
-        run: pip install requests
+        run: pip install -r requirements.txt
 
       - name: Ejecutar bot
         run: python bot_noticias.py

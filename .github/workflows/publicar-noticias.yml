@@ -2,7 +2,7 @@ name: Publicar Noticias Virales
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # Cada 30 minutos exactos
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
       env:
         NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
-        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # ← NUEVO
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
         DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}

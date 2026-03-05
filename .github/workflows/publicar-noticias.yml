@@ -46,14 +46,3 @@ jobs:
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
-        DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
-      run: python bot_noticias.py
-      
-    - name: Guardar historial
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: historial-noticias
-        path: historial_publicaciones.json
-        retention-days: 90
-        if-no-files-found: ignore

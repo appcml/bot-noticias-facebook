@@ -23,7 +23,7 @@ jobs:
         env:
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-          FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
+          FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}  # Verifica que esté bien escrito en secrets
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           STABILITY_API_KEY: ${{ secrets.STABILITY_API_KEY }}
         run: python bot_noticias.py

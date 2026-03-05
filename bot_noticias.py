@@ -4,8 +4,9 @@ import re
 import hashlib
 import os
 import json
+import time  # ← AGREGAR
 from datetime import datetime
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urldefrag  # ← urldefrag agregado
 from PIL import Image
 from io import BytesIO
 
@@ -32,7 +33,32 @@ FUENTES_PREMIUM = {
 }
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
-MAX_HISTORIAL = 200
+MAX_HISTORIAL = 500  # ← AUMENTADO para más seguridad
+MINUTOS_ENTRE_PUBLICACIONES = 30
+
+def normalizar_url(url):
+    """Normaliza URL para evitar duplicados por parámetros de tracking"""
+    if not url:
+        return ""
+    # Eliminar fragmentos (#)
+    url, _ = urldefrag(url)
+    # Eliminar parámetros comunes de tracking
+    params_borrar = ['utm_', 'fbclid', 'gclid', 'ref', 'source', 'campaign']
+    try:
+        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+        parsed = urlparse(url)
+        query = parse_qs(parsed.query)
+        # Filtrar parámetros de tracking
+        query_filtrado = {k: v for k, v in query.items() 
+                         if not any(p in k.lower() for p in params_borrar)}
+        nuevo_query = urlencode(query_filtrado, doseq=True)
+        url_limpia = urlunparse((
+            parsed.scheme, parsed.netloc, parsed.path, 
+            parsed.params, nuevo_query, ''
+        ))
+        return url_limpia.lower().strip().rstrip('/')
+    except:
+        return url.lower().strip().rstrip('/')
 
 def cargar_historial():
     """Carga el historial de URLs publicadas desde archivo"""
@@ -40,22 +66,28 @@ def cargar_historial():
         try:
             with open(HISTORIAL_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                return set(data.get('urls', [])), data.get('hashes', [])
-        except:
-            return set(), []
-    return set(), []
+                urls = set(data.get('urls', []))
+                hashes = data.get('hashes', [])
+                # Agregar campo nuevo para timestamps
+                timestamps = data.get('timestamps', [])
+                return urls, hashes, timestamps
+        except Exception as e:
+            print(f"[ERROR] Cargando historial: {e}")
+            return set(), [], []
+    return set(), [], []
 
-def guardar_historial(urls, hashes):
+def guardar_historial(urls, hashes, timestamps):
     """Guarda el historial de URLs publicadas"""
     data = {
         'urls': list(urls)[-MAX_HISTORIAL:],
         'hashes': hashes[-MAX_HISTORIAL:],
+        'timestamps': timestamps[-MAX_HISTORIAL:],
         'last_update': datetime.now().isoformat()
     }
     with open(HISTORIAL_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-HISTORIAL_URLS, HISTORIAL_HASHES = cargar_historial()
+HISTORIAL_URLS, HISTORIAL_HASHES, HISTORIAL_TIMESTAMPS = cargar_historial()
 
 def traducir_texto(texto, idioma_origen='EN'):
     """Traduce texto del inglés al español usando DeepL"""
@@ -63,7 +95,7 @@ def traducir_texto(texto, idioma_origen='EN'):
         return texto
     
     try:
-        url = "https://api-free.deepl.com/v2/translate"
+        url = "https://api-free.deepl.com/v2/translate"  # ← CORREGIDO: sin espacio al final
         params = {
             'auth_key': DEEPL_API_KEY,
             'text': texto,
@@ -100,8 +132,9 @@ def buscar_noticias_frescas():
     todas_noticias = []
     
     for query, categoria in busquedas_hoy:
-        url_es = f"https://newsapi.org/v2/everything?q={query}&language=es&from={datetime.fromtimestamp(fecha_ayer).strftime('%Y-%m-%d')}&to={fecha_hoy}&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}"
-        url_en = f"https://newsapi.org/v2/everything?q={query}&language=en&from={datetime.fromtimestamp(fecha_ayer).strftime('%Y-%m-%d')}&to={fecha_hoy}&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}"
+        # ← CORREGIDO: sin espacios en las URLs
+        url_es = f"https://newsapi.org/v2/everything?q={requests.utils.quote(query)}&language=es&from={datetime.fromtimestamp(fecha_ayer).strftime('%Y-%m-%d')}&to={fecha_hoy}&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}"
+        url_en = f"https://newsapi.org/v2/everything?q={requests.utils.quote(query)}&language=en&from={datetime.fromtimestamp(fecha_ayer).strftime('%Y-%m-%d')}&to={fecha_hoy}&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}"
         
         try:
             print(f"[BÚSQUEDA] {categoria}: {query[:40]}...")
@@ -115,7 +148,10 @@ def buscar_noticias_frescas():
                         score = calcular_score(art, categoria)
                         art['categoria'] = categoria
                         art['score'] = score
-                        art['url_hash'] = hashlib.md5(art['url'].encode()).hexdigest()[:16]
+                        # ← MEJORADO: hash de URL normalizada
+                        url_norm = normalizar_url(art['url'])
+                        art['url_hash'] = hashlib.md5(url_norm.encode()).hexdigest()[:16]
+                        art['url_normalizada'] = url_norm
                         art['idioma'] = 'ES'
                         art['titulo_original'] = art['title']
                         art['descripcion_original'] = art['description']
@@ -132,7 +168,9 @@ def buscar_noticias_frescas():
                             score = calcular_score(art, categoria)
                             art['categoria'] = categoria
                             art['score'] = score
-                            art['url_hash'] = hashlib.md5(art['url'].encode()).hexdigest()[:16]
+                            url_norm = normalizar_url(art['url'])
+                            art['url_hash'] = hashlib.md5(url_norm.encode()).hexdigest()[:16]
+                            art['url_normalizada'] = url_norm
                             art['idioma'] = 'EN'
                             art['titulo_original'] = art['title']
                             art['descripcion_original'] = art['description']
@@ -146,10 +184,12 @@ def buscar_noticias_frescas():
     
     print(f"\n[INFO] Total noticias encontradas: {len(todas_noticias)}")
     
+    # ← MEJORADO: Deduplicación más robusta usando URL normalizada
     noticias_unicas = {}
     for art in todas_noticias:
-        if art['url_hash'] not in noticias_unicas:
-            noticias_unicas[art['url_hash']] = art
+        url_norm = art.get('url_normalizada', normalizar_url(art['url']))
+        if url_norm not in noticias_unicas:
+            noticias_unicas[url_norm] = art
     
     noticias_lista = list(noticias_unicas.values())
     print(f"[INFO] Noticias únicas: {len(noticias_lista)}")
@@ -158,7 +198,18 @@ def buscar_noticias_frescas():
     noticias_con_imagen = [n for n in noticias_lista if n.get('urlToImage') and n['urlToImage'].startswith('http')]
     print(f"[INFO] Noticias con imagen: {len(noticias_con_imagen)}")
     
-    noticias_nuevas = [n for n in noticias_con_imagen if n['url'] not in HISTORIAL_URLS and n['url_hash'] not in HISTORIAL_HASHES]
+    # ← MEJORADO: Verificación más estricta contra historial
+    noticias_nuevas = []
+    for n in noticias_con_imagen:
+        url_norm = n.get('url_normalizada', normalizar_url(n['url']))
+        hash_url = n.get('url_hash', hashlib.md5(url_norm.encode()).hexdigest()[:16])
+        
+        # Verificar tanto URL normalizada como hash
+        if url_norm not in HISTORIAL_URLS and hash_url not in HISTORIAL_HASHES:
+            noticias_nuevas.append(n)
+        else:
+            print(f"[DUPLICADO] Ya publicada: {n['title'][:40]}...")
+    
     print(f"[INFO] Noticias no publicadas antes: {len(noticias_nuevas)}")
     
     noticias_nuevas.sort(key=lambda x: x['score'], reverse=True)
@@ -266,7 +317,6 @@ def descargar_imagen(url_imagen):
             if img.mode in ('RGBA', 'P'):
                 img = img.convert('RGB')
             
-            # Guardar en directorio temporal del runner
             temp_path = f'/tmp/noticia_{hashlib.md5(url_imagen.encode()).hexdigest()[:8]}.jpg'
             img.save(temp_path, 'JPEG', quality=85)
             print(f"[IMAGEN] Descargada y guardada: {temp_path}")
@@ -283,6 +333,7 @@ def publicar_foto_con_texto(image_path, mensaje):
         return False
     
     try:
+        # ← CORREGIDO: sin espacio en la URL
         url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos"
         
         with open(image_path, 'rb') as img_file:
@@ -488,7 +539,6 @@ def generar_redaccion_inteligente(noticia, categoria):
     if idioma_origen == 'EN':
         indicador_traduccion = "🌐 Noticia internacional traducida al español.\n\n"
     
-    # Agregar fuente al final del texto (no como link)
     texto_redactado = f"{indicador_traduccion}{apertura}\n\n{descripcion}\n\n{desarrollo}\n\n{cierre}\n\n📡 Fuente: {fuente}"
     return texto_redactado
 
@@ -580,7 +630,6 @@ def redactar_noticia(noticia, categoria):
     cuerpo = generar_redaccion_inteligente(noticia, categoria)
     hashtags = generar_hashtags(noticia['title'], categoria)
     
-    # Ya no incluimos el link URL aquí - solo texto + imagen adjunta
     mensaje = f"""📰 {titular}
 
 {cuerpo}
@@ -591,7 +640,7 @@ def redactar_noticia(noticia, categoria):
     return mensaje
 
 def publicar_en_facebook():
-    global HISTORIAL_URLS, HISTORIAL_HASHES
+    global HISTORIAL_URLS, HISTORIAL_HASHES, HISTORIAL_TIMESTAMPS
     
     print("DEBUG: Iniciando búsqueda de noticias virales...")
     noticias = buscar_noticias_frescas()
@@ -601,7 +650,6 @@ def publicar_en_facebook():
         print("[AVISO] No hay noticias nuevas disponibles para publicar")
         return False
     
-    # Intentar publicar la mejor noticia disponible
     for noticia in noticias:
         try:
             categoria = noticia['categoria']
@@ -609,12 +657,10 @@ def publicar_en_facebook():
             print(f"\n[SELECCIONADA] {noticia['title'][:60]}...")
             print(f"  Score viral: {noticia['score']} | Categoría: {categoria} | Idioma: {noticia.get('idioma', 'ES')}")
             
-            # Verificar que tenga imagen
             if not noticia.get('urlToImage'):
                 print("[SALTAR] Noticia sin imagen, buscando siguiente...")
                 continue
             
-            # Descargar imagen
             print(f"[IMAGEN] Descargando: {noticia['urlToImage'][:60]}...")
             image_path = descargar_imagen(noticia['urlToImage'])
             
@@ -622,27 +668,25 @@ def publicar_en_facebook():
                 print("[SALTAR] No se pudo descargar imagen, buscando siguiente...")
                 continue
             
-            # Generar mensaje (sin link)
             mensaje = redactar_noticia(noticia, categoria)
             print(f"DEBUG: Mensaje generado ({len(mensaje)} caracteres)")
             
-            # Publicar foto con texto (sin link externo)
             exito = publicar_foto_con_texto(image_path, mensaje)
             
             if exito:
-                # Guardar en historial solo si se publicó correctamente
-                HISTORIAL_URLS.add(noticia['url'])
+                # ← MEJORADO: Guardar URL normalizada y timestamp
+                url_norm = noticia.get('url_normalizada', normalizar_url(noticia['url']))
+                HISTORIAL_URLS.add(url_norm)
                 HISTORIAL_HASHES.append(noticia['url_hash'])
-                guardar_historial(HISTORIAL_URLS, HISTORIAL_HASHES)
+                HISTORIAL_TIMESTAMPS.append(datetime.now().isoformat())
+                guardar_historial(HISTORIAL_URLS, HISTORIAL_HASHES, HISTORIAL_TIMESTAMPS)
                 
-                # Limpiar imagen temporal
                 if os.path.exists(image_path):
                     os.remove(image_path)
                     print(f"[LIMPIEZA] Imagen temporal eliminada")
                 
                 return True
             else:
-                # Si falló, limpiar imagen y continuar con siguiente noticia
                 if os.path.exists(image_path):
                     os.remove(image_path)
                 print("[REINTENTO] Buscando siguiente noticia...")
@@ -657,19 +701,35 @@ def publicar_en_facebook():
     print("❌ No se pudo publicar ninguna noticia")
     return False
 
-if __name__ == "__main__":
+# ← NUEVO: Función principal con loop de 30 minutos
+def main():
     print("🚀 VERDAD DE HOY - Sistema de Noticias Internacionales")
     print("="*60)
-    try:
-        resultado = publicar_en_facebook()
-        print(f"DEBUG: Resultado final: {resultado}")
-        exit_code = 0 if resultado else 1
-    except Exception as e:
-        print(f"ERROR CRÍTICO: {e}")
-        import traceback
-        traceback.print_exc()
-        exit_code = 1
+    print(f"⏱️  Intervalo configurado: {MINUTOS_ENTRE_PUBLICACIONES} minutos")
+    print("="*60)
     
-    print(f"DEBUG: Saliendo con código {exit_code}")
-    exit(exit_code)
+    while True:
+        try:
+            resultado = publicar_en_facebook()
+            print(f"\nDEBUG: Resultado de publicación: {'✅ ÉXITO' if resultado else '❌ FALLIDO'}")
+            
+            if resultado:
+                print(f"\n⏳ Esperando {MINUTOS_ENTRE_PUBLICACIONES} minutos hasta la próxima publicación...")
+                print(f"   Próxima ejecución: {(datetime.now().timestamp() + MINUTOS_ENTRE_PUBLICACIONES * 60)}")
+                time.sleep(MINUTOS_ENTRE_PUBLICACIONES * 60)
+            else:
+                print("\n⏳ No se publicó. Reintentando en 5 minutos...")
+                time.sleep(300)  # 5 minutos si falló
+                
+        except KeyboardInterrupt:
+            print("\n\n🛑 Detenido por el usuario")
+            break
+        except Exception as e:
+            print(f"\n❌ ERROR CRÍTICO en loop principal: {e}")
+            import traceback
+            traceback.print_exc()
+            print("⏳ Reintentando en 5 minutos...")
+            time.sleep(300)
 
+if __name__ == "__main__":
+    main()

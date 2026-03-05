@@ -2,27 +2,33 @@ name: Publicar Noticias Virales
 
 on:
   schedule:
-    # Ejecutar cada 30 minutos
-    - cron: '*/30 * * * *'
-  workflow_dispatch:  # Permite ejecución manual
+    - cron: '*/30 * * * *'  # Cada 30 minutos
+  workflow_dispatch:  # Permite ejecutar manualmente
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v4  # Actualizado a v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5  # Actualizado a v5
+    - name: Checkout código
+      uses: actions/checkout@v4
+      
+    - name: Descargar historial anterior (Artifact)
+      uses: actions/download-artifact@v4
       with:
-        python-version: '3.10'
-    
-    - name: Install dependencies
+        name: historial-noticias
+        path: .
+      continue-on-error: true  # Si no existe aún, continuar
+      
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - name: Instalar dependencias
       run: |
-        python -m pip install --upgrade pip
-        pip install requests Pillow
-    
+        pip install requests pillow
+        
     - name: Ejecutar bot de noticias
       env:
         NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
@@ -30,12 +36,10 @@ jobs:
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
         DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
       run: python bot_noticias.py
-    
-    - name: Guardar historial
-      uses: actions/upload-artifact@v4  # Actualizado a v4 (esto soluciona el error)
-      if: always()
+      
+    - name: Guardar historial para siguiente ejecución
+      uses: actions/upload-artifact@v4
       with:
-        name: historial-noticias-${{ github.run_number }}
+        name: historial-noticias
         path: historial_publicaciones.json
-        retention-days: 30
-        overwrite: true  # Necesario en v4 si el nombre ya existe
+        retention-days: 90

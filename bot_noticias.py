@@ -6,7 +6,6 @@ import os
 import json
 import feedparser
 from datetime import datetime
-from urllib.parse import urlparse, urldefrag
 from PIL import Image
 from io import BytesIO
 
@@ -21,57 +20,71 @@ DEEPL_API_KEY = os.getenv('DEEPL_API_KEY')
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
 print("="*60)
-print("🚀 BOT DE NOTICIAS")
+print("🚀 BOT DE NOTICIAS - Verdad Hoy")
+print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
 print("="*60)
 
-# Cargar historial
-historial_urls = set()
-historial_titulos = set()
+# CARGAR HISTORIAL
+historial = {'urls': [], 'titulos': [], 'ultima_publicacion': None}
 
 if os.path.exists(HISTORIAL_FILE):
     try:
-        with open(HISTORIAL_FILE, 'r') as f:
-            data = json.load(f)
-            historial_urls = set(data.get('urls', []))
-            historial_titulos = set(data.get('titulos', []))
-        print(f"📚 Historial cargado: {len(historial_urls)} noticias")
-    except:
-        pass
+        with open(HISTORIAL_FILE, 'r', encoding='utf-8') as f:
+            historial = json.load(f)
+        print(f"📚 Historial cargado: {len(historial['urls'])} noticias publicadas")
+        if historial.get('ultima_publicacion'):
+            print(f"   Última: {historial['ultima_publicacion']}")
+    except Exception as e:
+        print(f"⚠️ Error cargando historial: {e}")
 else:
-    print("📚 Nuevo historial")
+    print("📚 Nuevo historial (primera ejecución)")
 
-def guardar_historial():
-    with open(HISTORIAL_FILE, 'w') as f:
-        json.dump({
-            'urls': list(historial_urls),
-            'titulos': list(historial_titulos),
-            'last_update': datetime.now().isoformat()
-        }, f)
-    print(f"💾 Historial guardado: {len(historial_urls)} noticias")
-
-def normalizar_url(url):
-    if not url:
-        return ""
-    url = str(url).lower().strip()
-    url, _ = urldefrag(url)
+def guardar_historial(url, titulo):
+    """Guarda la noticia publicada en el historial"""
+    historial['urls'].append(url)
+    historial['titulos'].append(titulo[:100])  # Guardar primeros 100 chars
+    historial['ultima_publicacion'] = datetime.now().isoformat()
+    
+    # Mantener solo últimas 500
+    historial['urls'] = historial['urls'][-500:]
+    historial['titulos'] = historial['titulos'][-500:]
+    
     try:
-        from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-        parsed = urlparse(url)
-        query = parse_qs(parsed.query)
-        params_borrar = ['utm_', 'fbclid', 'gclid', 'ref', 'source']
-        query_filtrado = {k: v for k, v in query.items() 
-                         if not any(p in k.lower() for p in params_borrar)}
-        nuevo_query = urlencode(query_filtrado, doseq=True)
-        url = urlunparse((parsed.scheme, parsed.netloc, parsed.path, 
-                         parsed.params, nuevo_query, ''))
-    except:
-        pass
-    return url.rstrip('/')
+        with open(HISTORIAL_FILE, 'w', encoding='utf-8') as f:
+            json.dump(historial, f, ensure_ascii=False, indent=2)
+        print(f"💾 Historial actualizado: {len(historial['urls'])} noticias")
+    except Exception as e:
+        print(f"❌ Error guardando historial: {e}")
 
-def get_url_hash(url):
-    return hashlib.md5(normalizar_url(url).encode()).hexdigest()[:16]
+def get_url_id(url):
+    """ID único para URL"""
+    url_limpia = str(url).lower().strip().rstrip('/')
+    return hashlib.md5(url_limpia.encode()).hexdigest()[:16]
+
+def ya_publicada(url, titulo):
+    """Verifica si ya se publicó esta noticia"""
+    url_id = get_url_id(url)
+    
+    # Verificar por URL
+    if url_id in [get_url_id(u) for u in historial['urls']]:
+        print(f"   ⛔ Ya publicada (URL): {titulo[:40]}...")
+        return True
+    
+    # Verificar por título similar
+    titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
+    for t in historial['titulos']:
+        t_simple = re.sub(r'[^\w]', '', t.lower())[:40]
+        # Si coinciden más del 70%, es duplicado
+        if titulo_simple and t_simple:
+            coincidencia = sum(1 for a, b in zip(titulo_simple, t_simple) if a == b)
+            if coincidencia / max(len(titulo_simple), len(t_simple)) > 0.7:
+                print(f"   ⛔ Ya publicada (título similar): {titulo[:40]}...")
+                return True
+    
+    return False
 
 def traducir_deepl(texto):
+    """Traduce usando DeepL"""
     if not DEEPL_API_KEY or not texto:
         return texto
     try:
@@ -91,127 +104,18 @@ def traducir_deepl(texto):
         pass
     return texto
 
-def redactar_openai(titulo_en, desc_en, fuente):
-    """
-    Genera redacción profesional en español usando OpenAI
-    """
-    if not OPENAI_API_KEY:
-        return None
-    
-    # Traducir primero para dar contexto
-    titulo_es = traducir_deepl(titulo_en)
-    desc_es = traducir_deepl(desc_en)
-    
-    print(f"   🌐 Traducción DeepL: {titulo_es[:50]}...")
-    
-    prompt = f"""Eres un periodista profesional. Escribe esta noticia en ESPAÑOL.
-
-TÍTULO ORIGINAL (inglés): {titulo_en}
-DESCRIPCIÓN ORIGINAL (inglés): {desc_en}
-
-TRADUCCIÓN PREVIA:
-Título: {titulo_es}
-Descripción: {desc_es}
-
-FUENTE: {fuente}
-
-INSTRUCCIONES:
-1. Escribe ÚNICAMENTE en español
-2. Crea un titular impactante (máx 90 caracteres)
-3. Redacta 3 párrafos profesionales (mínimo 200 palabras totales):
-   - Párrafo 1: Lead con datos clave
-   - Párrafo 2: Contexto y desarrollo  
-   - Párrafo 3: Implicaciones y cierre
-4. Tono: serio, periodístico, objetivo
-5. Menciona la fuente al final
-
-FORMATO DE RESPUESTA:
-TITULAR: [titular en español]
-
-TEXTO: [texto completo en español, 3 párrafos separados por líneas en blanco]
-
-FIN"""
-
-    try:
-        print("   🤖 Pidiendo redacción a OpenAI...")
-        
-        response = requests.post(
-            'https://api.openai.com/v1/chat/completions',
-            headers={
-                'Authorization': f'Bearer {OPENAI_API_KEY}',
-                'Content-Type': 'application/json'
-            },
-            json={
-                'model': 'gpt-4o-mini',
-                'messages': [{'role': 'user', 'content': prompt}],
-                'temperature': 0.7,
-                'max_tokens': 700
-            },
-            timeout=45
-        )
-        
-        if response.status_code != 200:
-            print(f"   ❌ OpenAI error HTTP {response.status_code}")
-            return None
-        
-        resultado = response.json()['choices'][0]['message']['content']
-        
-        # Extraer titular y texto
-        titular = None
-        texto = None
-        
-        if 'TITULAR:' in resultado and 'TEXTO:' in resultado:
-            partes = resultado.split('TITULAR:')[1].split('TEXTO:')
-            titular = partes[0].strip()
-            texto = partes[1].split('FIN')[0].strip() if 'FIN' in partes[1] else partes[1].strip()
-        
-        if not titular or not texto:
-            print("   ⚠️ No se pudo parsear respuesta")
-            return None
-        
-        # Verificar que sea español
-        if len(texto) < 100:
-            print(f"   ⚠️ Texto muy corto: {len(texto)} chars")
-            return None
-        
-        palabras_es = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'por']
-        if not any(p in texto.lower() for p in palabras_es[:3]):
-            print("   ⚠️ No parece estar en español")
-            return None
-        
-        print(f"   ✅ Redacción OK: {len(texto.split())} palabras")
-        return {'titular': titular, 'texto': texto}
-        
-    except Exception as e:
-        print(f"   ❌ Error OpenAI: {e}")
-        return None
-
-def generar_hashtags(titular):
-    # 5 hashtags fijos + dinámico
-    tags = ['#NoticiasMundiales', '#ActualidadInternacional', '#WorldNews', 
-            f"#{datetime.now().strftime('%Y')}", '#Hoy']
-    
-    # Extraer palabra clave del titular
-    palabras = re.findall(r'\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]{4,}\b', titular)
-    if palabras:
-        tag = '#' + palabras[0]
-        if tag not in tags:
-            tags[3] = tag  # Reemplazar el del año si hay palabra clave
-    
-    return ' '.join(tags[:5])
-
 def buscar_noticias():
+    """Busca noticias de todas las fuentes"""
     print("\n🔍 Buscando noticias...")
     
     noticias = []
     
-    # NewsAPI
+    # 1. NewsAPI
     if NEWS_API_KEY:
         try:
             response = requests.get(
                 "https://newsapi.org/v2/top-headlines",
-                params={'category': 'general', 'language': 'en', 'pageSize': 20, 
-                       'apiKey': NEWS_API_KEY},
+                params={'language': 'en', 'pageSize': 20, 'apiKey': NEWS_API_KEY},
                 timeout=10
             )
             data = response.json()
@@ -221,7 +125,7 @@ def buscar_noticias():
         except Exception as e:
             print(f"   ⚠️ NewsAPI: {e}")
     
-    # GNews
+    # 2. GNews
     if GNEWS_API_KEY and len(noticias) < 5:
         try:
             response = requests.get(
@@ -243,14 +147,14 @@ def buscar_noticias():
         except Exception as e:
             print(f"   ⚠️ GNews: {e}")
     
-    # RSS
+    # 3. RSS
     if len(noticias) < 3:
         rss_feeds = [
             'http://feeds.bbci.co.uk/news/world/rss.xml',
             'https://www.reuters.com/rssFeed/worldNews',
             'https://rss.cnn.com/rss/edition_world.rss'
         ]
-        for feed_url in random.sample(rss_feeds, 2):
+        for feed_url in random.sample(rss_feeds, min(2, len(rss_feeds))):
             try:
                 feed = feedparser.parse(feed_url)
                 for entry in feed.entries[:5]:
@@ -264,46 +168,40 @@ def buscar_noticias():
                     
                     noticias.append({
                         'title': entry.get('title'),
-                        'description': entry.get('summary', entry.get('description', ''))[:400],
+                        'description': entry.get('summary', entry.get('description', ''))[:300],
                         'url': entry.get('link'),
                         'urlToImage': img,
                         'source': {'name': feed.feed.get('title', 'RSS')}
                     })
-                print(f"   📡 RSS {feed_url.split('/')[2]}: {len(feed.entries[:5])}")
+                print(f"   📡 RSS: {feed_url.split('/')[2]}")
             except:
                 pass
     
     print(f"\n📊 Total encontradas: {len(noticias)}")
     
-    # Filtrar válidas y nuevas
-    validas = []
+    # Filtrar nuevas
+    nuevas = []
     for art in noticias:
-        if not art.get('title') or len(art['title']) < 15:
+        if not art.get('title') or len(art['title']) < 10:
             continue
         if "[Removed]" in art['title']:
             continue
         if not art.get('url'):
             continue
-        
-        url_hash = get_url_hash(art['url'])
-        if url_hash in historial_urls:
-            print(f"   ⏭️ Ya publicada: {art['title'][:40]}...")
+        if not art.get('urlToImage'):
             continue
         
-        # Verificar título similar
-        titulo_simple = re.sub(r'[^\w]', '', art['title'].lower())[:30]
-        if titulo_simple in historial_titulos:
-            print(f"   ⏭️ Título similar: {art['title'][:40]}...")
+        if ya_publicada(art['url'], art['title']):
             continue
         
-        if art.get('urlToImage') and str(art['urlToImage']).startswith('http'):
-            validas.append(art)
-            print(f"   ✅ Nueva: {art['title'][:50]}...")
+        nuevas.append(art)
+        print(f"   ✅ Nueva: {art['title'][:50]}...")
     
-    print(f"📊 Nuevas con imagen: {len(validas)}")
-    return validas[:3]
+    print(f"📊 Nuevas disponibles: {len(nuevas)}")
+    return nuevas[:3]
 
 def descargar_imagen(url):
+    """Descarga imagen"""
     if not url or not str(url).startswith('http'):
         return None
     try:
@@ -320,7 +218,79 @@ def descargar_imagen(url):
         print(f"   ⚠️ Error imagen: {e}")
     return None
 
-def publicar_facebook(img_path, mensaje):
+def crear_mensaje(titulo_en, desc_en, fuente):
+    """Crea mensaje en español"""
+    
+    # Traducir con DeepL
+    titulo = traducir_deepl(titulo_en)
+    descripcion = traducir_deepl(desc_en)
+    
+    # Si tenemos OpenAI, mejorar redacción
+    if OPENAI_API_KEY:
+        try:
+            prompt = f"""Escribe en ESPAÑOL una noticia profesional con:
+
+TÍTULO: {titulo}
+DESCRIPCIÓN: {descripcion}
+FUENTE: {fuente}
+
+REGLAS:
+- 3 párrafos en español
+- Tono periodístico
+- Mínimo 150 palabras
+- Menciona la fuente al final
+
+Formato: TITULAR: (máx 80 chars) | TEXTO: (3 párrafos)"""
+
+            response = requests.post(
+                'https://api.openai.com/v1/chat/completions',
+                headers={
+                    'Authorization': f'Bearer {OPENAI_API_KEY}',
+                    'Content-Type': 'application/json'
+                },
+                json={
+                    'model': 'gpt-4o-mini',
+                    'messages': [{'role': 'user', 'content': prompt}],
+                    'temperature': 0.7,
+                    'max_tokens': 600
+                },
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                resultado = response.json()['choices'][0]['message']['content']
+                
+                # Extraer partes
+                if 'TITULAR:' in resultado and 'TEXTO:' in resultado:
+                    partes = resultado.split('TITULAR:')[1].split('TEXTO:')
+                    titulo = partes[0].strip()
+                    texto = partes[1].strip()
+                    
+                    # Verificar español
+                    if any(p in texto.lower() for p in ['el', 'la', 'de', 'que', 'y']):
+                        print("   ✅ OpenAI generó español")
+                        return titulo, texto
+        except Exception as e:
+            print(f"   ⚠️ OpenAI falló: {e}")
+    
+    # Fallback: usar traducción directa
+    print("   🌐 Usando traducción DeepL")
+    texto = f"{descripcion}\n\n📡 Fuente: {fuente}"
+    return titulo, texto
+
+def publicar_facebook(img_path, titulo, texto):
+    """Publica en Facebook"""
+    # Hashtags
+    hashtags = f"#NoticiasMundiales #Actualidad #{datetime.now().strftime('%Y')} #Internacional #Hoy"
+    
+    mensaje = f"""📰 {titulo}
+
+{texto}
+
+{hashtags}
+
+— Verdad Hoy: Noticias Internacionales"""
+    
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
         with open(img_path, 'rb') as f:
@@ -344,16 +314,15 @@ def main():
     noticias = buscar_noticias()
     
     if not noticias:
-        print("\n⚠️ No hay noticias nuevas")
-        guardar_historial()
+        print("\n⚠️ No hay noticias nuevas disponibles")
+        print("   (Todas las noticias encontradas ya fueron publicadas)")
         return False
     
     print(f"\n🎯 Intentando publicar {len(noticias)} noticia(s)")
     
     for i, noticia in enumerate(noticias, 1):
         print(f"\n{'='*50}")
-        print(f"📰 Noticia {i}/{len(noticias)}")
-        print(f"{'='*50}")
+        print(f"📰 Intento {i}/{len(noticias)}")
         
         # Descargar imagen
         img_path = descargar_imagen(noticia.get('urlToImage'))
@@ -361,60 +330,32 @@ def main():
             print("   ⏭️ Sin imagen")
             continue
         
-        # Crear redacción
-        print("   ✍️  Redactando...")
-        redaccion = redactar_openai(
+        # Crear mensaje
+        titulo, texto = crear_mensaje(
             noticia['title'],
             noticia.get('description', ''),
             noticia.get('source', {}).get('name', 'Medios Internacionales')
         )
         
-        if redaccion:
-            titular = redaccion['titular']
-            cuerpo = redaccion['texto']
-        else:
-            # Fallback: traducción básica
-            print("   ⚠️ Usando traducción básica")
-            titular = traducir_deepl(noticia['title'])
-            cuerpo = traducir_deepl(noticia.get('description', ''))
-            cuerpo += f"\n\n📡 Fuente: {noticia.get('source', {}).get('name', 'Medios')}"
-        
-        # Hashtags
-        hashtags = generar_hashtags(titular)
-        
-        # Mensaje final
-        mensaje = f"""📰 {titular}
-
-{cuerpo}
-
-{hashtags}
-
-— Verdad Hoy: Noticias Internacionales"""
-        
-        print(f"\n   📝 Preview:")
-        print(f"   {mensaje[:200]}...")
+        print(f"   📝 Titular: {titulo[:60]}...")
         
         # Publicar
-        if publicar_facebook(img_path, mensaje):
-            # Marcar como publicada
-            historial_urls.add(get_url_hash(noticia['url']))
-            historial_titulos.add(re.sub(r'[^\w]', '', noticia['title'].lower())[:30])
-            guardar_historial()
+        if publicar_facebook(img_path, titulo, texto):
+            # Guardar en historial
+            guardar_historial(noticia['url'], noticia['title'])
             
             # Limpiar
             os.remove(img_path)
             
             print(f"\n{'='*50}")
-            print("✅ ÉXITO")
+            print("✅ ÉXITO - Noticia nueva publicada")
             print(f"{'='*50}")
             return True
         
-        # Limpiar si falló
         if os.path.exists(img_path):
             os.remove(img_path)
     
-    print("\n❌ No se pudo publicar")
-    guardar_historial()
+    print("\n❌ No se pudo publicar ninguna noticia")
     return False
 
 if __name__ == "__main__":

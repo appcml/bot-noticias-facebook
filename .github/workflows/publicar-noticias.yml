@@ -13,21 +13,20 @@ jobs:
     - name: Checkout código
       uses: actions/checkout@v4
       
-    - name: Descargar historial (v4)
-      id: download-historial
+    - name: Descargar historial
       uses: actions/download-artifact@v4
       with:
         name: historial-noticias
         path: ./data
       continue-on-error: true
       
-    - name: Mover historial a raíz si existe
+    - name: Preparar historial
       run: |
         if [ -f "./data/historial_publicaciones.json" ]; then
           mv ./data/historial_publicaciones.json ./
           echo "✅ Historial restaurado"
         else
-          echo "⚠️ No hay historial previo (primera ejecución o artifact expirado)"
+          echo "⚠️ Sin historial previo"
         fi
       shell: bash
       
@@ -50,17 +49,16 @@ jobs:
         DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
       run: python bot_noticias.py
       
-    - name: Preparar directorio para upload
+    - name: Preparar para guardar
       if: always()
       run: |
         mkdir -p ./output
         if [ -f "historial_publicaciones.json" ]; then
           cp historial_publicaciones.json ./output/
-          echo "📦 Historial listo para guardar"
         fi
       shell: bash
       
-    - name: Guardar historial (v4)
+    - name: Guardar historial
       if: always()
       uses: actions/upload-artifact@v4
       with:

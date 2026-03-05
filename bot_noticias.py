@@ -4,27 +4,28 @@ import re
 import hashlib
 import os
 import json
-import time  # ← AGREGAR
 from datetime import datetime
-from urllib.parse import urlparse, urldefrag  # ← urldefrag agregado
+from urllib.parse import urlparse, urldefrag, quote
 from PIL import Image
 from io import BytesIO
 
+# Configuración desde variables de entorno
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 DEEPL_API_KEY = os.getenv('DEEPL_API_KEY')
 
-print(f"DEBUG: NEWS_API_KEY presente: {bool(NEWS_API_KEY)}")
-print(f"DEBUG: FB_PAGE_ID presente: {bool(FB_PAGE_ID)}")
-print(f"DEBUG: FB_ACCESS_TOKEN presente: {bool(FB_ACCESS_TOKEN)}")
+print(f"🔍 DEBUG: NEWS_API_KEY presente: {bool(NEWS_API_KEY)}")
+print(f"🔍 DEBUG: FB_PAGE_ID presente: {bool(FB_PAGE_ID)}")
+print(f"🔍 DEBUG: FB_ACCESS_TOKEN presente: {bool(FB_ACCESS_TOKEN)}")
 
 if not all([NEWS_API_KEY, FB_PAGE_ID, FB_ACCESS_TOKEN]):
-    print("ERROR: Variables faltantes esenciales")
+    print("❌ ERROR: Faltan variables de entorno esenciales")
     raise ValueError("Faltan variables de entorno esenciales")
 
-print("DEBUG: Variables esenciales OK")
+print("✅ Variables esenciales OK")
 
+# Fuentes premium por categoría
 FUENTES_PREMIUM = {
     'internacional': ['bbc.com', 'reuters.com', 'ap.org', 'cnn.com', 'aljazeera.com', 'elpais.com', 'clarin.com', 'nytimes.com', 'washingtonpost.com'],
     'economia': ['bloomberg.com', 'forbes.com', 'eleconomista.es', 'expansion.com', 'ambito.com', 'ft.com', 'wsj.com'],
@@ -33,22 +34,18 @@ FUENTES_PREMIUM = {
 }
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
-MAX_HISTORIAL = 500  # ← AUMENTADO para más seguridad
-MINUTOS_ENTRE_PUBLICACIONES = 30
+MAX_HISTORIAL = 1000  # Más grande para GitHub Actions
 
 def normalizar_url(url):
     """Normaliza URL para evitar duplicados por parámetros de tracking"""
     if not url:
         return ""
-    # Eliminar fragmentos (#)
     url, _ = urldefrag(url)
-    # Eliminar parámetros comunes de tracking
-    params_borrar = ['utm_', 'fbclid', 'gclid', 'ref', 'source', 'campaign']
     try:
         from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
         parsed = urlparse(url)
         query = parse_qs(parsed.query)
-        # Filtrar parámetros de tracking
+        params_borrar = ['utm_', 'fbclid', 'gclid', 'ref', 'source', 'campaign', 'medium', 'content']
         query_filtrado = {k: v for k, v in query.items() 
                          if not any(p in k.lower() for p in params_borrar)}
         nuevo_query = urlencode(query_filtrado, doseq=True)
@@ -61,83 +58,92 @@ def normalizar_url(url):
         return url.lower().strip().rstrip('/')
 
 def cargar_historial():
-    """Carga el historial de URLs publicadas desde archivo"""
+    """Carga el historial de URLs publicadas"""
     if os.path.exists(HISTORIAL_FILE):
         try:
             with open(HISTORIAL_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 urls = set(data.get('urls', []))
-                hashes = data.get('hashes', [])
-                # Agregar campo nuevo para timestamps
-                timestamps = data.get('timestamps', [])
-                return urls, hashes, timestamps
+                hashes = set(data.get('hashes', []))  # Usar set para búsqueda rápida
+                print(f"📚 Historial cargado: {len(urls)} URLs, {len(hashes)} hashes")
+                return urls, hashes
         except Exception as e:
-            print(f"[ERROR] Cargando historial: {e}")
-            return set(), [], []
-    return set(), [], []
+            print(f"⚠️ Error cargando historial: {e}")
+            return set(), set()
+    print("📚 No existe historial previo, creando nuevo")
+    return set(), set()
 
-def guardar_historial(urls, hashes, timestamps):
+def guardar_historial(urls, hashes):
     """Guarda el historial de URLs publicadas"""
     data = {
         'urls': list(urls)[-MAX_HISTORIAL:],
-        'hashes': hashes[-MAX_HISTORIAL:],
-        'timestamps': timestamps[-MAX_HISTORIAL:],
-        'last_update': datetime.now().isoformat()
+        'hashes': list(hashes)[-MAX_HISTORIAL:],
+        'last_update': datetime.now().isoformat(),
+        'total_guardadas': len(urls)
     }
     with open(HISTORIAL_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    print(f"💾 Historial guardado: {len(urls)} URLs totales")
 
-HISTORIAL_URLS, HISTORIAL_HASHES, HISTORIAL_TIMESTAMPS = cargar_historial()
+# Cargar historial al inicio
+HISTORIAL_URLS, HISTORIAL_HASHES = cargar_historial()
 
 def traducir_texto(texto, idioma_origen='EN'):
-    """Traduce texto del inglés al español usando DeepL"""
+    """Traduce texto usando DeepL"""
     if not DEEPL_API_KEY or idioma_origen.upper() != 'EN':
         return texto
     
     try:
-        url = "https://api-free.deepl.com/v2/translate"  # ← CORREGIDO: sin espacio al final
+        url = "https://api-free.deepl.com/v2/translate"
         params = {
             'auth_key': DEEPL_API_KEY,
-            'text': texto,
+            'text': texto[:500],  # Limitar texto para evitar errores
             'source_lang': 'EN',
             'target_lang': 'ES'
         }
         response = requests.post(url, data=params, timeout=10)
         if response.status_code == 200:
             return response.json()['translations'][0]['text']
+        else:
+            print(f"⚠️ DeepL error {response.status_code}: {response.text[:200]}")
     except Exception as e:
-        print(f"[TRADUCCIÓN] Error: {e}")
+        print(f"⚠️ Error traducción: {e}")
     
     return texto
 
 def buscar_noticias_frescas():
     print(f"\n{'='*60}")
-    print(f"BUSCANDO NOTICIAS VIRALES - {datetime.now().strftime('%H:%M:%S')}")
+    print(f"🔍 BUSCANDO NOTICIAS - {datetime.now().strftime('%H:%M:%S')}")
     print(f"{'='*60}")
     
-    fecha_hoy = datetime.now().strftime('%Y-%m-%d')
     fecha_ayer = (datetime.now().timestamp() - 86400)
+    fecha_ayer_str = datetime.fromtimestamp(fecha_ayer).strftime('%Y-%m-%d')
+    fecha_hoy_str = datetime.now().strftime('%Y-%m-%d')
     
+    # Búsquedas más específicas para obtener noticias frescas
     busquedas_virales = [
-        ('breaking news OR "just now" OR "developing story"', 'internacional'),
-        ('world news today OR international news', 'internacional'),
-        ('politics crisis OR emergency OR urgent', 'politica'),
-        ('economy markets crash OR surge OR record', 'economia'),
-        ('technology AI artificial intelligence breakthrough', 'tech'),
-        ('war conflict OR attack OR missile OR invasion', 'crisis'),
-        ('disaster earthquake OR hurricane OR flood', 'emergencia')
+        ('breaking news', 'internacional'),
+        ('world news today', 'internacional'),
+        ('politics crisis emergency', 'politica'),
+        ('economy markets stock', 'economia'),
+        ('artificial intelligence AI', 'tech'),
+        ('war conflict ukraine', 'crisis'),
+        ('disaster earthquake hurricane', 'emergencia')
     ]
     
-    busquedas_hoy = random.sample(busquedas_virales, min(5, len(busquedas_virales)))
+    # Seleccionar 3 búsquedas aleatorias para variedad
+    busquedas_hoy = random.sample(busquedas_virales, min(3, len(busquedas_virales)))
     todas_noticias = []
     
     for query, categoria in busquedas_hoy:
-        # ← CORREGIDO: sin espacios en las URLs
-        url_es = f"https://newsapi.org/v2/everything?q={requests.utils.quote(query)}&language=es&from={datetime.fromtimestamp(fecha_ayer).strftime('%Y-%m-%d')}&to={fecha_hoy}&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}"
-        url_en = f"https://newsapi.org/v2/everything?q={requests.utils.quote(query)}&language=en&from={datetime.fromtimestamp(fecha_ayer).strftime('%Y-%m-%d')}&to={fecha_hoy}&sortBy=publishedAt&pageSize=10&apiKey={NEWS_API_KEY}"
+        # Codificar query correctamente
+        query_encoded = quote(query)
+        
+        # Buscar en español
+        url_es = f"https://newsapi.org/v2/everything?q={query_encoded}&language=es&from={fecha_ayer_str}&to={fecha_hoy_str}&sortBy=publishedAt&pageSize=15&apiKey={NEWS_API_KEY}"
         
         try:
-            print(f"[BÚSQUEDA] {categoria}: {query[:40]}...")
+            print(f"\n📡 [{categoria.upper()}] Buscando: {query[:30]}...")
             
             response = requests.get(url_es, timeout=15)
             data = response.json()
@@ -145,165 +151,154 @@ def buscar_noticias_frescas():
             if data.get('status') == 'ok' and data.get('articles'):
                 for art in data['articles']:
                     if es_noticia_valida(art):
+                        url_norm = normalizar_url(art['url'])
+                        url_hash = hashlib.md5(url_norm.encode()).hexdigest()[:16]
+                        
+                        # Verificar DUPLICADO inmediatamente
+                        if url_norm in HISTORIAL_URLS or url_hash in HISTORIAL_HASHES:
+                            print(f"   ⏭️  YA PUBLICADA: {art['title'][:40]}...")
+                            continue
+                        
                         score = calcular_score(art, categoria)
                         art['categoria'] = categoria
                         art['score'] = score
-                        # ← MEJORADO: hash de URL normalizada
-                        url_norm = normalizar_url(art['url'])
-                        art['url_hash'] = hashlib.md5(url_norm.encode()).hexdigest()[:16]
+                        art['url_hash'] = url_hash
                         art['url_normalizada'] = url_norm
                         art['idioma'] = 'ES'
-                        art['titulo_original'] = art['title']
-                        art['descripcion_original'] = art['description']
                         todas_noticias.append(art)
-                        print(f"  [ES] {art['title'][:50]}... (score: {score})")
-            
-            if DEEPL_API_KEY:
+                        print(f"   ✅ NUEVA: {art['title'][:50]}... (score: {score})")
+            else:
+                print(f"   ⚠️ API error: {data.get('message', 'Sin artículos')}")
+                
+        except Exception as e:
+            print(f"   ❌ Error búsqueda ES: {e}")
+        
+        # Buscar en inglés si tenemos DeepL
+        if DEEPL_API_KEY:
+            url_en = f"https://newsapi.org/v2/everything?q={query_encoded}&language=en&from={fecha_ayer_str}&to={fecha_hoy_str}&sortBy=publishedAt&pageSize=15&apiKey={NEWS_API_KEY}"
+            try:
                 response_en = requests.get(url_en, timeout=15)
                 data_en = response_en.json()
                 
                 if data_en.get('status') == 'ok' and data_en.get('articles'):
                     for art in data_en['articles']:
                         if es_noticia_valida(art):
+                            url_norm = normalizar_url(art['url'])
+                            url_hash = hashlib.md5(url_norm.encode()).hexdigest()[:16]
+                            
+                            # Verificar DUPLICADO
+                            if url_norm in HISTORIAL_URLS or url_hash in HISTORIAL_HASHES:
+                                print(f"   ⏭️  YA PUBLICADA (EN): {art['title'][:40]}...")
+                                continue
+                            
                             score = calcular_score(art, categoria)
                             art['categoria'] = categoria
                             art['score'] = score
-                            url_norm = normalizar_url(art['url'])
-                            art['url_hash'] = hashlib.md5(url_norm.encode()).hexdigest()[:16]
+                            art['url_hash'] = url_hash
                             art['url_normalizada'] = url_norm
                             art['idioma'] = 'EN'
-                            art['titulo_original'] = art['title']
-                            art['descripcion_original'] = art['description']
                             art['title'] = traducir_texto(art['title'], 'EN')
                             art['description'] = traducir_texto(art['description'], 'EN')
                             todas_noticias.append(art)
-                            print(f"  [EN→ES] {art['title'][:50]}... (score: {score})")
-                            
-        except Exception as e:
-            print(f"[ERROR] en búsqueda {categoria}: {e}")
+                            print(f"   ✅ NUEVA (EN→ES): {art['title'][:50]}... (score: {score})")
+            except Exception as e:
+                print(f"   ❌ Error búsqueda EN: {e}")
     
-    print(f"\n[INFO] Total noticias encontradas: {len(todas_noticias)}")
+    print(f"\n📊 Total candidatas: {len(todas_noticias)}")
     
-    # ← MEJORADO: Deduplicación más robusta usando URL normalizada
-    noticias_unicas = {}
-    for art in todas_noticias:
-        url_norm = art.get('url_normalizada', normalizar_url(art['url']))
-        if url_norm not in noticias_unicas:
-            noticias_unicas[url_norm] = art
+    # Filtrar solo con imagen
+    con_imagen = [n for n in todas_noticias if n.get('urlToImage') and n['urlToImage'].startswith('http')]
+    print(f"📊 Con imagen: {len(con_imagen)}")
     
-    noticias_lista = list(noticias_unicas.values())
-    print(f"[INFO] Noticias únicas: {len(noticias_lista)}")
+    # Ordenar por score
+    con_imagen.sort(key=lambda x: x['score'], reverse=True)
     
-    # Solo noticias con imagen disponible
-    noticias_con_imagen = [n for n in noticias_lista if n.get('urlToImage') and n['urlToImage'].startswith('http')]
-    print(f"[INFO] Noticias con imagen: {len(noticias_con_imagen)}")
-    
-    # ← MEJORADO: Verificación más estricta contra historial
-    noticias_nuevas = []
-    for n in noticias_con_imagen:
-        url_norm = n.get('url_normalizada', normalizar_url(n['url']))
-        hash_url = n.get('url_hash', hashlib.md5(url_norm.encode()).hexdigest()[:16])
-        
-        # Verificar tanto URL normalizada como hash
-        if url_norm not in HISTORIAL_URLS and hash_url not in HISTORIAL_HASHES:
-            noticias_nuevas.append(n)
-        else:
-            print(f"[DUPLICADO] Ya publicada: {n['title'][:40]}...")
-    
-    print(f"[INFO] Noticias no publicadas antes: {len(noticias_nuevas)}")
-    
-    noticias_nuevas.sort(key=lambda x: x['score'], reverse=True)
-    return noticias_nuevas[:5]
+    # Devolver top 5
+    return con_imagen[:5]
 
 def es_noticia_valida(art):
-    if not art.get('title'):
+    """Valida que la noticia sea publicable"""
+    if not art.get('title') or "[Removed]" in art['title']:
         return False
-    if "[Removed]" in art.get('title', ''):
+    if len(art.get('title', '')) < 15:
         return False
-    if len(art.get('title', '')) < 20:
-        return False
-    if not art.get('description'):
-        return False
-    if len(art.get('description', '')) < 80:
+    if not art.get('description') or len(art['description']) < 50:
         return False
     url = art.get('url', '')
     if not url or not url.startswith('http'):
         return False
-    dominios_malos = ['news.google.com', 'google.com/news', 'facebook.com', 'twitter.com', 'youtube.com']
-    if any(mal in url.lower() for mal in dominios_malos):
+    
+    # Dominios a excluir
+    dominios_excluir = ['news.google', 'google.com/news', 'facebook.com', 'twitter.com', 
+                       'youtube.com', 'reddit.com', 'instagram.com']
+    if any(d in url.lower() for d in dominios_excluir):
         return False
+    
     return True
 
 def calcular_score(art, categoria):
+    """Calcula score viral de la noticia"""
     score = 50
     texto = f"{art.get('title', '')} {art.get('description', '')}".lower()
     
-    impacto_viral = {
+    palabras_clave = {
         'breaking': 40, 'urgent': 35, 'alert': 30, 'just now': 35,
         'exclusive': 30, 'developing': 25, 'live': 25,
         'trump': 30, 'biden': 25, 'putin': 30, 'zelensky': 25,
-        'war': 35, 'attack': 35, 'invasion': 35, 'missile': 30, 'bomb': 30,
-        'crash': 30, 'collapse': 30, 'crisis': 25, 'emergency': 25,
-        'dead': 30, 'killed': 35, 'dies': 30, 'death toll': 35,
-        'earthquake': 30, 'tsunami': 35, 'hurricane': 30, 'flood': 25,
-        'market': 20, 'stocks': 20, 'economy': 20, 'inflation': 25, 'recession': 30,
-        'ai': 25, 'artificial intelligence': 30, 'chatgpt': 25, 'breakthrough': 25,
-        'scandal': 30, 'resigns': 25, 'impeachment': 30, 'election': 20
+        'war': 35, 'attack': 35, 'invasion': 35, 'missile': 30,
+        'crash': 30, 'crisis': 25, 'emergency': 25,
+        'dead': 30, 'killed': 35, 'dies': 30,
+        'earthquake': 30, 'tsunami': 35, 'hurricane': 30,
+        'market': 20, 'stocks': 20, 'economy': 20, 'inflation': 25,
+        'ai': 25, 'artificial intelligence': 30, 'chatgpt': 25,
+        'scandal': 30, 'resigns': 25, 'impeachment': 30
     }
     
-    for palabra, puntos in impacto_viral.items():
+    for palabra, puntos in palabras_clave.items():
         if palabra in texto:
             score += puntos
     
+    # Bonus por fuente premium
     fuente = urlparse(art.get('url', '')).netloc.lower()
     for cat, fuentes in FUENTES_PREMIUM.items():
         if any(f in fuente for f in fuentes):
-            score += 25
+            score += 20
             break
     
+    # Bonus por recencia
     try:
         fecha_pub = art.get('publishedAt', '')
         if fecha_pub:
             fecha_art = datetime.fromisoformat(fecha_pub.replace('Z', '+00:00'))
-            horas_diferencia = (datetime.now().timestamp() - fecha_art.timestamp()) / 3600
-            if horas_diferencia < 1:
-                score += 40
-            elif horas_diferencia < 3:
-                score += 30
-            elif horas_diferencia < 6:
-                score += 20
-            elif horas_diferencia < 24:
-                score += 10
-            else:
-                score -= 10
+            horas = (datetime.now().timestamp() - fecha_art.timestamp()) / 3600
+            if horas < 1: score += 40
+            elif horas < 3: score += 30
+            elif horas < 6: score += 20
+            elif horas < 12: score += 10
+            else: score -= 5
     except:
         pass
     
-    if art.get('urlToImage') and art['urlToImage'].startswith('http'):
+    # Bonus por imagen
+    if art.get('urlToImage'):
         score += 15
-    
-    if categoria in ['crisis', 'emergencia']:
-        score += 20
     
     return score
 
 def detectar_tono(titulo, descripcion):
     texto = f"{titulo} {descripcion}".lower()
-    graves = ['muerte', 'muertos', 'muerto', 'ataque', 'guerra', 'tragedia', 'desastre', 'crisis', 'urgente', 'breaking', 'emergency']
-    positivas = ['avance', 'descubrimiento', 'innovacion', 'acuerdo', 'paz', 'logro', 'éxito', 'breakthrough', 'advance']
-    neutrales = ['estudio', 'análisis', 'reporte', 'datos', 'encuesta', 'investigación', 'analysis', 'study']
+    graves = ['muerte', 'muertos', 'ataque', 'guerra', 'tragedia', 'crisis', 'urgente']
+    positivas = ['avance', 'descubrimiento', 'acuerdo', 'paz', 'logro', 'éxito']
     
     if any(p in texto for p in graves):
         return 'grave'
     elif any(p in texto for p in positivas):
         return 'positivo'
-    elif any(p in texto for p in neutrales):
-        return 'analitico'
     else:
         return 'neutral'
 
 def descargar_imagen(url_imagen):
-    """Descarga imagen de la noticia y la prepara para Facebook"""
+    """Descarga y optimiza imagen para Facebook"""
     if not url_imagen or not url_imagen.startswith('http'):
         return None
     
@@ -314,27 +309,32 @@ def descargar_imagen(url_imagen):
         response = requests.get(url_imagen, headers=headers, timeout=15)
         if response.status_code == 200:
             img = Image.open(BytesIO(response.content))
+            
+            # Convertir a RGB si es necesario
             if img.mode in ('RGBA', 'P'):
                 img = img.convert('RGB')
             
+            # Redimensionar si es muy grande (Facebook prefiere < 8MB)
+            max_size = (1200, 1200)
+            img.thumbnail(max_size, Image.Resampling.LANCZOS)
+            
             temp_path = f'/tmp/noticia_{hashlib.md5(url_imagen.encode()).hexdigest()[:8]}.jpg'
-            img.save(temp_path, 'JPEG', quality=85)
-            print(f"[IMAGEN] Descargada y guardada: {temp_path}")
+            img.save(temp_path, 'JPEG', quality=85, optimize=True)
+            print(f"🖼️  Imagen descargada: {temp_path} ({os.path.getsize(temp_path)/1024:.1f} KB)")
             return temp_path
     except Exception as e:
-        print(f"[IMAGEN] Error descargando: {e}")
+        print(f"⚠️ Error imagen: {e}")
     
     return None
 
 def publicar_foto_con_texto(image_path, mensaje):
-    """Publica foto con texto en Facebook (sin link externo)"""
+    """Publica en Facebook con foto adjunta"""
     if not image_path or not os.path.exists(image_path):
-        print("[ERROR] No hay imagen para publicar")
+        print("❌ No hay imagen para publicar")
         return False
     
     try:
-        # ← CORREGIDO: sin espacio en la URL
-        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos"
+        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
         
         with open(image_path, 'rb') as img_file:
             files = {'file': img_file}
@@ -343,393 +343,164 @@ def publicar_foto_con_texto(image_path, mensaje):
                 'access_token': FB_ACCESS_TOKEN
             }
             
-            print(f"[FACEBOOK] Subiendo foto con texto...")
+            print(f"📤 Subiendo a Facebook...")
             response = requests.post(url, files=files, data=data, timeout=60)
             result = response.json()
             
-            print(f"[DEBUG] Status: {response.status_code}")
-            
             if response.status_code == 200 and 'id' in result:
-                print(f"✅ FOTO PUBLICADA EXITOSAMENTE: {result['id']}")
+                print(f"✅ PUBLICADO EXITOSAMENTE: {result['id']}")
                 return True
             else:
-                error_msg = result.get('error', {}).get('message', 'Error desconocido')
-                print(f"❌ ERROR DE FACEBOOK: {error_msg}")
-                print(f"❌ RESPUESTA COMPLETA: {result}")
+                error = result.get('error', {}).get('message', 'Error desconocido')
+                print(f"❌ ERROR FACEBOOK: {error}")
+                print(f"   Respuesta: {result}")
                 return False
                 
     except Exception as e:
-        print(f"❌ ERROR publicando foto: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ ERROR publicando: {e}")
         return False
 
-def generar_redaccion_inteligente(noticia, categoria):
+def generar_redaccion(noticia, categoria):
+    """Genera texto de la publicación"""
     titulo = noticia['title']
     descripcion = noticia['description']
     fuente = noticia.get('source', {}).get('name', 'Medios Internacionales')
     tono = detectar_tono(titulo, descripcion)
-    idioma_origen = noticia.get('idioma', 'ES')
+    idioma = noticia.get('idioma', 'ES')
     
-    palabras_clave = [w for w in re.findall(r'\b[A-Za-zÁáÉéÍíÓóÚúÑñ]{5,}\b', titulo) 
-                     if w.lower() not in ['como', 'para', 'pero', 'con', 'los', 'las', 'del', 'por', 'una', 'este', 'esta', 'desde', 'entre', 'sobre', 'hacia', 'after', 'before', 'during', 'through', 'between']]
-    palabra_destacada = random.choice(palabras_clave) if palabras_clave else "este hecho"
+    # Extraer palabra clave del título
+    palabras = [w for w in re.findall(r'\b[A-Za-zÁáÉéÍíÓóÚúÑñ]{5,}\b', titulo) 
+               if w.lower() not in ['como', 'para', 'pero', 'con', 'los', 'esta']]
+    palabra_destacada = random.choice(palabras) if palabras else "este desarrollo"
     
+    # Plantillas por categoría y tono
     aperturas = {
-        'internacional': {
-            'grave': [
-                f"La situación internacional en torno a {palabra_destacada} ha alcanzado un punto crítico que demanda atención inmediata.",
-                f"Nuevos desarrollos confirman la gravedad de {palabra_destacada}, generando alerta entre los principales actores geopolíticos.",
-                f"El escenario global de {palabra_destacada} se complica con información que revela la magnitud real de la crisis."
-            ],
-            'neutral': [
-                f"Los acontecimientos recientes en el ámbito internacional respecto a {palabra_destacada} están redefiniendo el panorama global.",
-                f"La evolución de {palabra_destacada} mantiene en vilo a observadores y autoridades por igual.",
-                f"Analistas internacionales siguen de cerca {palabra_destacada} ante posibles repercusiones globales."
-            ],
-            'positivo': [
-                f"Un avance significativo en {palabra_destacada} marca un hito en las relaciones internacionales contemporáneas.",
-                f"El desarrollo positivo de {palabra_destacada} abre nuevas perspectivas de cooperación global.",
-                f"Los avances en {palabra_destacada} superan las expectativas de la comunidad internacional."
-            ]
-        },
-        'economia': {
-            'grave': [
-                f"Los mercados globales registran turbulencias significativas vinculadas a {palabra_destacada}, con proyecciones ajustadas a la baja.",
-                f"La incertidumbre en torno a {palabra_destacada} ha activado señales de alerta en los principales centros financieros.",
-                f"Inversores internacionales reevalúan estrategias ante el impacto potencial de {palabra_destacada}."
-            ],
-            'positivo': [
-                f"Indicadores económicos recientes vinculados a {palabra_destacada} sugieren una recuperación más robusta de lo anticipado.",
-                f"El desempeño de {palabra_destacada} supera expectativas, generando optimismo cauteloso entre analistas financieros.",
-                f"Nuevos datos sobre {palabra_destacada} confirman tendencias positivas para el cierre del período."
-            ],
-            'neutral': [
-                f"Los mercados financieros ajustan posiciones ante la última información disponible sobre {palabra_destacada}.",
-                f"Especialistas económicos analizan el impacto a mediano plazo de {palabra_destacada} en diversos sectores productivos.",
-                f"La evolución de {palabra_destacada} será determinante para las proyecciones económicas del próximo trimestre."
-            ]
-        },
-        'tech': {
-            'positivo': [
-                f"El avance tecnológico en {palabra_destacada} marca un hito significativo en la trayectoria de innovación global.",
-                f"Desarrollos recientes en {palabra_destacada} prometen transformar la experiencia de usuarios y empresas a nivel mundial.",
-                f"La consolidación de {palabra_destacada} posiciona a los principales actores del sector tecnológico en una nueva fase competitiva."
-            ],
-            'analitico': [
-                f"Un análisis profundo de {palabra_destacada} revela implicaciones que trascienden el ámbito tecnológico convencional.",
-                f"Expertos evalúan el alcance real de {palabra_destacada} más allá de las primeras impresiones del mercado.",
-                f"El estudio de {palabra_destacada} plantea interrogantes fundamentales sobre el rumbo de la industria tecnológica."
-            ],
-            'neutral': [
-                f"La industria tecnológica global ajusta estrategias ante el creciente protagonismo de {palabra_destacada}.",
-                f"Nuevas propuestas en torno a {palabra_destacada} generan debate entre desarrolladores y reguladores internacionales.",
-                f"La adopción de {palabra_destacada} avanza a ritmo desigual según regiones y sectores económicos."
-            ]
-        },
-        'politica': {
-            'grave': [
-                f"La polarización política en torno a {palabra_destacada} alcanza niveles que complican cualquier salida negociada.",
-                f"La gravedad de {palabra_destacada} ha movilizado a actores políticos hasta ahora al margen del debate público.",
-                f"La crisis política vinculada a {palabra_destacada} pone a prueba la estabilidad de alianzas tradicionales."
-            ],
-            'positivo': [
-                f"Un acuerdo político inesperado en torno a {palabra_destacada} abre posibilidades de diálogo antes descartadas.",
-                f"El consenso alcanzado sobre {palabra_destacada} representa un paso significativo en la agenda legislativa.",
-                f"Los avances políticos en {palabra_destacada} superan las expectativas más optimistas de los negociadores."
-            ],
-            'neutral': [
-                f"El debate político en torno a {palabra_destacada} continúa con posiciones que muestran escasa flexibilidad.",
-                f"Los actores políticos redefinen estrategias ante la complejidad de {palabra_destacada}.",
-                f"La discusión sobre {palabra_destacada} anticipa una negociación prolongada en los próximos meses."
-            ]
-        },
         'crisis': {
             'grave': [
-                f"La magnitud de {palabra_destacada} supera las primeras estimaciones, ampliando la zona de afectación internacional.",
-                f"Equipos de respuesta trabajan contra el tiempo ante la gravedad de {palabra_destacada}.",
-                f"La comunidad internacional se moviliza ante el impacto devastador de {palabra_destacada}."
-            ],
-            'neutral': [
-                f"Las autoridades internacionales coordinan respuesta integral ante {palabra_destacada} en múltiples frentes.",
-                f"El monitoreo constante de {palabra_destacada} permite ajustar protocolos de seguridad en tiempo real.",
-                f"La experiencia previa en situaciones similares a {palabra_destacada} orienta la respuesta actual."
+                f"🚨 URGENTE: La situación de {palabra_destacada} evoluciona rápidamente.",
+                f"⚠️ ALERTA: Nuevos desarrollos confirman la gravedad de {palabra_destacada}.",
+                f"🔴 CRISIS: La comunidad internacional reacciona ante {palabra_destacada}."
             ]
         },
         'emergencia': {
             'grave': [
-                f"Servicios de emergencia internacionales responden ante la gravedad de {palabra_destacada}.",
-                f"La magnitud de {palabra_destacada} requiere movilización de recursos de ayuda humanitaria.",
-                f"Autoridades declaran estado de emergencia ante el impacto de {palabra_destacada}."
-            ],
-            'neutral': [
-                f"Protocolos internacionales de emergencia han sido activados ante {palabra_destacada}.",
-                f"La coordinación global ante {palabra_destacada} involucra a múltiples organismos de ayuda.",
-                f"Se establecen corredores de ayuda internacional ante la situación de {palabra_destacada}."
+                f"🆘 EMERGENCIA: Servicios de rescate responden a {palabra_destacada}.",
+                f"🚨 ALERTA MÁXIMA: La magnitud de {palabra_destacada} supera expectativas."
             ]
         }
     }
     
-    cat_aperturas = aperturas.get(categoria, aperturas['internacional'])
-    tono_aperturas = cat_aperturas.get(tono, cat_aperturas.get('neutral', cat_aperturas.get('grave')))
+    # Default a internacional
+    cat_aperturas = aperturas.get(categoria, {
+        'neutral': [
+            f"🌍 Desarrollo internacional: {palabra_destacada} mantiene en vilo a observadores globales.",
+            f"📰 Actualidad mundial: La situación de {palabra_destacada} genera debate internacional."
+        ]
+    })
+    
+    tono_aperturas = cat_aperturas.get(tono, cat_aperturas.get('neutral', ["Noticia internacional de última hora."]))
     apertura = random.choice(tono_aperturas)
     
-    desarrollos = {
-        'internacional': [
-            f"Fuentes oficiales confirman que la situación evoluciona rápidamente, con actualizaciones cada pocas horas. Los análisis preliminares sugieren que los efectos podrían extenderse más allá de las fronteras inmediatas.",
-            f"La comunidad internacional ha comenzado a articular una respuesta coordinada, aunque persisten diferencias sobre la estrategia más efectiva. Los organismos multilaterales mantienen reuniones de emergencia.",
-            f"Especialistas en relaciones internacionales advierten que el escenario actual podría estabilizarse o deteriorarse en las próximas 48 horas, dependiendo de decisiones clave que aún están pendientes."
-        ],
-        'economia': [
-            f"Los datos más recientes indican una volatilidad que podría mantenerse durante la semana. Los inversores institucionales recomiendan cautela y diversificación de carteras ante la incertidumbre global.",
-            f"Las proyecciones de los principales bancos centrales muestran dispersión significativa, reflejando la dificultad de anticipar el desenlace de los factores económicos en juego.",
-            f"El sector empresarial global ha manifestado preocupación por el impacto en cadenas de suministro internacionales y costos operativos, solicitando claridad en las políticas públicas."
-        ],
-        'tech': [
-            f"Los competidores tecnológicos globales aceleran sus propios desarrollos en respuesta, anticipando una oleada de lanzamientos en el próximo trimestre. La presión por innovar se intensifica.",
-            f"Expertos en ética tecnológica plantean interrogantes sobre las implicaciones sociales globales de estas capacidades, proponiendo marcos de regulación internacional.",
-            f"La adopción temprana por parte de grandes corporaciones multinacionales sugiere una maduración más rápida de lo habitual, aunque la accesibilidad global podría demorar."
-        ],
-        'politica': [
-            f"Los sondeos de opinión pública internacional muestran división acerca de la conveniencia de la medida, con diferencias marcadas según regiones y contextos políticos.",
-            f"La agenda mediática global de las próximas semanas estará dominada por este tema, con audiencias parlamentarias y foros públicos donde se expondrán argumentos encontrados.",
-            f"Analistas políticos internacionales anticipan que la resolución de este asunto definirá las coaliciones de poder globales para el período venidero."
-        ],
-        'crisis': [
-            f"Los protocolos internacionales de seguridad han sido activados en coordinación con organismos multilaterales. Se establecen canales de comunicación de emergencia.",
-            f"La evaluación de la crisis continúa, con cifras preliminares que probablemente se revisarán conforme avancen los equipos de análisis por zonas afectadas.",
-            f"La solidaridad internacional se manifiesta mediante ofertas de asistencia técnica y recursos que serán canalizados a través de mecanismos establecidos de cooperación global."
-        ],
-        'emergencia': [
-            f"Los equipos de respuesta internacional coordinan esfuerzos con autoridades locales. Se establecen centros de comando unificado en zonas afectadas.",
-            f"La evaluación de daños continúa en tiempo real, permitiendo ajustar la asignación de recursos de ayuda humanitaria según las necesidades más urgentes.",
-            f"Organismos internacionales de ayuda movilizan recursos financieros y materiales para atender la emergencia de {palabra_destacada}."
-        ]
-    }
-    
-    desarrollos_cat = desarrollos.get(categoria, desarrollos['internacional'])
-    desarrollo = random.choice(desarrollos_cat)
+    # Cuerpo del mensaje
+    desarrollo = f"Fuentes internacionales confirman que la situación continúa desarrollándose. Los detalles completos se conocerán en las próximas horas."
     
     cierres = {
-        'grave': [
-            "La situación permanece fluida y requiere monitoreo constante por parte de la comunidad internacional.",
-            "Se esperan desarrollos significativos en las próximas horas. Manténgase informado.",
-            "La comunidad global mantiene alerta máxima ante posibles escaladas."
-        ],
-        'positivo': [
-            "Los avances confirmados abren perspectivas prometedoras para el desarrollo posterior.",
-            "El seguimiento de estos desarrollos continuará en próximas actualizaciones internacionales.",
-            "Los actores involucrados expresan cauteloso optimismo ante los resultados obtenidos."
-        ],
-        'analitico': [
-            "El análisis profundo de estos datos continuará en reportes posteriores de nuestro equipo.",
-            "Las implicaciones completas se comprenderán mejor con el paso de los días y nueva información.",
-            "Expertos internacionales convienen en que el estudio de este fenómeno apenas comienza."
-        ],
-        'neutral': [
-            "Los detalles adicionales se conocerán conforme avancen las investigaciones oficiales.",
-            "Nuestra cobertura internacional de este tema continuará con actualizaciones pertinentes.",
-            "Se mantiene contacto con fuentes globales para ampliar esta información en desarrollo."
-        ]
+        'grave': ["La situación permanece fluida. Manténgase informado."],
+        'positivo': ["Desarrollo positivo que continuará actualizándose."],
+        'neutral': ["Seguimiento continuo de este tema internacional."]
     }
-    
     cierre = random.choice(cierres.get(tono, cierres['neutral']))
     
-    indicador_traduccion = ""
-    if idioma_origen == 'EN':
-        indicador_traduccion = "🌐 Noticia internacional traducida al español.\n\n"
+    # Indicador de traducción
+    header = "🌐 Noticia internacional traducida al español\n\n" if idioma == 'EN' else ""
     
-    texto_redactado = f"{indicador_traduccion}{apertura}\n\n{descripcion}\n\n{desarrollo}\n\n{cierre}\n\n📡 Fuente: {fuente}"
-    return texto_redactado
+    # Hashtags
+    hashtags = f"#NoticiasMundiales #{datetime.now().strftime('%Y')} #{categoria.capitalize()}"
+    
+    mensaje = f"""{header}📰 {apertura}
 
-def generar_titular_prensa(noticia):
-    """Genera un titular estilo prensa profesional"""
-    titulo_original = noticia['title']
-    categoria = noticia.get('categoria', 'internacional')
-    
-    plantillas = {
-        'crisis': [
-            "URGENTE: {titulo}",
-            "ÚLTIMA HORA: {titulo}",
-            "ALERTA INTERNACIONAL: {titulo}",
-            "CRISIS GLOBAL: {titulo}"
-        ],
-        'emergencia': [
-            "EMERGENCIA MUNDIAL: {titulo}",
-            "URGENTE - Desastre internacional: {titulo}",
-            "ALERTA: {titulo}",
-            "SITUACIÓN CRÍTICA: {titulo}"
-        ],
-        'politica': [
-            "Giro político internacional: {titulo}",
-            "Crisis diplomática: {titulo}",
-            "Tensión global: {titulo}",
-            "Decisión histórica: {titulo}"
-        ],
-        'economia': [
-            "Impacto económico global: {titulo}",
-            "Mercados internacionales: {titulo}",
-            "Crisis financiera: {titulo}",
-            "Alerta económica mundial: {titulo}"
-        ],
-        'tech': [
-            "Avance tecnológico global: {titulo}",
-            "Innovación internacional: {titulo}",
-            "Revolución tech: {titulo}",
-            "Futuro digital: {titulo}"
-        ],
-        'internacional': [
-            "Actualidad mundial: {titulo}",
-            "Noticia internacional: {titulo}",
-            "Escenario global: {titulo}",
-            "Desarrollo mundial: {titulo}"
-        ]
-    }
-    
-    plantillas_cat = plantillas.get(categoria, plantillas['internacional'])
-    plantilla = random.choice(plantillas_cat)
-    
-    titulo_limpio = re.sub(r'^(URGENTE|BREAKING|ALERTA|ÚLTIMA HORA|EMERGENCIA):\s*', '', titulo_original, flags=re.IGNORECASE)
-    
-    return plantilla.format(titulo=titulo_limpio)
+{descripcion}
 
-def generar_hashtags(titulo, categoria):
-    tags_base = {
-        'crisis': ['#ÚltimaHora', '#CrisisInternacional', '#ActualidadMundial'],
-        'emergencia': ['#EmergenciaGlobal', '#AlertaInternacional', '#NoticiaUrgente'],
-        'economia': ['#EconomíaGlobal', '#MercadosInternacionales', '#FinanzasMundiales'],
-        'tech': ['#TecnologíaGlobal', '#InnovaciónInternacional', '#TechNews'],
-        'politica': ['#PolíticaInternacional', '#DiplomaciaGlobal', '#GobiernoMundial'],
-        'internacional': ['#NoticiasMundiales', '#ActualidadInternacional', '#WorldNews']
-    }
-    
-    base = tags_base.get(categoria, ['#NoticiasInternacionales'])
-    titulo_lower = titulo.lower()
-    
-    if any(p in titulo_lower for p in ['eeuu', 'estados unidos', 'biden', 'trump', 'washington']):
-        base.append('#EEUU')
-    elif 'mexico' in titulo_lower or 'méxico' in titulo_lower:
-        base.append('#México')
-    elif any(p in titulo_lower for p in ['iran', 'israel', 'palestina', 'gaza', 'medio oriente']):
-        base.append('#MedioOriente')
-    elif 'ucrania' in titulo_lower or 'ucrania' in titulo_lower or 'rusia' in titulo_lower:
-        base.append('#Ucrania')
-    elif 'china' in titulo_lower or 'beijing' in titulo_lower:
-        base.append('#China')
-    elif 'europa' in titulo_lower or 'ue' in titulo_lower or 'unión europea' in titulo_lower:
-        base.append('#Europa')
-    elif 'latinoamérica' in titulo_lower or 'latinoamerica' in titulo_lower or 'américa latina' in titulo_lower:
-        base.append('#Latinoamérica')
-    
-    base.append(f"#{datetime.now().strftime('%Y')}")
-    
-    return ' '.join(base[:5])
+{desarrollo}
 
-def redactar_noticia(noticia, categoria):
-    titular = generar_titular_prensa(noticia)
-    cuerpo = generar_redaccion_inteligente(noticia, categoria)
-    hashtags = generar_hashtags(noticia['title'], categoria)
-    
-    mensaje = f"""📰 {titular}
+{cierre}
 
-{cuerpo}
+📡 Fuente: {fuente}
 
 {hashtags}
 
-— Verdad Hoy: Noticias Internacionales Al Minuto"""
+— Verdad Hoy: Noticias Internacionales"""
+    
     return mensaje
 
 def publicar_en_facebook():
-    global HISTORIAL_URLS, HISTORIAL_HASHES, HISTORIAL_TIMESTAMPS
+    """Función principal de publicación"""
+    global HISTORIAL_URLS, HISTORIAL_HASHES
     
-    print("DEBUG: Iniciando búsqueda de noticias virales...")
+    print("🚀 Iniciando proceso de publicación...")
+    
+    # Buscar noticias
     noticias = buscar_noticias_frescas()
-    print(f"DEBUG: Noticias candidatas encontradas: {len(noticias)}")
     
     if not noticias:
-        print("[AVISO] No hay noticias nuevas disponibles para publicar")
+        print("⚠️ No se encontraron noticias nuevas para publicar")
+        # Guardar historial igual para mantener consistencia
+        guardar_historial(HISTORIAL_URLS, HISTORIAL_HASHES)
         return False
     
-    for noticia in noticias:
-        try:
-            categoria = noticia['categoria']
-            
-            print(f"\n[SELECCIONADA] {noticia['title'][:60]}...")
-            print(f"  Score viral: {noticia['score']} | Categoría: {categoria} | Idioma: {noticia.get('idioma', 'ES')}")
-            
-            if not noticia.get('urlToImage'):
-                print("[SALTAR] Noticia sin imagen, buscando siguiente...")
-                continue
-            
-            print(f"[IMAGEN] Descargando: {noticia['urlToImage'][:60]}...")
-            image_path = descargar_imagen(noticia['urlToImage'])
-            
-            if not image_path:
-                print("[SALTAR] No se pudo descargar imagen, buscando siguiente...")
-                continue
-            
-            mensaje = redactar_noticia(noticia, categoria)
-            print(f"DEBUG: Mensaje generado ({len(mensaje)} caracteres)")
-            
-            exito = publicar_foto_con_texto(image_path, mensaje)
-            
-            if exito:
-                # ← MEJORADO: Guardar URL normalizada y timestamp
-                url_norm = noticia.get('url_normalizada', normalizar_url(noticia['url']))
-                HISTORIAL_URLS.add(url_norm)
-                HISTORIAL_HASHES.append(noticia['url_hash'])
-                HISTORIAL_TIMESTAMPS.append(datetime.now().isoformat())
-                guardar_historial(HISTORIAL_URLS, HISTORIAL_HASHES, HISTORIAL_TIMESTAMPS)
-                
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-                    print(f"[LIMPIEZA] Imagen temporal eliminada")
-                
-                return True
-            else:
-                if os.path.exists(image_path):
-                    os.remove(image_path)
-                print("[REINTENTO] Buscando siguiente noticia...")
-                continue
-                
-        except Exception as e:
-            print(f"❌ ERROR procesando noticia: {e}")
-            import traceback
-            traceback.print_exc()
+    print(f"\n🎯 Intentando publicar {len(noticias)} noticia(s) candidata(s)")
+    
+    # Intentar cada noticia hasta que una funcione
+    for i, noticia in enumerate(noticias, 1):
+        print(f"\n{'='*50}")
+        print(f"📰 Intento {i}/{len(noticias)}: {noticia['title'][:60]}...")
+        print(f"   Score: {noticia['score']} | Categoría: {noticia['categoria']}")
+        
+        # Verificar imagen
+        if not noticia.get('urlToImage'):
+            print("   ⏭️ Sin imagen, saltando...")
+            continue
+        
+        # Descargar imagen
+        img_path = descargar_imagen(noticia['urlToImage'])
+        if not img_path:
+            print("   ⏭️ Error descargando imagen, saltando...")
+            continue
+        
+        # Generar mensaje
+        mensaje = generar_redaccion(noticia, noticia['categoria'])
+        
+        # Publicar
+        exito = publicar_foto_con_texto(img_path, mensaje)
+        
+        # Limpiar imagen temporal
+        if os.path.exists(img_path):
+            os.remove(img_path)
+        
+        if exito:
+            # Éxito: guardar en historial
+            url_norm = noticia['url_normalizada']
+            url_hash = noticia['url_hash']
+            HISTORIAL_URLS.add(url_norm)
+            HISTORIAL_HASHES.add(url_hash)
+            guardar_historial(HISTORIAL_URLS, HISTORIAL_HASHES)
+            print(f"\n✅ PROCESO COMPLETADO - Noticia publicada y guardada")
+            return True
+        else:
+            print(f"   ⏭️ Falló publicación, intentando siguiente...")
             continue
     
-    print("❌ No se pudo publicar ninguna noticia")
+    # Si llegamos aquí, ninguna funcionó
+    print("\n❌ No se pudo publicar ninguna noticia")
+    guardar_historial(HISTORIAL_URLS, HISTORIAL_HASHES)
     return False
 
-# ← NUEVO: Función principal con loop de 30 minutos
-def main():
-    print("🚀 VERDAD DE HOY - Sistema de Noticias Internacionales")
-    print("="*60)
-    print(f"⏱️  Intervalo configurado: {MINUTOS_ENTRE_PUBLICACIONES} minutos")
-    print("="*60)
-    
-    while True:
-        try:
-            resultado = publicar_en_facebook()
-            print(f"\nDEBUG: Resultado de publicación: {'✅ ÉXITO' if resultado else '❌ FALLIDO'}")
-            
-            if resultado:
-                print(f"\n⏳ Esperando {MINUTOS_ENTRE_PUBLICACIONES} minutos hasta la próxima publicación...")
-                print(f"   Próxima ejecución: {(datetime.now().timestamp() + MINUTOS_ENTRE_PUBLICACIONES * 60)}")
-                time.sleep(MINUTOS_ENTRE_PUBLICACIONES * 60)
-            else:
-                print("\n⏳ No se publicó. Reintentando en 5 minutos...")
-                time.sleep(300)  # 5 minutos si falló
-                
-        except KeyboardInterrupt:
-            print("\n\n🛑 Detenido por el usuario")
-            break
-        except Exception as e:
-            print(f"\n❌ ERROR CRÍTICO en loop principal: {e}")
-            import traceback
-            traceback.print_exc()
-            print("⏳ Reintentando en 5 minutos...")
-            time.sleep(300)
-
 if __name__ == "__main__":
-    main()
+    try:
+        resultado = publicar_en_facebook()
+        exit(0 if resultado else 1)
+    except Exception as e:
+        print(f"\n💥 ERROR CRÍTICO: {e}")
+        import traceback
+        traceback.print_exc()
+        exit(1)

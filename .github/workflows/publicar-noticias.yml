@@ -1,6 +1,7 @@
 name: Publicar noticias
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "*/30 * * * *"
 

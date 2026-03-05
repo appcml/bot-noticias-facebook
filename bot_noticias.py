@@ -18,31 +18,62 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 # ============================================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN - Variables de Entorno
 # ============================================================================
 
-NEWS_API_KEY = os.getenv('NEWS_API_KEY')
-FB_PAGE_ID = os.getenv('FB_PAGE_ID')
-FB_ACCESS_TOKEN = os.getenv('B_ACCESS_TOKEN')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-STABILITY_API_KEY = os.getenv('STABILITY_API_KEY')
+NEWS_API_KEY = os.getenv('NEWS_API_KEY', '')
+FB_PAGE_ID = os.getenv('FB_PAGE_ID', '')
+FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN', '')  # ✅ CORREGIDO: era B_ACCESS_TOKEN
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+STABILITY_API_KEY = os.getenv('STABILITY_API_KEY', '')
 
-print(f"DEBUG: FB={bool(FB_PAGE_ID)}, OpenAI={bool(OPENAI_API_KEY)}, Stability={bool(STABILITY_API_KEY)}")
+# Verificación detallada
+print("="*60)
+print("🔍 VERIFICANDO CONFIGURACIÓN")
+print("="*60)
 
-if not all([FB_PAGE_ID, FB_ACCESS_TOKEN, OPENAI_API_KEY]):
-    raise ValueError("Faltan: FB_PAGE_ID, FB_ACCESS_TOKEN u OPENAI_API_KEY")
+errores = []
+
+if not FB_PAGE_ID or FB_PAGE_ID.strip() == '':
+    errores.append("❌ FB_PAGE_ID: No configurado")
+else:
+    print(f"✓ FB_PAGE_ID: {FB_PAGE_ID[:10]}...")
+
+if not FB_ACCESS_TOKEN or FB_ACCESS_TOKEN.strip() == '':
+    errores.append("❌ FB_ACCESS_TOKEN: No configurado")
+else:
+    print(f"✓ FB_ACCESS_TOKEN: {FB_ACCESS_TOKEN[:15]}...")
+
+if not OPENAI_API_KEY or OPENAI_API_KEY.strip() == '':
+    errores.append("❌ OPENAI_API_KEY: No configurado")
+else:
+    print(f"✓ OPENAI_API_KEY: {OPENAI_API_KEY[:15]}...")
+
+if errores:
+    print("\n" + "="*60)
+    print("❌ ERROR: Faltan variables obligatorias")
+    print("="*60)
+    for error in errores:
+        print(error)
+    print("\n💡 Configura los SECRETS en GitHub:")
+    print("   Settings → Secrets and variables → Actions → New repository secret")
+    sys.exit(1)
+
+print("="*60)
+print("✅ Configuración OK")
+print("="*60)
 
 # ============================================================================
 # FUENTES RSS
 # ============================================================================
 
 FUENTES_RSS = {
-    'BBC Mundo': 'http://feeds.bbci.co.uk/news/world/rss.xml',
-    'Reuters': 'http://feeds.reuters.com/reuters/worldnews',
-    'CNN World': 'http://rss.cnn.com/rss/edition_world.rss',
-    'El País': 'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
-    'Clarín': 'https://www.clarin.com/rss/lo-ultimo/',
-    'Infobae': 'https://www.infobae.com/feeds/rss/',
+    'BBC Mundo': 'http://feeds.bbci.co.uk/news/world/rss.xml ',
+    'Reuters': 'http://feeds.reuters.com/reuters/worldnews ',
+    'CNN World': 'http://rss.cnn.com/rss/edition_world.rss ',
+    'El País': 'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada ',
+    'Clarín': 'https://www.clarin.com/rss/lo-ultimo/ ',
+    'Infobae': 'https://www.infobae.com/feeds/rss/ ',
 }
 
 HISTORIAL_URLS = set()
@@ -85,7 +116,7 @@ def buscar_noticias():
     return resultado
 
 def buscar_newsapi():
-    url = f"https://newsapi.org/v2/top-headlines?language=es&pageSize=30&apiKey={NEWS_API_KEY}"
+    url = f"https://newsapi.org/v2/top-headlines?language=es&pageSize=30&apiKey= {NEWS_API_KEY}"
     r = requests.get(url, timeout=15)
     data = r.json()
     
@@ -139,7 +170,7 @@ def seleccionar_mejor_noticia(noticias):
     for i, n in enumerate(noticias[:10], 1):
         resumen += f"{i}. {n['titulo'][:80]} ({n['fuente']})\n"
     
-    prompt = f"""Eres editor de un medio internacional en español. Selecciona la NOTICIA MÁS RELEVANTE para público hispanohablante:
+    prompt = f"""Eres editor de medio internacional en español. Selecciona la NOTICIA MÁS RELEVANTE para público hispanohablante:
 
 {resumen}
 
@@ -149,7 +180,7 @@ Responde SOLO con el número (1-10):"""
 
     try:
         r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
+            "https://api.openai.com/v1/chat/completions ",
             headers={
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
                 "Content-Type": "application/json"
@@ -220,13 +251,13 @@ JSON DE SALIDA:
 
     try:
         r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
+            "https://api.openai.com/v1/chat/completions ",
             headers={
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
                 "Content-Type": "application/json"
             },
             json={
-                "model": "gpt-4o",  # Modelo más potente para textos extensos
+                "model": "gpt-4o",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.7,
                 "max_tokens": 2500
@@ -256,7 +287,7 @@ JSON DE SALIDA:
     # Fallback mejorado
     return {
         'titulo_seo': noticia['titulo'],
-        'articulo_completo': noticia['descripcion'] + "\n\nEsta noticia de " + noticia['fuente'] + " destaca por su relevancia en el ámbito internacional. Los expertos señalan que este tipo de acontecimientos tendrá repercusiones significativas en los próximos días. La comunidad internacional permanece atenta a los desarrollos posteriores. Se recomienda seguir las fuentes oficiales para obtener información actualizada.",
+        'articulo_completo': noticia['descripcion'] + "\n\n" + noticia['contenido'][:500] + "\n\nEsta información de " + noticia['fuente'] + " es de relevancia internacional. Los expertos señalan que este tipo de acontecimientos tendrá repercusiones significativas en los próximos días. La comunidad internacional permanece atenta a los desarrollos posteriores. Se recomienda seguir las fuentes oficiales para obtener información actualizada.",
         'resumen_redes': noticia['descripcion'][:150],
         'palabras_clave': ['noticias', 'actualidad', 'internacional', 'mundo', 'hoy'],
         'categoria': 'general',
@@ -272,12 +303,14 @@ def generar_imagen(titulo, keywords, categoria):
     print("🎨 GENERANDO IMAGEN CON IA")
     print("="*60)
     
+    # OPCIÓN 1: Stability AI
     if STABILITY_API_KEY:
         print("Intentando Stability AI...")
         ruta = generar_stability(titulo, keywords, categoria)
         if ruta:
             return ruta
     
+    # OPCIÓN 2: OpenAI DALL-E (siempre disponible)
     print("Intentando OpenAI DALL-E...")
     ruta = generar_dalle(titulo, keywords, categoria)
     if ruta:
@@ -298,7 +331,7 @@ def generar_stability(titulo, keywords, categoria):
             'salud': 'medical healthcare photography, hospital, clinical professional',
             'internacional': 'global news photojournalism, world events, international affairs',
             'deportes': 'sports action photography, stadium, dynamic, energetic',
-            'entretenimiento': 'celebrity news photography, entertainment industry, glamour'
+            'entretenimiento': 'entertainment news photography, media event, celebrity'
         }
         
         estilo = estilos.get(categoria, 'professional news photography, editorial')
@@ -308,7 +341,7 @@ def generar_stability(titulo, keywords, categoria):
         print(f"Prompt: {prompt[:100]}...")
         
         r = requests.post(
-            "https://api.stability.ai/v2beta/stable-image/generate/core",
+            "https://api.stability.ai/v2beta/stable-image/generate/core ",
             headers={
                 "Authorization": f"Bearer {STABILITY_API_KEY}",
                 "Accept": "image/*"
@@ -359,7 +392,7 @@ def generar_dalle(titulo, keywords, categoria):
         print(f"Prompt DALL-E: {prompt[:100]}...")
         
         r = requests.post(
-            "https://api.openai.com/v1/images/generations",
+            "https://api.openai.com/v1/images/generations ",
             headers={
                 "Authorization": f"Bearer {OPENAI_API_KEY}",
                 "Content-Type": "application/json"
@@ -402,7 +435,7 @@ def generar_dalle(titulo, keywords, categoria):
 # 5. PUBLICACIÓN EN FACEBOOK
 # ============================================================================
 
-def publicar_facebook(titulo, articulo, resumen, palabras_clave, hashtags, imagen_ruta, url_fuente, nombre_fuente):
+def publicar_facebook(titulo, articulo, resumen, hashtags, imagen_ruta, url_fuente, nombre_fuente):
     print("\n" + "="*60)
     print("📘 PUBLICANDO EN FACEBOOK")
     print("="*60)
@@ -425,7 +458,7 @@ def publicar_facebook(titulo, articulo, resumen, palabras_clave, hashtags, image
         print(f"Subiendo foto: {os.path.basename(imagen_ruta)}")
         
         try:
-            url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos"
+            url = f"https://graph.facebook.com/v19.0/ {FB_PAGE_ID}/photos"
             
             with open(imagen_ruta, 'rb') as foto:
                 files = {'file': ('noticia.png', foto, 'image/png')}
@@ -455,7 +488,7 @@ def publicar_facebook(titulo, articulo, resumen, palabras_clave, hashtags, image
         print("Publicando solo texto...")
         
         try:
-            url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/feed"
+            url = f"https://graph.facebook.com/v19.0/ {FB_PAGE_ID}/feed"
             
             mensaje_texto = f"""📰 {titulo}
 
@@ -491,70 +524,48 @@ def publicar_facebook(titulo, articulo, resumen, palabras_clave, hashtags, image
         time.sleep(3)
         
         # Comentario 1: Artículo completo
-        comentario_articulo(post_id, articulo, titulo)
-        
+        comentario_articulo(post_id, articulo)
         time.sleep(2)
         
         # Comentario 2: Fuente
-        agregar_comentario_fuente(post_id, url_fuente, nombre_fuente)
+        comentario_fuente(post_id, url_fuente, nombre_fuente)
         
         return True
     
     return False
 
-def comentario_articulo(post_id, articulo, titulo):
-    """Agrega el artículo completo en comentarios (si es muy largo, lo divide)"""
+def comentario_articulo(post_id, articulo):
+    """Agrega el artículo completo en comentarios"""
     try:
-        print("Agregando artículo completo en comentario...")
+        print("Agregando artículo completo...")
         
         post_clean = post_id.split('_')[-1] if '_' in post_id else post_id
-        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}_{post_clean}/comments"
+        url = f"https://graph.facebook.com/v19.0/ {FB_PAGE_ID}_{post_clean}/comments"
         
-        # Si el artículo es muy largo, dividir en partes
-        max_length = 8000  # Límite aproximado de Facebook
-        
-        if len(articulo) > max_length:
-            partes = [articulo[i:i+max_length] for i in range(0, len(articulo), max_length)]
-            
+        # Si es muy largo, dividir
+        max_len = 8000
+        if len(articulo) > max_len:
+            partes = [articulo[i:i+max_len] for i in range(0, len(articulo), max_len)]
             for i, parte in enumerate(partes, 1):
                 mensaje = f"📄 Continuación ({i}/{len(partes)}):\n\n{parte}"
-                
-                r = requests.post(url, data={
-                    'message': mensaje,
-                    'access_token': FB_ACCESS_TOKEN
-                }, timeout=30)
-                
-                if r.status_code != 200:
-                    print(f"⚠️ Error parte {i}: {r.status_code}")
-                
+                requests.post(url, data={'message': mensaje, 'access_token': FB_ACCESS_TOKEN}, timeout=30)
                 time.sleep(1)
         else:
-            mensaje = f"""📄 ARTÍCULO COMPLETO:
-
-{articulo}
-
-_Lee la fuente original en el siguiente comentario_ ⬇️"""
-            
-            r = requests.post(url, data={
-                'message': mensaje,
-                'access_token': FB_ACCESS_TOKEN
-            }, timeout=30)
-            
+            mensaje = f"📄 ARTÍCULO COMPLETO:\n\n{articulo}\n\n_Fuente en siguiente comentario_ ⬇️"
+            r = requests.post(url, data={'message': mensaje, 'access_token': FB_ACCESS_TOKEN}, timeout=30)
             if r.status_code == 200:
                 print("✓ Artículo agregado")
-            else:
-                print(f"⚠️ Error: {r.status_code}")
-                
+        
     except Exception as e:
         print(f"⚠️ Error artículo: {e}")
 
-def agregar_comentario_fuente(post_id, url_fuente, nombre_fuente):
+def comentario_fuente(post_id, url_fuente, nombre_fuente):
     """Agrega comentario con link a fuente"""
     try:
         print("Agregando fuente original...")
         
         post_clean = post_id.split('_')[-1] if '_' in post_id else post_id
-        url = f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}_{post_clean}/comments"
+        url = f"https://graph.facebook.com/v19.0/ {FB_PAGE_ID}_{post_clean}/comments"
         
         mensaje = f"""📎 FUENTE ORIGINAL: {nombre_fuente}
 
@@ -562,18 +573,12 @@ def agregar_comentario_fuente(post_id, url_fuente, nombre_fuente):
 
 📲 Síguenos para más noticias internacionales en español
 
-#Noticias #Actualidad #Internacional #MundoHoy #Información #Periodismo #NewsEnEspañol"""
+#Noticias #Actualidad #Internacional #MundoHoy #NewsEnEspañol"""
         
-        r = requests.post(url, data={
-            'message': mensaje,
-            'access_token': FB_ACCESS_TOKEN
-        }, timeout=30)
-        
+        r = requests.post(url, data={'message': mensaje, 'access_token': FB_ACCESS_TOKEN}, timeout=30)
         if r.status_code == 200:
             print("✓ Fuente agregada")
-        else:
-            print(f"⚠️ Error fuente: {r.status_code}")
-            
+        
     except Exception as e:
         print(f"⚠️ Error fuente: {e}")
 
@@ -604,13 +609,13 @@ def main():
     print("="*60)
     
     try:
-        # 1. Buscar
+        # 1. Buscar noticias
         noticias = buscar_noticias()
         if not noticias:
             print("❌ No hay noticias")
             return False
         
-        # 2. Seleccionar
+        # 2. Seleccionar la mejor
         seleccionada = seleccionar_mejor_noticia(noticias)
         HISTORIAL_URLS.add(seleccionada['url'])
         
@@ -618,29 +623,28 @@ def main():
         print(f"   {seleccionada['titulo'][:70]}")
         print(f"   Fuente: {seleccionada['fuente']}")
         
-        # 3. Reescribir (ARTÍCULO EXTENSO)
+        # 3. Reescribir profesionalmente (ARTÍCULO EXTENSO)
         reescrita = reescribir_noticia(seleccionada)
         
-        # 4. Generar imagen
+        # 4. Generar imagen con IA (SIEMPRE, nunca descarga original)
         imagen_ruta = generar_imagen(
             reescrita['titulo_seo'],
             reescrita['palabras_clave'],
             reescrita['categoria']
         )
         
-        # 5. Publicar
+        # 5. Publicar en Facebook
         exito = publicar_facebook(
             titulo=reescrita['titulo_seo'],
             articulo=reescrita['articulo_completo'],
             resumen=reescrita['resumen_redes'],
-            palabras_clave=reescrita['palabras_clave'],
             hashtags=reescrita['hashtags'],
             imagen_ruta=imagen_ruta,
             url_fuente=seleccionada['url'],
             nombre_fuente=seleccionada['fuente']
         )
         
-        # 6. Limpiar
+        # 6. Limpiar temporales
         if imagen_ruta and os.path.exists(imagen_ruta):
             try:
                 os.remove(imagen_ruta)
@@ -655,7 +659,7 @@ def main():
         return exito
         
     except Exception as e:
-        print(f"\n❌ ERROR: {e}")
+        print(f"\n❌ ERROR CRÍTICO: {e}")
         import traceback
         traceback.print_exc()
         return False

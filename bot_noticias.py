@@ -13,23 +13,24 @@ from io import BytesIO
 # APIs
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 GNEWS_API_KEY = os.getenv('GNEWS_API_KEY')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')  # NUEVO: OpenAI
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 DEEPL_API_KEY = os.getenv('DEEPL_API_KEY')
 
-print(f"🔍 NEWS_API_KEY: {bool(NEWS_API_KEY)} | GNEWS_API_KEY: {bool(GNEWS_API_KEY)} | OPENAI: {bool(OPENAI_API_KEY)}")
-print(f"🔍 FB: {bool(FB_PAGE_ID and FB_ACCESS_TOKEN)}")
+print(f"🔍 Configuración:")
+print(f"   NEWS_API_KEY: {bool(NEWS_API_KEY)}")
+print(f"   GNEWS_API_KEY: {bool(GNEWS_API_KEY)}")
+print(f"   OPENAI_API_KEY: {bool(OPENAI_API_KEY)}")
+print(f"   FB_PAGE_ID: {bool(FB_PAGE_ID)}")
+print(f"   FB_ACCESS_TOKEN: {bool(FB_ACCESS_TOKEN)}")
 
 if not all([FB_PAGE_ID, FB_ACCESS_TOKEN]):
     raise ValueError("❌ Faltan credenciales de Facebook")
-if not OPENAI_API_KEY:
-    print("⚠️ Sin OpenAI - se usará redacción básica")
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 MAX_HISTORIAL = 1000
 
-# RSS Feeds ILIMITADOS
 RSS_FEEDS = [
     'http://feeds.bbci.co.uk/news/world/rss.xml',
     'https://www.reuters.com/rssFeed/worldNews',
@@ -38,7 +39,6 @@ RSS_FEEDS = [
     'https://www.theverge.com/rss/index.xml',
     'https://feeds.politico.com/politics/news.xml',
     'https://rss.cnn.com/rss/edition_world.rss',
-    'https://feeds.huffpost.com/HuffPostWorld',
 ]
 
 def normalizar_url(url):
@@ -68,10 +68,10 @@ def cargar_historial():
                 data = json.load(f)
                 urls = set(data.get('urls', []))
                 hashes = set(data.get('hashes', []))
-                print(f"📚 Historial: {len(urls)} URLs guardadas")
+                print(f"📚 Historial cargado: {len(urls)} URLs")
                 return urls, hashes
-        except Exception as e:
-            print(f"⚠️ Error historial: {e}")
+        except:
+            pass
     print("📚 Nuevo historial")
     return set(), set()
 
@@ -87,9 +87,8 @@ def guardar_historial(urls, hashes):
 
 HISTORIAL_URLS, HISTORIAL_HASHES = cargar_historial()
 
-def traducir_deepl(texto, idioma='EN'):
-    """Traduce usando DeepL si está disponible"""
-    if not DEEPL_API_KEY or idioma != 'EN' or not texto:
+def traducir_deepl(texto):
+    if not DEEPL_API_KEY or not texto:
         return texto
     try:
         url = "https://api-free.deepl.com/v2/translate"
@@ -102,39 +101,38 @@ def traducir_deepl(texto, idioma='EN'):
         response = requests.post(url, data=params, timeout=10)
         if response.status_code == 200:
             return response.json()['translations'][0]['text']
-    except Exception as e:
-        print(f"⚠️ DeepL error: {e}")
+    except:
+        pass
     return texto
 
-def redactar_con_openai(titulo, descripcion, fuente, categoria):
-    """Usa GPT-4o-mini para redactar la noticia en español profesional"""
+def redactar_openai(titulo, descripcion, fuente, categoria):
     if not OPENAI_API_KEY:
         return None
     
-    try:
-        prompt = f"""Eres un redactor de noticias profesional. Redacta esta noticia en ESPAÑOL para publicar en Facebook.
+    prompt = f"""Redacta esta noticia en ESPAÑOL profesional para Facebook.
 
 DATOS:
-- Título original: {titulo}
+- Título: {titulo}
 - Descripción: {descripcion}
 - Fuente: {fuente}
 - Categoría: {categoria}
 
-INSTRUCCIONES:
-1. Escribe en español fluido y profesional
-2. Crea un titular llamativo (máx 100 caracteres)
-3. Redacta 2-3 párrafos informativos (150-200 palabras total)
-4. Tono: periodístico, objetivo, atractivo
-5. NO uses frases genéricas como "según fuentes" o "se espera que"
-6. Incluye el nombre de la fuente al final
+REGLAS:
+1. Español fluido y profesional
+2. Titular llamativo (máx 100 caracteres)
+3. 2-3 párrafos, 150-200 palabras totales
+4. Tono periodístico objetivo
+5. NO uses "según fuentes" genérico
+6. Menciona la fuente al final
 
-FORMATO DE RESPUESTA:
-TITULAR: [titular en español]
+FORMATO:
+TITULAR: [titular]
 
-CUERPO: [texto redactado en español]
+CUERPO: [texto redactado]
 
 FUENTE: {fuente}"""
 
+    try:
         headers = {
             'Authorization': f'Bearer {OPENAI_API_KEY}',
             'Content-Type': 'application/json'
@@ -143,14 +141,14 @@ FUENTE: {fuente}"""
         data = {
             'model': 'gpt-4o-mini',
             'messages': [
-                {'role': 'system', 'content': 'Eres un periodista experto que redacta noticias en español.'},
+                {'role': 'system', 'content': 'Eres un periodista experto.'},
                 {'role': 'user', 'content': prompt}
             ],
             'temperature': 0.7,
-            'max_tokens': 500
+            'max_tokens': 600
         }
         
-        print("🤖 Solicitando redacción a OpenAI...")
+        print("🤖 OpenAI redactando...")
         response = requests.post(
             'https://api.openai.com/v1/chat/completions',
             headers=headers,
@@ -159,38 +157,31 @@ FUENTE: {fuente}"""
         )
         
         if response.status_code == 200:
-            resultado = response.json()['choices'][0]['message']['content']
-            print("✅ Redacción OpenAI recibida")
-            return resultado
-        else:
-            print(f"⚠️ OpenAI error: {response.status_code} - {response.text[:200]}")
-            return None
-            
+            return response.json()['choices'][0]['message']['content']
     except Exception as e:
-        print(f"⚠️ Error OpenAI: {e}")
-        return None
+        print(f"⚠️ OpenAI error: {e}")
+    return None
 
-def generar_hashtags(categoria, titulo):
-    """Genera exactamente 5 hashtags relevantes"""
-    base_tags = {
+def generar_5_hashtags(categoria, titulo):
+    tags_base = {
         'crisis': ['#ÚltimaHora', '#CrisisInternacional', '#AlertaMundial', '#NoticiasEnDesarrollo', '#Actualidad'],
-        'tech': ['#Tecnología', '#Innovación', '#TechNews', '#FuturoDigital', '#IA'],
-        'economia': ['#Economía', '#Mercados', '#Finanzas', '#Negocios', '#GlobalEconomy'],
-        'politica': ['#Política', '#Internacional', '#Diplomacia', '#Gobierno', '#ActualidadPolítica'],
+        'tech': ['#Tecnología', '#Innovación', '#TechNews', '#InteligenciaArtificial', '#FuturoDigital'],
+        'economia': ['#Economía', '#MercadosGlobales', '#Finanzas', '#NegociosInternacionales', '#Inversión'],
+        'politica': ['#PolíticaInternacional', '#Diplomacia', '#GobiernoGlobal', '#ActualidadPolítica', '#Mundo'],
         'internacional': ['#NoticiasMundiales', '#Internacional', '#WorldNews', '#ActualidadGlobal', '#HoyEnElMundo']
     }
     
-    tags = base_tags.get(categoria, base_tags['internacional']).copy()
+    tags = tags_base.get(categoria, tags_base['internacional']).copy()
     
-    # Agregar hashtag del año siempre
+    # Agregar hashtag del año
     tags.append(f"#{datetime.now().strftime('%Y')}")
     
-    # Extraer palabras clave del título para hashtag personalizado
+    # Extraer palabra clave del título
     palabras = re.findall(r'\b[A-Z][a-z]{4,}\b', titulo)
     if palabras:
-        tag_custom = '#' + palabras[0]
-        if tag_custom not in tags:
-            tags.append(tag_custom)
+        tag = '#' + palabras[0]
+        if tag not in tags:
+            tags.append(tag)
     
     # Seleccionar 5 únicos
     return ' '.join(list(dict.fromkeys(tags))[:5])
@@ -199,7 +190,6 @@ def buscar_newsapi():
     if not NEWS_API_KEY:
         return []
     try:
-        print("\n📡 NewsAPI...")
         url = "https://newsapi.org/v2/top-headlines"
         params = {
             'category': 'general',
@@ -210,18 +200,15 @@ def buscar_newsapi():
         response = requests.get(url, params=params, timeout=10)
         data = response.json()
         if data.get('status') == 'ok':
-            print(f"✅ NewsAPI: {len(data.get('articles', []))}")
             return data.get('articles', [])
-        return []
-    except Exception as e:
-        print(f"⚠️ NewsAPI: {e}")
-        return []
+    except:
+        pass
+    return []
 
 def buscar_gnews():
     if not GNEWS_API_KEY:
         return []
     try:
-        print("\n📡 GNews...")
         url = "https://gnews.io/api/v4/top-headlines"
         params = {
             'lang': 'en',
@@ -231,22 +218,17 @@ def buscar_gnews():
         response = requests.get(url, params=params, timeout=10)
         data = response.json()
         if 'articles' in data:
-            print(f"✅ GNews: {len(data['articles'])}")
-            articulos = []
-            for art in data['articles']:
-                articulos.append({
-                    'title': art.get('title', ''),
-                    'description': art.get('description', ''),
-                    'url': art.get('url', ''),
-                    'urlToImage': art.get('image', ''),
-                    'publishedAt': art.get('publishedAt', datetime.now().isoformat()),
-                    'source': {'name': art.get('source', {}).get('name', 'GNews')}
-                })
-            return articulos
-        return []
-    except Exception as e:
-        print(f"⚠️ GNews: {e}")
-        return []
+            return [{
+                'title': a.get('title', ''),
+                'description': a.get('description', ''),
+                'url': a.get('url', ''),
+                'urlToImage': a.get('image', ''),
+                'publishedAt': a.get('publishedAt', ''),
+                'source': {'name': a.get('source', {}).get('name', 'GNews')}
+            } for a in data['articles']]
+    except:
+        pass
+    return []
 
 def buscar_rss():
     noticias = []
@@ -254,57 +236,58 @@ def buscar_rss():
     
     for feed_url in feeds:
         try:
-            print(f"\n📡 RSS: {feed_url.split('/')[2]}")
             feed = feedparser.parse(feed_url)
-            
             for entry in feed.entries[:8]:
                 imagen = ''
                 if hasattr(entry, 'media_content') and entry.media_content:
                     imagen = entry.media_content[0].get('url', '')
                 elif 'summary' in entry:
-                    img_match = re.search(r'src="(https?://[^"]+\.(?:jpg|jpeg|png|gif))"', entry.summary, re.I)
-                    if img_match:
-                        imagen = img_match.group(1)
+                    match = re.search(r'src="(https?://[^"]+\.(?:jpg|jpeg|png|gif))"', entry.summary, re.I)
+                    if match:
+                        imagen = match.group(1)
                 
                 noticias.append({
                     'title': entry.get('title', ''),
                     'description': entry.get('summary', entry.get('description', ''))[:300],
                     'url': entry.get('link', ''),
                     'urlToImage': imagen,
-                    'publishedAt': entry.get('published', datetime.now().isoformat()),
+                    'publishedAt': entry.get('published', ''),
                     'source': {'name': feed.feed.get('title', 'RSS')}
                 })
-        except Exception as e:
-            print(f"⚠️ RSS error: {e}")
-    
+        except:
+            pass
     return noticias
 
 def buscar_noticias():
     print(f"\n{'='*60}")
-    print(f"🔍 BUSCANDO - {datetime.now().strftime('%H:%M:%S')}")
+    print(f"🔍 BUSCANDO NOTICIAS - {datetime.now().strftime('%H:%M:%S')}")
     print(f"{'='*60}")
     
     todas = []
     
-    # Intentar fuentes en orden
     noticias = buscar_newsapi()
     todas.extend(noticias)
+    print(f"📡 NewsAPI: {len(noticias)}")
     
     if len(todas) < 5:
         noticias = buscar_gnews()
         todas.extend(noticias)
+        print(f"📡 GNews: {len(noticias)}")
     
     if len(todas) < 3:
-        print("\n📡 Usando RSS...")
         noticias = buscar_rss()
         todas.extend(noticias)
+        print(f"📡 RSS: {len(noticias)}")
     
-    print(f"\n📊 Total: {len(todas)} noticias")
+    print(f"\n📊 Total: {len(todas)}")
     
-    # Procesar
     validas = []
     for art in todas:
-        if not es_valida(art):
+        if not art.get('title') or "[Removed]" in art['title'] or len(art.get('title', '')) < 10:
+            continue
+        if not art.get('description') or len(art.get('description', '')) < 30:
+            continue
+        if not art.get('url') or not art['url'].startswith('http'):
             continue
         
         url_norm = normalizar_url(art['url'])
@@ -314,92 +297,40 @@ def buscar_noticias():
             print(f"⏭️  Ya publicada: {art['title'][:40]}")
             continue
         
-        # Traducir primero con DeepL
-        titulo_es = traducir_deepl(art.get('title', ''), 'EN')
-        desc_es = traducir_deepl(art.get('description', ''), 'EN')
+        # Traducir
+        titulo_es = traducir_deepl(art['title'])
+        desc_es = traducir_deepl(art['description'])
         
-        art['title_original'] = art.get('title', '')
-        art['description_original'] = art.get('description', '')
-        art['title'] = titulo_es
-        art['description'] = desc_es
-        art['url_normalizada'] = url_norm
-        art['url_hash'] = url_hash
-        art['categoria'] = detectar_categoria(art)
-        art['score'] = calcular_score(art)
+        # Detectar categoría
+        texto = f"{titulo_es} {desc_es}".lower()
+        if any(p in texto for p in ['guerra', 'ataque', 'crisis', 'conflicto', 'bomba']):
+            categoria = 'crisis'
+        elif any(p in texto for p in ['tecnología', 'inteligencia artificial', 'software', 'digital', 'app']):
+            categoria = 'tech'
+        elif any(p in texto for p in ['economía', 'mercado', 'finanzas', 'dinero', 'bolsa']):
+            categoria = 'economia'
+        elif any(p in texto for p in ['política', 'gobierno', 'presidente', 'elección', 'ministro']):
+            categoria = 'politica'
+        else:
+            categoria = 'internacional'
+        
+        art.update({
+            'title': titulo_es,
+            'description': desc_es,
+            'url_normalizada': url_norm,
+            'url_hash': url_hash,
+            'categoria': categoria
+        })
         
         validas.append(art)
         print(f"✅ Nueva: {titulo_es[:50]}...")
     
     print(f"📊 Válidas: {len(validas)}")
     
-    # Filtrar con imagen
     con_imagen = [n for n in validas if n.get('urlToImage') and str(n['urlToImage']).startswith('http')]
     print(f"📊 Con imagen: {len(con_imagen)}")
     
-    con_imagen.sort(key=lambda x: x['score'], reverse=True)
     return con_imagen[:5]
-
-def es_valida(art):
-    if not art or not isinstance(art, dict):
-        return False
-    title = str(art.get('title', ''))
-    if not title or "[Removed]" in title or len(title) < 10:
-        return False
-    desc = str(art.get('description', ''))
-    if not desc or len(desc) < 30:
-        return False
-    url = str(art.get('url', ''))
-    if not url or not url.startswith('http'):
-        return False
-    return True
-
-def detectar_categoria(art):
-    texto = f"{art.get('title', '')} {art.get('description', '')}".lower()
-    
-    if any(p in texto for p in ['war', 'attack', 'invasion', 'missile', 'bomb', 'conflict', 'crisis']):
-        return 'crisis'
-    elif any(p in texto for p in ['tech', 'ai', 'artificial intelligence', 'software', 'app', 'digital']):
-        return 'tech'
-    elif any(p in texto for p in ['economy', 'market', 'stock', 'inflation', 'trade', 'financial']):
-        return 'economia'
-    elif any(p in texto for p in ['election', 'president', 'politics', 'government', 'vote', 'minister']):
-        return 'politica'
-    return 'internacional'
-
-def calcular_score(art):
-    score = 50
-    texto = f"{art.get('title', '')} {art.get('description', '')}".lower()
-    
-    palabras = {
-        'breaking': 40, 'urgent': 35, 'alert': 30,
-        'trump': 30, 'biden': 25, 'putin': 30,
-        'war': 35, 'attack': 35, 'invasion': 35,
-        'crash': 30, 'crisis': 25,
-        'dead': 30, 'killed': 35,
-        'ai': 25, 'artificial intelligence': 30,
-        'market': 20, 'economy': 20
-    }
-    
-    for palabra, puntos in palabras.items():
-        if palabra in texto:
-            score += puntos
-    
-    # Recencia
-    try:
-        fecha = art.get('publishedAt', '')
-        if fecha:
-            fecha_art = datetime.fromisoformat(str(fecha).replace('Z', '+00:00'))
-            horas = (datetime.now().timestamp() - fecha_art.timestamp()) / 3600
-            if horas < 2: score += 40
-            elif horas < 6: score += 30
-            elif horas < 12: score += 20
-    except:
-        pass
-    
-    if art.get('urlToImage'):
-        score += 15
-    
-    return score
 
 def descargar_imagen(url):
     if not url or not str(url).startswith('http'):
@@ -428,7 +359,7 @@ def publicar_facebook(image_path, mensaje):
         with open(image_path, 'rb') as img_file:
             files = {'file': img_file}
             data = {'message': mensaje, 'access_token': FB_ACCESS_TOKEN}
-            print("📤 Publicando...")
+            print("📤 Publicando en Facebook...")
             response = requests.post(url, files=files, data=data, timeout=60)
             result = response.json()
             if response.status_code == 200 and 'id' in result:
@@ -441,68 +372,52 @@ def publicar_facebook(image_path, mensaje):
         print(f"❌ Error: {e}")
         return False
 
-def crear_publicacion(noticia):
-    """Crea el mensaje final con OpenAI o fallback"""
+def crear_mensaje(noticia):
     titulo = noticia['title']
     descripcion = noticia['description']
     fuente = noticia.get('source', {}).get('name', 'Medios Internacionales')
     categoria = noticia['categoria']
     
     # Intentar redacción con OpenAI
-    redaccion_openai = redactar_con_openai(titulo, descripcion, fuente, categoria)
+    redaccion = redactar_openai(titulo, descripcion, fuente, categoria)
     
-    if redaccion_openai:
-        # Parsear respuesta de OpenAI
-        try:
-            lines = redaccion_openai.split('\n')
-            titular = ''
-            cuerpo = ''
-            en_cuerpo = False
-            
-            for line in lines:
-                if line.startswith('TITULAR:'):
-                    titular = line.replace('TITULAR:', '').strip()
-                elif line.startswith('CUERPO:'):
-                    en_cuerpo = True
-                elif en_cuerpo and line.strip():
-                    cuerpo += line + '\n'
-            
-            if titular and cuerpo:
-                mensaje = f"📰 {titular}\n\n{cuerpo.strip()}"
-            else:
-                # Si no se parseó bien, usar todo
-                mensaje = f"📰 {titulo}\n\n{redaccion_openai}"
-        except:
-            mensaje = f"📰 {titulo}\n\n{redaccion_openai}"
+    if redaccion:
+        # Extraer partes
+        titular = titulo
+        cuerpo = descripcion
+        
+        for linea in redaccion.split('\n'):
+            if linea.startswith('TITULAR:'):
+                titular = linea.replace('TITULAR:', '').strip()
+            elif linea.startswith('CUERPO:'):
+                continue
+            elif not linea.startswith('FUENTE:') and linea.strip():
+                cuerpo = linea.strip()
+        
+        mensaje = f"📰 {titular}\n\n{cuerpo}"
     else:
-        # Fallback: usar traducción DeepL directa
-        mensaje = f"""📰 {titulo}
-
-{descripcion}
-
-📡 Fuente: {fuente}"""
+        # Fallback
+        mensaje = f"📰 {titulo}\n\n{descripcion}\n\n📡 Fuente: {fuente}"
     
-    # Agregar hashtags (exactamente 5)
-    hashtags = generar_hashtags(categoria, titulo)
+    # 5 hashtags
+    hashtags = generar_5_hashtags(categoria, titulo)
     
-    mensaje_final = f"""{mensaje}
+    return f"""{mensaje}
 
 {hashtags}
 
 — Verdad Hoy: Noticias Internacionales"""
-    
-    return mensaje_final
 
 def main():
     global HISTORIAL_URLS, HISTORIAL_HASHES
     
-    print("🚀 BOT DE NOTICIAS - Modo OpenAI + Español")
+    print("🚀 BOT DE NOTICIAS - Español + OpenAI + 5 Hashtags")
     print("="*60)
     
     noticias = buscar_noticias()
     
     if not noticias:
-        print("⚠️ Sin noticias")
+        print("⚠️ Sin noticias disponibles")
         guardar_historial(HISTORIAL_URLS, HISTORIAL_HASHES)
         return False
     
@@ -511,37 +426,27 @@ def main():
     for i, noticia in enumerate(noticias, 1):
         print(f"\n{'='*50}")
         print(f"Intento {i}/{len(noticias)}")
-        print(f"Título: {noticia['title'][:60]}")
         
-        if not noticia.get('urlToImage'):
+        img_path = descargar_imagen(noticia.get('urlToImage'))
+        if not img_path:
             print("⏭️ Sin imagen")
             continue
         
-        # Descargar imagen
-        img_path = descargar_imagen(noticia['urlToImage'])
-        if not img_path:
-            print("⏭️ Error imagen")
-            continue
+        mensaje = crear_mensaje(noticia)
+        print(f"\n📝 Preview:\n{mensaje[:150]}...")
         
-        # Crear publicación con OpenAI
-        mensaje = crear_publicacion(noticia)
-        print(f"\n📝 Mensaje ({len(mensaje)} chars):")
-        print(mensaje[:200] + "..." if len(mensaje) > 200 else mensaje)
-        
-        # Publicar
-        exito = publicar_facebook(img_path, mensaje)
-        
-        # Limpiar
-        if os.path.exists(img_path):
-            os.remove(img_path)
-        
-        if exito:
-            # Guardar en historial
+        if publicar_facebook(img_path, mensaje):
+            if os.path.exists(img_path):
+                os.remove(img_path)
+            
             HISTORIAL_URLS.add(noticia['url_normalizada'])
             HISTORIAL_HASHES.add(noticia['url_hash'])
             guardar_historial(HISTORIAL_URLS, HISTORIAL_HASHES)
-            print("\n✅ ÉXITO - Noticia publicada")
+            print("\n✅ ÉXITO")
             return True
+        
+        if os.path.exists(img_path):
+            os.remove(img_path)
     
     print("\n❌ Falló todo")
     guardar_historial(HISTORIAL_URLS, HISTORIAL_HASHES)
@@ -555,4 +460,3 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         exit(1)
-

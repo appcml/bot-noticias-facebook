@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 Bot de Noticias Automático para Facebook
-- Redacción extensa e informativa con OpenAI
-- Más hashtags para alcance orgánico
-- Optimizado para público hispanohablante
+- Redacción extensa y profunda con OpenAI
+- Imagen estática generada con DALL-E (sin link)
+- Fuente original en comentarios
 """
 
 import os
@@ -18,48 +18,38 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 
 # ============================================================================
-# CONFIGURACIÓN - Variables de Entorno
+# CONFIGURACIÓN
 # ============================================================================
 
 NEWS_API_KEY = os.getenv('NEWS_API_KEY', '')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID', '')
-FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN', '')  # ✅ CORREGIDO: era B_ACCESS_TOKEN
+FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN', '')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
-STABILITY_API_KEY = os.getenv('STABILITY_API_KEY', '')
 
-# Verificación detallada
 print("="*60)
 print("🔍 VERIFICANDO CONFIGURACIÓN")
 print("="*60)
 
 errores = []
-
 if not FB_PAGE_ID or FB_PAGE_ID.strip() == '':
-    errores.append("❌ FB_PAGE_ID: No configurado")
+    errores.append("❌ FB_PAGE_ID")
 else:
     print(f"✓ FB_PAGE_ID: {FB_PAGE_ID[:10]}...")
 
 if not FB_ACCESS_TOKEN or FB_ACCESS_TOKEN.strip() == '':
-    errores.append("❌ FB_ACCESS_TOKEN: No configurado")
+    errores.append("❌ FB_ACCESS_TOKEN")
 else:
     print(f"✓ FB_ACCESS_TOKEN: {FB_ACCESS_TOKEN[:15]}...")
 
 if not OPENAI_API_KEY or OPENAI_API_KEY.strip() == '':
-    errores.append("❌ OPENAI_API_KEY: No configurado")
+    errores.append("❌ OPENAI_API_KEY")
 else:
     print(f"✓ OPENAI_API_KEY: {OPENAI_API_KEY[:15]}...")
 
 if errores:
-    print("\n" + "="*60)
-    print("❌ ERROR: Faltan variables obligatorias")
-    print("="*60)
-    for error in errores:
-        print(error)
-    print("\n💡 Configura los SECRETS en GitHub:")
-    print("   Settings → Secrets and variables → Actions → New repository secret")
+    print("\n❌ Faltan variables:", ", ".join(errores))
     sys.exit(1)
 
-print("="*60)
 print("✅ Configuración OK")
 print("="*60)
 
@@ -77,7 +67,6 @@ FUENTES_RSS = {
 }
 
 HISTORIAL_URLS = set()
-MAX_HISTORIAL = 100
 
 # ============================================================================
 # 1. BÚSQUEDA DE NOTICIAS
@@ -85,7 +74,7 @@ MAX_HISTORIAL = 100
 
 def buscar_noticias():
     print("\n" + "="*60)
-    print("🔍 BUSCANDO NOTICIAS DE ACTUALIDAD")
+    print("🔍 BUSCANDO NOTICIAS")
     print("="*60)
     
     todas = []
@@ -94,7 +83,7 @@ def buscar_noticias():
         try:
             n = buscar_newsapi()
             todas.extend(n)
-            print(f"✓ NewsAPI: {len(n)} noticias")
+            print(f"✓ NewsAPI: {len(n)}")
         except Exception as e:
             print(f"✗ NewsAPI: {e}")
     
@@ -102,7 +91,7 @@ def buscar_noticias():
         try:
             n = buscar_rss(url, nombre)
             todas.extend(n)
-            print(f"✓ {nombre}: {len(n)} noticias")
+            print(f"✓ {nombre}: {len(n)}")
         except Exception as e:
             print(f"✗ {nombre}: {str(e)[:50]}")
     
@@ -112,7 +101,7 @@ def buscar_noticias():
             unicas[n['url']] = n
     
     resultado = list(unicas.values())
-    print(f"\n📊 Total únicas disponibles: {len(resultado)}")
+    print(f"\n📊 Total únicas: {len(resultado)}")
     return resultado
 
 def buscar_newsapi():
@@ -143,10 +132,13 @@ def buscar_rss(url_rss, nombre_fuente):
         if '<' in desc:
             desc = BeautifulSoup(desc, 'html.parser').get_text()
         
+        # Obtener más contenido si está disponible
+        contenido_completo = entry.get('content', [{}])[0].get('value', desc)
+        
         noticias.append({
             'titulo': entry.title,
             'descripcion': desc[:500],
-            'contenido': entry.get('content', [{}])[0].get('value', desc),
+            'contenido': contenido_completo if len(contenido_completo) > 200 else desc,
             'url': entry.link,
             'fuente': nombre_fuente,
             'fecha': entry.get('published', '')
@@ -168,13 +160,13 @@ def seleccionar_mejor_noticia(noticias):
     
     resumen = ""
     for i, n in enumerate(noticias[:10], 1):
-        resumen += f"{i}. {n['titulo'][:80]} ({n['fuente']})\n"
+        resumen += f"{i}. {n['titulo'][:80]} | {n['fuente']}\n"
     
-    prompt = f"""Eres editor de medio internacional en español. Selecciona la NOTICIA MÁS RELEVANTE para público hispanohablante:
+    prompt = f"""Eres editor de medio internacional en español. Analiza y selecciona la NOTICIA MÁS IMPORTANTE:
 
 {resumen}
 
-Prioriza: impacto global, relevancia para Latinoamérica/España, actualidad.
+Prioriza: impacto global, relevancia para Latinoamérica/España, actualidad, trascendencia política/económica.
 
 Responde SOLO con el número (1-10):"""
 
@@ -199,7 +191,7 @@ Responde SOLO con el número (1-10):"""
         numero = int(re.search(r'\d+', seleccion).group()) - 1
         
         if 0 <= numero < len(noticias):
-            print(f"✓ Seleccionada noticia #{numero + 1}")
+            print(f"✓ Seleccionada #{numero + 1}: {noticias[numero]['titulo'][:60]}...")
             return noticias[numero]
             
     except Exception as e:
@@ -208,45 +200,67 @@ Responde SOLO con el número (1-10):"""
     return noticias[0]
 
 # ============================================================================
-# 3. REESCRITURA EXTENSA Y PROFESIONAL
+# 3. REESCRITURA EXTENSA Y PROFUNDA CON OPENAI
 # ============================================================================
 
 def reescribir_noticia(noticia):
     print("\n" + "="*60)
-    print("✍️ OPENAI: CREANDO ARTÍCULO EXTENSO")
+    print("✍️ OPENAI: CREANDO ARTÍCULO PROFUNDO")
     print("="*60)
     
-    prompt = f"""Actúa como editor jefe de un medio digital internacional en ESPAÑOL. Crea un ARTÍCULO COMPLETO Y EXTENSO basado en esta noticia.
+    # Combinar toda la información disponible
+    texto_base = f"{noticia['titulo']}. {noticia['descripcion']}. {noticia['contenido']}"
+    
+    prompt = f"""Actúa como editor jefe de un medio digital internacional de prestigio. Crea un ARTÍCULO PERIODÍSTICO COMPLETO, PROFUNDO Y ANALÍTICO.
 
-NOTICIA ORIGINAL:
-Título: {noticia['titulo']}
+INFORMACIÓN BASE:
 Fuente: {noticia['fuente']}
-Texto base: {noticia['descripcion'][:800]}
+Texto original: {texto_base[:1500]}
 
-INSTRUCCIONES PARA EL ARTÍCULO:
-1. EXTENSIÓN: Mínimo 5-6 párrafos desarrollados (400-600 palabras)
-2. ESTRUCTURA PROFESIONAL:
-   - Titular SEO: Impactante, 60-80 caracteres, palabras clave al inicio
-   - Lead: Primer párrafo que responda qué, quién, cuándo, dónde, por qué
-   - Desarrollo: Contexto histórico, implicaciones, análisis de impacto
-   - Perspectivas: Qué sigue, posibles consecuencias
-   - Cierre: Resumen de la importancia de la noticia
+REQUISITOS DEL ARTÍCULO (mínimo 600-800 palabras):
 
-3. TONO: Periodístico serio, informativo, autoritario, pero accesible
-4. SEO: Integrar naturalmente palabras clave en el texto
-5. PÚBLICO: Hispanohablante de Latinoamérica y España
-6. NO inventar hechos, solo expandir y contextualizar la información real
+1. TÍTULO SEO (70-90 caracteres):
+   - Impactante, claro, con palabra clave principal al inicio
+   - Debe generar curiosidad informativa
 
-HASHTAGS: Generar 8-10 hashtags relevantes para alcance orgánico (mezcla de populares y específicos)
+2. LEAD (primer párrafo - 3-4 oraciones):
+   - Responder: ¿Qué pasó? ¿Quién está involucrado? ¿Cuándo? ¿Dónde? ¿Por qué importa?
+   - Gancho que capture la atención inmediatamente
 
-JSON DE SALIDA:
+3. DESARROLLO (3-4 párrafos extensos):
+   - **Contexto histórico**: Antecedentes relevantes del tema
+   - **Análisis de la situación actual**: Qué significa este evento en el presente
+   - **Implicaciones políticas/económicas/sociales**: Impacto en diferentes ámbitos
+   - **Reacciones internacionales**: Qué dicen otros países, organismos, expertos
+   - **Datos y cifras relevantes**: Si aplica, incluir estadísticas o números importantes
+
+4. PERSPECTIVAS (1-2 párrafos):
+   - Qué se espera que pase próximamente
+   - Posibles escenarios futuros
+   - Desafíos pendientes
+
+5. CIERRE (1 párrafo):
+   - Resumen de la trascendencia del evento
+   - Llamado a seguir la información
+
+REGLAS:
+- Tono: Periodístico serio, autoritario, pero accesible al público general
+- NO inventar hechos. Si falta información, indicar "según reportes preliminares" o "se espera más información"
+- Incluir transiciones fluidas entre párrafos
+- SEO natural: integrar palabras clave sin forzar
+- Público: Hispanohablante de Latinoamérica y España (22-55 años, interesados en actualidad)
+
+HASHTAGS: 8-10 hashtags estratégicos para alcance orgánico (mezcla de trending y específicos)
+
+FORMATO JSON:
 {{
     "titulo_seo": "Título optimizado para SEO y engagement",
-    "articulo_completo": "Artículo extenso de 5-6 párrafos profesionales",
-    "resumen_redes": "Resumen atractivo de 2-3 líneas para redes sociales",
-    "palabras_clave": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+    "articulo_completo": "Artículo extenso de 600-800 palabras, bien estructurado",
+    "resumen_para_foto": "Resumen corto 2-3 líneas para caption de foto",
+    "palabras_clave": ["kw1", "kw2", "kw3", "kw4", "kw5", "kw6"],
     "categoria": "politica/economia/tecnologia/salud/internacional/deportes/entretenimiento",
-    "hashtags": "#Tag1 #Tag2 #Tag3 #Tag4 #Tag5 #Tag6 #Tag7 #Tag8"
+    "hashtags": "#Tag1 #Tag2 #Tag3 #Tag4 #Tag5 #Tag6 #Tag7 #Tag8 #Tag9 #Tag10",
+    "prompt_imagen": "Descripción detallada para generar imagen ilustrativa de la noticia, estilo fotoperiodismo profesional, sin texto ni logos"
 }}"""
 
     try:
@@ -257,12 +271,12 @@ JSON DE SALIDA:
                 "Content-Type": "application/json"
             },
             json={
-                "model": "gpt-4o",
+                "model": "gpt-4o",  # Modelo más potente para textos largos
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.7,
-                "max_tokens": 2500
+                "max_tokens": 3000
             },
-            timeout=90
+            timeout=120
         )
         
         resultado = r.json()
@@ -272,125 +286,56 @@ JSON DE SALIDA:
         if json_match:
             datos = json.loads(json_match.group())
             
-            # Verificar que el artículo sea extenso
             palabras = len(datos['articulo_completo'].split())
             print(f"✓ Artículo generado: ~{palabras} palabras")
-            print(f"✓ Título: {datos['titulo_seo'][:60]}...")
+            print(f"✓ Título: {datos['titulo_seo'][:70]}...")
             print(f"✓ Categoría: {datos['categoria']}")
             print(f"✓ Hashtags: {datos['hashtags']}")
+            print(f"✓ Prompt imagen: {datos['prompt_imagen'][:80]}...")
             
             return datos
             
     except Exception as e:
         print(f"⚠️ Error reescritura: {e}")
+        print(f"Respuesta: {texto[:500] if 'texto' in locals() else 'N/A'}")
     
     # Fallback mejorado
     return {
         'titulo_seo': noticia['titulo'],
-        'articulo_completo': noticia['descripcion'] + "\n\n" + noticia['contenido'][:500] + "\n\nEsta información de " + noticia['fuente'] + " es de relevancia internacional. Los expertos señalan que este tipo de acontecimientos tendrá repercusiones significativas en los próximos días. La comunidad internacional permanece atenta a los desarrollos posteriores. Se recomienda seguir las fuentes oficiales para obtener información actualizada.",
-        'resumen_redes': noticia['descripcion'][:150],
-        'palabras_clave': ['noticias', 'actualidad', 'internacional', 'mundo', 'hoy'],
+        'articulo_completo': f"{noticia['descripcion']}\n\n{noticia['contenido'][:800]}\n\nEsta noticia de {noticia['fuente']} tiene implicaciones importantes en el ámbito internacional. Los analistas políticos y económicos están evaluando sus consecuencias a mediano plazo. La comunidad internacional permanece atenta a los desarrollos posteriores. Se recomienda consultar fuentes oficiales para actualizaciones.",
+        'resumen_para_foto': noticia['descripcion'][:200],
+        'palabras_clave': ['noticias', 'actualidad', 'internacional', 'mundo', 'hoy', 'información'],
         'categoria': 'general',
-        'hashtags': '#Noticias #Actualidad #Internacional #Mundo #Hoy #News #ÚltimaHora #Información'
+        'hashtags': '#Noticias #Actualidad #Internacional #Mundo #Hoy #News #ÚltimaHora #Información #Periodismo #MundoHoy',
+        'prompt_imagen': f"Professional news photography about: {noticia['titulo']}. Editorial photojournalism style, serious, informative, high quality, NO text, NO logos"
     }
 
 # ============================================================================
-# 4. GENERACIÓN DE IMÁGEN CON IA
+# 4. GENERACIÓN DE IMÁGEN CON DALL-E (OPENAI)
 # ============================================================================
 
-def generar_imagen(titulo, keywords, categoria):
+def generar_imagen_dalle(prompt_imagen, titulo):
+    """
+    Genera imagen con OpenAI DALL-E 3.
+    Retorna ruta de archivo local (imagen estática, sin link externo)
+    """
     print("\n" + "="*60)
-    print("🎨 GENERANDO IMAGEN CON IA")
+    print("🎨 GENERANDO IMAGEN CON DALL-E 3 (OpenAI)")
     print("="*60)
     
-    # OPCIÓN 1: Stability AI
-    if STABILITY_API_KEY:
-        print("Intentando Stability AI...")
-        ruta = generar_stability(titulo, keywords, categoria)
-        if ruta:
-            return ruta
+    if not OPENAI_API_KEY:
+        print("❌ No hay OPENAI_API_KEY")
+        return None
     
-    # OPCIÓN 2: OpenAI DALL-E (siempre disponible)
-    print("Intentando OpenAI DALL-E...")
-    ruta = generar_dalle(titulo, keywords, categoria)
-    if ruta:
-        return ruta
+    # Mejorar el prompt para calidad fotoperiodística
+    prompt_mejorado = f"{prompt_imagen}. Professional photojournalism style, editorial news photography, high quality, cinematic lighting, photorealistic, NO text, NO logos, NO watermarks, NO words, NO letters, suitable for international news publication."
     
-    print("❌ No se pudo generar imagen")
-    return None
-
-def generar_stability(titulo, keywords, categoria):
+    print(f"Prompt: {prompt_mejorado[:100]}...")
+    
     try:
         import time
-        kw_text = ', '.join(keywords[:3])
         
-        estilos = {
-            'politica': 'professional political photojournalism, documentary, serious, Reuters AP style',
-            'economia': 'business news photography, corporate, financial district, professional',
-            'tecnologia': 'futuristic tech visualization, innovation, clean modern design',
-            'salud': 'medical healthcare photography, hospital, clinical professional',
-            'internacional': 'global news photojournalism, world events, international affairs',
-            'deportes': 'sports action photography, stadium, dynamic, energetic',
-            'entretenimiento': 'entertainment news photography, media event, celebrity'
-        }
-        
-        estilo = estilos.get(categoria, 'professional news photography, editorial')
-        
-        prompt = f"Editorial news image for Spanish-speaking audience: {titulo}. Visual themes: {kw_text}. Style: {estilo}. NO text, NO logos, NO watermarks, photorealistic, 4K quality."
-        
-        print(f"Prompt: {prompt[:100]}...")
-        
-        r = requests.post(
-            "https://api.stability.ai/v2beta/stable-image/generate/core ",
-            headers={
-                "Authorization": f"Bearer {STABILITY_API_KEY}",
-                "Accept": "image/*"
-            },
-            files={
-                "prompt": (None, prompt[:500]),
-                "output_format": (None, "png"),
-                "aspect_ratio": (None, "16:9")
-            },
-            timeout=60
-        )
-        
-        if r.status_code == 200:
-            ruta = f"/tmp/stability_{int(time.time())}.png"
-            with open(ruta, 'wb') as f:
-                f.write(r.content)
-            
-            if os.path.exists(ruta) and os.path.getsize(ruta) > 1024:
-                print(f"✓ Stability: {os.path.basename(ruta)}")
-                return ruta
-        else:
-            print(f"✗ Stability HTTP {r.status_code}")
-            
-    except Exception as e:
-        print(f"✗ Stability error: {e}")
-    
-    return None
-
-def generar_dalle(titulo, keywords, categoria):
-    try:
-        import time
-        kw_text = ', '.join(keywords[:3])
-        
-        estilos = {
-            'politica': 'professional political photojournalism, documentary style, serious editorial',
-            'economia': 'business news photography, corporate professional setting',
-            'tecnologia': 'modern tech innovation, futuristic clean design',
-            'salud': 'medical healthcare photography, professional clinical',
-            'internacional': 'global news photojournalism, world affairs',
-            'deportes': 'sports photography, stadium atmosphere, dynamic',
-            'entretenimiento': 'entertainment news photography, media event'
-        }
-        
-        estilo = estilos.get(categoria, 'professional news photography, editorial')
-        
-        prompt = f"Create a professional news editorial image for Spanish-speaking audience about: {titulo}. Visual elements: {kw_text}. Style: {estilo}. NO text, NO logos, NO watermarks, NO words. Photorealistic, high quality, suitable for international news publication."
-        
-        print(f"Prompt DALL-E: {prompt[:100]}...")
-        
+        # Generar imagen con DALL-E 3
         r = requests.post(
             "https://api.openai.com/v1/images/generations ",
             headers={
@@ -399,109 +344,152 @@ def generar_dalle(titulo, keywords, categoria):
             },
             json={
                 "model": "dall-e-3",
-                "prompt": prompt[:1000],
-                "size": "1792x1024",
+                "prompt": prompt_mejorado[:1000],
+                "size": "1792x1024",  # Formato horizontal 16:9
                 "quality": "standard",
                 "n": 1
             },
-            timeout=60
+            timeout=120
         )
         
         resultado = r.json()
         
-        if r.status_code == 200 and 'data' in resultado:
-            img_url = resultado['data'][0]['url']
-            print(f"✓ DALL-E URL obtenida, descargando...")
+        if r.status_code == 200 and 'data' in resultado and len(resultado['data']) > 0:
+            image_url = resultado['data'][0]['url']
+            revised_prompt = resultado['data'][0].get('revised_prompt', 'N/A')
+            print(f"✓ DALL-E generó imagen")
+            print(f"  Revised prompt: {revised_prompt[:80]}...")
             
-            img_r = requests.get(img_url, timeout=30)
-            if img_r.status_code == 200:
-                ruta = f"/tmp/dalle_{int(time.time())}.png"
-                with open(ruta, 'wb') as f:
-                    f.write(img_r.content)
+            # Descargar la imagen generada
+            print(f"  Descargando imagen...")
+            img_response = requests.get(image_url, timeout=60)
+            
+            if img_response.status_code == 200 and len(img_response.content) > 1024:
+                # Guardar como archivo local
+                timestamp = int(time.time())
+                hash_id = hashlib.md5(titulo.encode()).hexdigest()[:6]
+                ruta = f"/tmp/dalle_{timestamp}_{hash_id}.png"
                 
+                with open(ruta, 'wb') as f:
+                    f.write(img_response.content)
+                
+                # Verificar
                 if os.path.exists(ruta) and os.path.getsize(ruta) > 1024:
-                    print(f"✓ DALL-E: {os.path.basename(ruta)}")
+                    print(f"✓ Imagen guardada: {os.path.basename(ruta)} ({os.path.getsize(ruta)} bytes)")
                     return ruta
+            else:
+                print(f"✗ Error descargando imagen: HTTP {img_response.status_code}")
         else:
-            error = resultado.get('error', {}).get('message', 'Error')
+            error = resultado.get('error', {}).get('message', 'Error desconocido')
             print(f"✗ DALL-E error: {error}")
+            print(f"  Respuesta: {resultado}")
             
     except Exception as e:
-        print(f"✗ DALL-E error: {e}")
+        print(f"✗ Error generando imagen: {e}")
+        import traceback
+        traceback.print_exc()
     
     return None
 
 # ============================================================================
-# 5. PUBLICACIÓN EN FACEBOOK
+# 5. PUBLICACIÓN EN FACEBOOK (IMAGEN ESTÁTICA, SIN LINK)
 # ============================================================================
 
-def publicar_facebook(titulo, articulo, resumen, hashtags, imagen_ruta, url_fuente, nombre_fuente):
+def publicar_facebook(titulo, articulo, resumen_foto, hashtags, imagen_ruta, url_fuente, nombre_fuente):
+    """
+    Publica en Facebook:
+    - Imagen estática (subida directamente, no como link preview)
+    - Texto con resumen
+    - Link de fuente en comentarios (no en la publicación principal)
+    """
     print("\n" + "="*60)
     print("📘 PUBLICANDO EN FACEBOOK")
     print("="*60)
     
-    # Mensaje para foto (más corto)
+    # Mensaje para la foto (SIN link, para que la imagen sea estática)
     mensaje_foto = f"""📰 {titulo}
 
-{resumen}
+{resumen_foto}
 
 🔍 {hashtags}
 
-✍️ Artículo completo en los comentarios ⬇️
+💬 Link de la fuente original en el primer comentario ⬇️
 
 — Verdad Hoy | {datetime.now().strftime('%d/%m/%Y')}"""
     
     post_id = None
     
-    # PUBLICAR CON IMAGEN
+    # PUBLICAR CON IMAGEN (subida directa, estática, sin link)
     if imagen_ruta and os.path.exists(imagen_ruta):
-        print(f"Subiendo foto: {os.path.basename(imagen_ruta)}")
+        print(f"Subiendo imagen ESTÁTICA: {os.path.basename(imagen_ruta)}")
+        print(f"  (La imagen NO tendrá link, será puramente ilustrativa)")
         
         try:
+            # Endpoint /photos sube la imagen directamente a los servidores de Facebook
+            # Esto crea una imagen ESTÁTICA sin link externo
             url = f"https://graph.facebook.com/v19.0/ {FB_PAGE_ID}/photos"
             
             with open(imagen_ruta, 'rb') as foto:
-                files = {'file': ('noticia.png', foto, 'image/png')}
+                files = {
+                    'file': ('imagen_noticia.png', foto, 'image/png')
+                }
                 data = {
                     'message': mensaje_foto,
                     'access_token': FB_ACCESS_TOKEN,
                     'published': 'true'
+                    # NO incluimos 'link' para que la imagen sea estática
                 }
                 
-                r = requests.post(url, files=files, data=data, timeout=60)
+                r = requests.post(url, files=files, data=data, timeout=90)
                 resultado = r.json()
                 
-                print(f"Status: {r.status_code}")
+                print(f"  Status: {r.status_code}")
                 
                 if r.status_code == 200 and 'id' in resultado:
-                    post_id = resultado.get('post_id') or resultado['id']
-                    print(f"✓ PUBLICADO CON FOTO: {post_id}")
+                    # El post_id puede estar en 'post_id' o usar el id de la foto
+                    post_id = resultado.get('post_id')
+                    if not post_id and 'id' in resultado:
+                        # Si no hay post_id, construirlo desde el id de la foto
+                        photo_id = resultado['id']
+                        post_id = f"{FB_PAGE_ID}_{photo_id}"
+                    
+                    print(f"✓ PUBLICADO CON IMAGEN ESTÁTICA: {post_id}")
+                    print(f"  ✓ La imagen NO redirige a ningún link")
+                    print(f"  ✓ Es una imagen ilustrativa pura")
                 else:
-                    error = resultado.get('error', {}).get('message', 'Error')
-                    print(f"✗ Error foto: {error}")
+                    error = resultado.get('error', {}).get('message', 'Error desconocido')
+                    print(f"✗ Error: {error}")
+                    print(f"  Respuesta: {resultado}")
+                    post_id = None
                     
         except Exception as e:
-            print(f"✗ Error subiendo foto: {e}")
+            print(f"✗ Error subiendo imagen: {e}")
+            import traceback
+            traceback.print_exc()
+            post_id = None
     
-    # SIN IMAGEN (fallback)
+    # FALLBACK: Solo texto (si falló la imagen)
     if not post_id:
-        print("Publicando solo texto...")
+        print("⚠️ Fallback: Publicando solo texto con link preview...")
         
         try:
             url = f"https://graph.facebook.com/v19.0/ {FB_PAGE_ID}/feed"
             
+            # En feed, el link crea un preview, pero no es lo ideal
             mensaje_texto = f"""📰 {titulo}
 
-{articulo[:1500]}...
+{articulo[:1200]}...
 
-{hashtags}
+🔍 {hashtags}
+
+📎 Fuente: {url_fuente}
 
 — Verdad Hoy | {datetime.now().strftime('%d/%m/%Y')}"""
             
             data = {
                 'message': mensaje_texto,
                 'access_token': FB_ACCESS_TOKEN,
-                'link': url_fuente
+                # Opcional: quitar 'link' para evitar preview, pero entonces no hay referencia
             }
             
             r = requests.post(url, data=data, timeout=60)
@@ -509,7 +497,7 @@ def publicar_facebook(titulo, articulo, resumen, hashtags, imagen_ruta, url_fuen
             
             if r.status_code == 200 and 'id' in resultado:
                 post_id = resultado['id']
-                print(f"✓ PUBLICADO (texto): {post_id}")
+                print(f"✓ PUBLICADO (solo texto): {post_id}")
             else:
                 print(f"✗ Error: {resultado}")
                 return False
@@ -518,52 +506,108 @@ def publicar_facebook(titulo, articulo, resumen, hashtags, imagen_ruta, url_fuen
             print(f"✗ Error: {e}")
             return False
     
-    # COMENTARIOS: Artículo completo + Fuente
+    # AGREGAR COMENTARIOS: Artículo completo + Fuente original
     if post_id:
         import time
+        
+        # Pequeña pausa para asegurar que el post existe
         time.sleep(3)
         
-        # Comentario 1: Artículo completo
-        comentario_articulo(post_id, articulo)
+        # Comentario 1: Artículo completo (dividido si es muy largo)
+        print("\n📝 Agregando artículo completo en comentarios...")
+        exito_articulo = agregar_articulo_comentarios(post_id, articulo)
+        
         time.sleep(2)
         
-        # Comentario 2: Fuente
-        comentario_fuente(post_id, url_fuente, nombre_fuente)
+        # Comentario 2: Link de fuente original
+        print("\n🔗 Agregando link de fuente original...")
+        exito_fuente = agregar_fuente_comentario(post_id, url_fuente, nombre_fuente)
+        
+        if exito_articulo and exito_fuente:
+            print("\n✅ Todos los comentarios agregados correctamente")
+        else:
+            print("\n⚠️ Algunos comentarios fallaron, pero la publicación está activa")
         
         return True
     
     return False
 
-def comentario_articulo(post_id, articulo):
-    """Agrega el artículo completo en comentarios"""
+def agregar_articulo_comentarios(post_id, articulo):
+    """Agrega el artículo completo en uno o más comentarios"""
     try:
-        print("Agregando artículo completo...")
-        
         post_clean = post_id.split('_')[-1] if '_' in post_id else post_id
         url = f"https://graph.facebook.com/v19.0/ {FB_PAGE_ID}_{post_clean}/comments"
         
-        # Si es muy largo, dividir
-        max_len = 8000
-        if len(articulo) > max_len:
-            partes = [articulo[i:i+max_len] for i in range(0, len(articulo), max_len)]
+        # Facebook tiene límite aproximado de 8000 caracteres por comentario
+        MAX_CARACTERES = 7500
+        
+        if len(articulo) > MAX_CARACTERES:
+            # Dividir en partes
+            partes = []
+            inicio = 0
+            while inicio < len(articulo):
+                # Buscar corte en párrafo
+                fin = min(inicio + MAX_CARACTERES, len(articulo))
+                if fin < len(articulo):
+                    # Buscar último punto y aparte
+                    corte = articulo.rfind('\n\n', inicio, fin)
+                    if corte == -1:
+                        corte = articulo.rfind('. ', inicio, fin)
+                    if corte == -1:
+                        corte = fin
+                    fin = corte + 1 if corte > inicio else fin
+                
+                partes.append(articulo[inicio:fin].strip())
+                inicio = fin
+            
+            print(f"  Artículo dividido en {len(partes)} partes")
+            
             for i, parte in enumerate(partes, 1):
+                if not parte:
+                    continue
+                    
                 mensaje = f"📄 Continuación ({i}/{len(partes)}):\n\n{parte}"
-                requests.post(url, data={'message': mensaje, 'access_token': FB_ACCESS_TOKEN}, timeout=30)
+                
+                r = requests.post(url, data={
+                    'message': mensaje,
+                    'access_token': FB_ACCESS_TOKEN
+                }, timeout=30)
+                
+                if r.status_code == 200:
+                    print(f"    ✓ Parte {i} agregada")
+                else:
+                    print(f"    ✗ Parte {i} falló: {r.status_code}")
+                
+                # Pausa entre comentarios
                 time.sleep(1)
         else:
-            mensaje = f"📄 ARTÍCULO COMPLETO:\n\n{articulo}\n\n_Fuente en siguiente comentario_ ⬇️"
-            r = requests.post(url, data={'message': mensaje, 'access_token': FB_ACCESS_TOKEN}, timeout=30)
+            # Artículo cabe en un solo comentario
+            mensaje = f"""📄 ARTÍCULO COMPLETO:
+
+{articulo}
+
+_Link de la fuente original en el siguiente comentario_ ⬇️"""
+            
+            r = requests.post(url, data={
+                'message': mensaje,
+                'access_token': FB_ACCESS_TOKEN
+            }, timeout=30)
+            
             if r.status_code == 200:
-                print("✓ Artículo agregado")
+                print(f"  ✓ Artículo completo agregado en un comentario")
+            else:
+                print(f"  ✗ Error: {r.status_code}")
+                return False
+        
+        return True
         
     except Exception as e:
-        print(f"⚠️ Error artículo: {e}")
+        print(f"  ✗ Error agregando artículo: {e}")
+        return False
 
-def comentario_fuente(post_id, url_fuente, nombre_fuente):
-    """Agrega comentario con link a fuente"""
+def agregar_fuente_comentario(post_id, url_fuente, nombre_fuente):
+    """Agrega comentario con el link de la fuente original"""
     try:
-        print("Agregando fuente original...")
-        
         post_clean = post_id.split('_')[-1] if '_' in post_id else post_id
         url = f"https://graph.facebook.com/v19.0/ {FB_PAGE_ID}_{post_clean}/comments"
         
@@ -571,32 +615,46 @@ def comentario_fuente(post_id, url_fuente, nombre_fuente):
 
 🔗 {url_fuente}
 
+✅ Esta noticia fue verificada y reescrita por nuestro equipo editorial
+
 📲 Síguenos para más noticias internacionales en español
 
-#Noticias #Actualidad #Internacional #MundoHoy #NewsEnEspañol"""
+#Noticias #Actualidad #Internacional #MundoHoy #NewsEnEspañol #Periodismo #Información #VerdadHoy"""
         
-        r = requests.post(url, data={'message': mensaje, 'access_token': FB_ACCESS_TOKEN}, timeout=30)
+        r = requests.post(url, data={
+            'message': mensaje,
+            'access_token': FB_ACCESS_TOKEN
+        }, timeout=30)
+        
         if r.status_code == 200:
-            print("✓ Fuente agregada")
-        
+            print(f"  ✓ Link de fuente agregado")
+            return True
+        else:
+            print(f"  ✗ Error: {r.status_code} - {r.text[:200]}")
+            return False
+            
     except Exception as e:
-        print(f"⚠️ Error fuente: {e}")
+        print(f"  ✗ Error: {e}")
+        return False
 
 # ============================================================================
 # LIMPIEZA
 # ============================================================================
 
-def limpiar():
+def limpiar_temporales():
+    """Elimina archivos de imagen temporales"""
     try:
         import time
         for archivo in os.listdir('/tmp'):
-            if archivo.startswith(('stability_', 'dalle_')):
+            if archivo.startswith('dalle_') and archivo.endswith('.png'):
                 try:
-                    os.remove(f'/tmp/{archivo}')
+                    ruta = f'/tmp/{archivo}'
+                    os.remove(ruta)
+                    print(f"🗑️ Eliminado: {archivo}")
                 except:
                     pass
-    except:
-        pass
+    except Exception as e:
+        print(f"⚠️ Error limpiando: {e}")
 
 # ============================================================================
 # FLUJO PRINCIPAL
@@ -604,7 +662,7 @@ def limpiar():
 
 def main():
     print("\n" + "="*60)
-    print("🚀 BOT DE NOTICIAS - REDACCIÓN EXTENSA")
+    print("🚀 BOT DE NOTICIAS - REDACCIÓN PROFUNDA + IMÁGEN ESTÁTICA")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -612,48 +670,49 @@ def main():
         # 1. Buscar noticias
         noticias = buscar_noticias()
         if not noticias:
-            print("❌ No hay noticias")
+            print("❌ No se encontraron noticias")
             return False
         
         # 2. Seleccionar la mejor
         seleccionada = seleccionar_mejor_noticia(noticias)
         HISTORIAL_URLS.add(seleccionada['url'])
         
-        print(f"\n📌 Noticia seleccionada:")
-        print(f"   {seleccionada['titulo'][:70]}")
+        print(f"\n📌 NOTICIA SELECCIONADA:")
+        print(f"   Título: {seleccionada['titulo'][:70]}")
         print(f"   Fuente: {seleccionada['fuente']}")
+        print(f"   URL: {seleccionada['url'][:60]}...")
         
-        # 3. Reescribir profesionalmente (ARTÍCULO EXTENSO)
+        # 3. Reescribir con OpenAI (ARTÍCULO PROFUNDO)
         reescrita = reescribir_noticia(seleccionada)
         
-        # 4. Generar imagen con IA (SIEMPRE, nunca descarga original)
-        imagen_ruta = generar_imagen(
-            reescrita['titulo_seo'],
-            reescrita['palabras_clave'],
-            reescrita['categoria']
+        # 4. Generar imagen con DALL-E (OpenAI) - IMAGEN ESTÁTICA
+        imagen_ruta = generar_imagen_dalle(
+            reescrita['prompt_imagen'],
+            reescrita['titulo_seo']
         )
         
         # 5. Publicar en Facebook
         exito = publicar_facebook(
             titulo=reescrita['titulo_seo'],
             articulo=reescrita['articulo_completo'],
-            resumen=reescrita['resumen_redes'],
+            resumen_foto=reescrita['resumen_para_foto'],
             hashtags=reescrita['hashtags'],
             imagen_ruta=imagen_ruta,
             url_fuente=seleccionada['url'],
             nombre_fuente=seleccionada['fuente']
         )
         
-        # 6. Limpiar temporales
-        if imagen_ruta and os.path.exists(imagen_ruta):
-            try:
-                os.remove(imagen_ruta)
-            except:
-                pass
-        limpiar()
+        # 6. Limpiar
+        limpiar_temporales()
         
         print("\n" + "="*60)
-        print(f"{'✅ ÉXITO' if exito else '❌ FALLO'}")
+        if exito:
+            print("✅ PUBLICACIÓN COMPLETADA EXITOSAMENTE")
+            print("   - Artículo extenso y profesional")
+            print("   - Imagen estática generada con IA")
+            print("   - Link de fuente en comentarios")
+        else:
+            print("❌ LA PUBLICACIÓN FALLÓ")
         print("="*60)
         
         return exito

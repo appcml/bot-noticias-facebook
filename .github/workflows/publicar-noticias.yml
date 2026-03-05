@@ -13,20 +13,21 @@ jobs:
     - name: Checkout código
       uses: actions/checkout@v4
       
-    - name: Descargar historial
+    - name: Intentar descargar historial
+      id: download
       uses: actions/download-artifact@v4
       with:
         name: historial-noticias
-        path: ./data
+        path: .
       continue-on-error: true
       
-    - name: Preparar historial
+    - name: Verificar historial
       run: |
-        if [ -f "./data/historial_publicaciones.json" ]; then
-          mv ./data/historial_publicaciones.json ./
-          echo "✅ Historial restaurado"
+        if [ -f "historial_publicaciones.json" ]; then
+          echo "✅ Historial encontrado"
+          cat historial_publicaciones.json | head -20
         else
-          echo "⚠️ Sin historial previo"
+          echo "⚠️ No hay historial previo, se creará nuevo"
         fi
       shell: bash
       
@@ -49,12 +50,13 @@ jobs:
         DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
       run: python bot_noticias.py
       
-    - name: Preparar para guardar
-      if: always()
+    - name: Verificar archivo generado
       run: |
-        mkdir -p ./output
         if [ -f "historial_publicaciones.json" ]; then
-          cp historial_publicaciones.json ./output/
+          echo "✅ Archivo de historial existe"
+          ls -lh historial_publicaciones.json
+        else
+          echo "⚠️ No se generó archivo de historial"
         fi
       shell: bash
       
@@ -63,6 +65,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: historial-noticias
-        path: ./output/historial_publicaciones.json
+        path: historial_publicaciones.json
         retention-days: 90
-        if-no-files-found: ignore
+        if-no-files-found: warn
+        overwrite: true

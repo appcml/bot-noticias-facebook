@@ -70,6 +70,7 @@ def ya_publicada(url, titulo):
     return False
 
 def traducir_deepl(texto):
+    """Traduce texto completo a español"""
     if not DEEPL_API_KEY or not texto:
         return texto
     try:
@@ -77,7 +78,7 @@ def traducir_deepl(texto):
             "https://api-free.deepl.com/v2/translate",
             data={
                 'auth_key': DEEPL_API_KEY,
-                'text': str(texto)[:1500],
+                'text': str(texto)[:2000],
                 'source_lang': 'EN',
                 'target_lang': 'ES'
             },
@@ -89,61 +90,58 @@ def traducir_deepl(texto):
         pass
     return texto
 
-def redactar_profesional(titulo_en, desc_en, fuente):
+def redactar_espanol_completo(titulo_en, desc_en, fuente):
     """
-    Genera redacción periodística profesional en español
-    Características: 800-1500 chars, párrafos cortos, dato importante al inicio
+    Genera redacción 100% en español con estructura periodística
     """
     
-    # Primero traducimos todo para asegurar español
-    titulo_es = traducir_deepl(titulo_en)
-    desc_es = traducir_deepl(desc_en)
+    # TRADUCIR TODO PRIMERO (garantiza español base)
+    titulo_base = traducir_deepl(titulo_en)
+    desc_base = traducir_deepl(desc_en)
     
-    print(f"   🌐 Traducción base: {titulo_es[:50]}...")
+    print(f"   🌐 Base traducida: {titulo_base[:50]}...")
     
     if not OPENAI_API_KEY:
-        # Fallback sin OpenAI
-        return crear_texto_manual(titulo_es, desc_es, fuente)
+        return crear_texto_espanol_manual(titulo_base, desc_base, fuente)
     
-    # Prompt optimizado para periodismo
-    prompt = f"""ACTÚA COMO PERIODISTA PROFESIONAL. ESCRIBE EN ESPAÑOL.
+    # Prompt ultra específico para español completo
+    prompt = f"""REDACTA UNA NOTICIA COMPLETA EN ESPAÑOL. TODO EL TEXTO DEBE ESTAR EN ESPAÑOL.
 
-DATOS DE LA NOTICIA:
-Título: {titulo_es}
-Descripción: {desc_es}
-Fuente: {fuente}
+DATOS TRADUCIDOS:
+- Título: {titulo_base}
+- Descripción: {desc_base}
+- Fuente: {fuente}
 
-INSTRUCCIONES OBLIGATORIAS:
-1. ESCRIBE ÚNICAMENTE EN ESPAÑOL (español neutro o de Latinoamérica)
-2. ESTRUCTURA DEL TEXTO:
-   - Párrafo 1 (LEAD): Un dato importante y contundente al inicio. Máximo 3 líneas.
-   - Párrafo 2: Contexto y antecedentes. Máximo 4 líneas.
-   - Párrafo 3: Desarrollo y reacciones. Máximo 4 líneas.
-   - Párrafo 4 (opcional): Implicaciones o proyección. Máximo 3 líneas.
-3. LONGITUD: Entre 800 y 1200 caracteres (máximo 1500 si el tema lo amerita)
-4. ESTILO: Periodístico neutral, objetivo, informativo
-5. PÁRRAFOS CORTOS: Máximo 3-4 líneas por párrafo
-6. DATO CLAVE: El primer párrafo debe tener el dato más importante
-7. FUENTE: Mencionar "{fuente}" al final del texto
+REGLAS ESTRICTAS:
+1. TODO EL CONTENIDO DEBE ESTAR EN ESPAÑOL (título, texto, todo)
+2. Estructura periodística:
+   * TITULAR: Máximo 80 caracteres, contundente, en ESPAÑOL
+   * Lead (párrafo 1): Dato más importante, máximo 3 líneas, en ESPAÑOL
+   * Desarrollo (párrafo 2): Contexto, máximo 4 líneas, en ESPAÑOL  
+   * Análisis (párrafo 3): Reacciones, máximo 4 líneas, en ESPAÑOL
+   * Cierre (párrafo 4): Implicaciones, máximo 3 líneas, en ESPAÑOL
+3. Longitud total: 800-1500 caracteres
+4. Estilo: Periodístico neutral, objetivo, informativo
+5. Al final: "Información de {fuente}" (sin link, solo el nombre)
 
-FORMATO EXACTO DE RESPUESTA:
-TITULAR: [titular breve y contundente, máximo 80 caracteres]
+FORMATO OBLIGATORIO:
+TITULAR_ESPANOL=[titular completo en español]
 
-TEXTO:
-[Primer párrafo corto con dato clave]
+TEXTO_ESPANOL=
+[Lead en español - dato clave]
 
-[Segundo párrafo con contexto]
+[Desarrollo en español - contexto]
 
-[Tercer párrafo con desarrollo]
+[Análisis en español - reacciones]
 
-[Cuarto párrafo opcional con cierre o implicaciones]
+[Cierre en español - implicaciones]
 
 Información de {fuente}.
 
 FIN"""
 
     try:
-        print("   🤖 Generando redacción profesional...")
+        print("   🤖 Generando redacción en español...")
         
         response = requests.post(
             'https://api.openai.com/v1/chat/completions',
@@ -154,89 +152,105 @@ FIN"""
             json={
                 'model': 'gpt-4o-mini',
                 'messages': [{'role': 'user', 'content': prompt}],
-                'temperature': 0.5,  # Más determinístico para periodismo
-                'max_tokens': 500
+                'temperature': 0.3,  # Más bajo = más obediente al idioma
+                'max_tokens': 600
             },
             timeout=45
         )
         
         if response.status_code != 200:
-            print(f"   ⚠️ OpenAI error HTTP {response.status_code}")
-            return crear_texto_manual(titulo_es, desc_es, fuente)
+            print(f"   ⚠️ OpenAI error, usando manual")
+            return crear_texto_espanol_manual(titulo_base, desc_base, fuente)
         
         resultado = response.json()['choices'][0]['message']['content']
         
-        # Parsear respuesta
+        # Extraer con precisión
         titular = None
         texto = None
         
-        if 'TITULAR:' in resultado:
-            # Extraer titular
-            partes_titular = resultado.split('TITULAR:')[1].split('TEXTO:')
-            titular = partes_titular[0].strip()
-            titular = titular.strip('"\'').strip()
-            
-            # Extraer texto
-            if 'FIN' in resultado:
-                texto = partes_titular[1].split('FIN')[0].strip()
+        # Buscar TITULAR_ESPANOL
+        if 'TITULAR_ESPANOL=' in resultado:
+            titular_parte = resultado.split('TITULAR_ESPANOL=')[1].split('TEXTO_ESPANOL=')[0]
+            titular = titular_parte.strip().strip('"\'[]')
+        
+        # Buscar TEXTO_ESPANOL
+        if 'TEXTO_ESPANOL=' in resultado:
+            texto_parte = resultado.split('TEXTO_ESPANOL=')[1]
+            if 'FIN' in texto_parte:
+                texto = texto_parte.split('FIN')[0].strip()
             else:
-                texto = partes_titular[1].strip()
+                texto = texto_parte.strip()
         
+        # Validaciones estrictas
         if not titular or not texto:
-            print("   ⚠️ No se pudo parsear, usando manual")
-            return crear_texto_manual(titulo_es, desc_es, fuente)
+            print("   ⚠️ Parseo falló, usando manual")
+            return crear_texto_espanol_manual(titulo_base, desc_base, fuente)
         
-        # Validar español
-        palabras_clave = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'por', 'con', 'su']
-        if not any(p in texto.lower() for p in palabras_clave[:5]):
-            print("   ⚠️ No detecta español, usando manual")
-            return crear_texto_manual(titulo_es, desc_es, fuente)
+        # Verificar que sea español (palabras clave)
+        texto_completo = titular + " " + texto
+        palabras_es = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'por', 'con', 'su', 'para']
+        coincidencias = sum(1 for p in palabras_es if p in texto_completo.lower())
         
-        # Validar longitud
-        longitud = len(texto)
-        if longitud < 600:
-            print(f"   ⚠️ Muy corto ({longitud} chars), expandiendo...")
-            texto = expandir_texto(texto, fuente)
+        if coincidencias < 3:  # Muy poco español detectado
+            print(f"   ⚠️ Poco español detectado ({coincidencias} palabras), usando manual")
+            return crear_texto_espanol_manual(titulo_base, desc_base, fuente)
         
-        print(f"   ✅ Redacción: {len(texto)} caracteres, {texto.count(chr(10))} párrafos")
+        # Verificar longitud
+        if len(texto) < 600:
+            texto = expandir_texto_espanol(texto, fuente)
+        
+        # Asegurar que la fuente esté al final sin link
+        if f"Información de {fuente}" not in texto:
+            texto += f"\n\nInformación de {fuente}."
+        
+        print(f"   ✅ Español confirmado: {len(texto)} chars, {texto.count(chr(10))} párrafos")
         return {'titular': titular, 'texto': texto}
         
     except Exception as e:
-        print(f"   ⚠️ Error OpenAI: {e}")
-        return crear_texto_manual(titulo_es, desc_es, fuente)
+        print(f"   ⚠️ Error: {e}")
+        return crear_texto_espanol_manual(titulo_base, desc_base, fuente)
 
-def crear_texto_manual(titulo, descripcion, fuente):
-    """Crea texto manualmente cuando OpenAI falla"""
-    print("   📝 Creando texto manual...")
+def crear_texto_espanol_manual(titulo, descripcion, fuente):
+    """Crea texto 100% en español cuando OpenAI falla"""
+    print("   📝 Creando texto español manual...")
     
-    # Expandir descripción para llegar a 800+ caracteres
-    texto_base = descripcion if len(descripcion) > 200 else f"{descripcion} Esta información ha generado amplio interés en medios internacionales debido a su relevancia para la comunidad global. Los analistas destacan la importancia de seguir de cerca este desarrollo en las próximas horas."
+    # Limpiar y preparar
+    titulo = str(titulo).strip()
+    desc = str(descripcion).strip()
     
-    # Crear estructura periodística
-    parrafo1 = texto_base[:250] if len(texto_base) > 250 else texto_base
-    parrafo2 = "El hecho ha sido reportado por diversos medios de comunicación internacionales, destacando su trascendencia en el ámbito global. Las autoridades competentes continúan monitoreando la situación de cerca."
-    parrafo3 = "Expertos en la materia señalan que este tipo de eventos requieren atención constante por parte de la comunidad internacional. La cobertura periodística continuará actualizándose conforme se desarrollen los hechos."
+    # Crear párrafos en español puro
+    parrafo1 = desc[:280] if len(desc) > 200 else f"{desc} Este desarrollo ha generado amplia atención en los medios internacionales por su trascendencia inmediata."
     
-    texto = f"{parrafo1}\n\n{parrafo2}\n\n{parrafo3}\n\n📡 Información de {fuente}."
+    parrafo2 = "La información ha sido confirmada por diversas fuentes periodísticas, destacando la relevancia del hecho en el contexto internacional actual. Las autoridades competentes continúan evaluando la situación."
     
-    # Asegurar longitud mínima
+    parrafo3 = "Analistas políticos y expertos en la materia señalan que este tipo de eventos requiere seguimiento constante por parte de la comunidad global. La cobertura informativa se mantendrá actualizada conforme avancen los acontecimientos."
+    
+    parrafo4 = f"Los detalles adicionales serán proporcionados a medida que la información esté disponible. Información de {fuente}."
+    
+    texto = f"{parrafo1}\n\n{parrafo2}\n\n{parrafo3}\n\n{parrafo4}"
+    
+    # Asegurar longitud
     while len(texto) < 800:
-        texto += f" Los detalles adicionales serán proporcionados por {fuente} en próximas actualizaciones."
+        texto += f" La situación continúa en desarrollo según reportes de {fuente}."
     
-    print(f"   ✅ Texto manual: {len(texto)} caracteres")
-    return {'titular': titulo, 'texto': texto[:1200]}
+    print(f"   ✅ Manual español: {len(texto)} caracteres")
+    return {'titular': titulo[:80], 'texto': texto[:1500]}
 
-def expandir_texto(texto, fuente):
-    """Expande texto corto para llegar a 800+ caracteres"""
+def expandir_texto_espanol(texto, fuente):
+    """Expande texto corto manteniendo español"""
     adicionales = [
-        f"\n\nLos analistas internacionales continúan evaluando el impacto de esta información. La comunidad global mantiene atención sobre los próximos desarrollos.",
-        f"\n\nEsta noticia ha generado reacciones en diferentes sectores de la sociedad. {fuente} continuará reportando actualizaciones.",
-        f"\n\nLa cobertura periodística de este evento se extiende por múltiples regiones del mundo."
+        f"\n\nEste acontecimiento ha sido reportado por múltiples medios de comunicación internacionales, destacando su importancia en la agenda global actual.",
+        f"\n\nLas reacciones no se han hecho esperar ante este desarrollo significativo que mantiene en alerta a la comunidad internacional.",
+        f"\n\nLa cobertura periodística continuará actualizándose conforme se conozcan más detalles sobre esta situación."
     ]
     
     for adicional in adicionales:
         if len(texto) < 800:
             texto += adicional
+    
+    # Asegurar fuente al final
+    if fuente not in texto:
+        texto += f"\n\nInformación de {fuente}."
     
     return texto[:1500]
 
@@ -351,7 +365,7 @@ def descargar_imagen(url):
     return None
 
 def publicar(titulo, texto, img_path):
-    """Publica en Facebook con formato optimizado"""
+    """Publica en Facebook"""
     
     # Hashtags
     hashtags = f"#NoticiasMundiales #Actualidad #{datetime.now().strftime('%Y')} #Internacional #Hoy"
@@ -364,13 +378,20 @@ def publicar(titulo, texto, img_path):
 
 — Verdad Hoy: Noticias Internacionales"""
     
-    print(f"\n   📝 MENSAJE FINAL ({len(mensaje)} caracteres):")
+    print(f"\n   📝 MENSAJE COMPLETO ({len(mensaje)} caracteres):")
     print(f"   {'-'*50}")
-    for i, linea in enumerate(mensaje.split('\n')[:8]):
-        print(f"   {linea[:60]}{'...' if len(linea) > 60 else ''}")
-    if len(mensaje.split('\n')) > 8:
-        print(f"   ... ({len(mensaje.split(chr(10))) - 8} líneas más)")
+    lineas = mensaje.split('\n')
+    for i, linea in enumerate(lineas[:12]):
+        preview = linea[:55] + "..." if len(linea) > 55 else linea
+        print(f"   {preview}")
+    if len(lineas) > 12:
+        print(f"   ... ({len(lineas) - 12} líneas más)")
     print(f"   {'-'*50}")
+    
+    # Verificación final de español
+    palabras_es = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'por', 'con']
+    coincidencias = sum(1 for p in palabras_es if p in mensaje.lower())
+    print(f"   🔍 Verificación español: {coincidencias}/11 palabras clave")
     
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
@@ -409,8 +430,8 @@ def main():
             print("   ⏭️ Sin imagen")
             continue
         
-        # Crear redacción profesional
-        resultado = redactar_profesional(
+        # Crear redacción 100% español
+        resultado = redactar_espanol_completo(
             noticia['title'],
             noticia.get('description', ''),
             noticia.get('source', {}).get('name', 'Medios Internacionales')
@@ -424,7 +445,7 @@ def main():
             guardar_historial(noticia['url'], noticia['title'])
             os.remove(img_path)
             print(f"\n{'='*60}")
-            print("✅ ÉXITO")
+            print("✅ ÉXITO - Todo en español")
             print(f"{'='*60}")
             return True
         

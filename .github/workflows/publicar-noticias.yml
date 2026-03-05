@@ -13,7 +13,7 @@ jobs:
     - name: Checkout código
       uses: actions/checkout@v4
       
-    - name: Intentar descargar historial
+    - name: Descargar historial previo
       id: download
       uses: actions/download-artifact@v4
       with:
@@ -21,13 +21,16 @@ jobs:
         path: .
       continue-on-error: true
       
-    - name: Verificar historial
+    - name: Debug - Verificar archivos
       run: |
+        echo "=== Archivos en el directorio ==="
+        ls -la
         if [ -f "historial_publicaciones.json" ]; then
           echo "✅ Historial encontrado"
-          cat historial_publicaciones.json | head -20
+          echo "Contenido:"
+          cat historial_publicaciones.json | head -30
         else
-          echo "⚠️ No hay historial previo, se creará nuevo"
+          echo "⚠️ No hay historial previo - se creará nuevo"
         fi
       shell: bash
       
@@ -48,19 +51,27 @@ jobs:
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
         DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
-      run: python bot_noticias.py
+      run: |
+        echo "=== Ejecutando bot ==="
+        python bot_noticias.py
+        echo "=== Bot finalizado ==="
+        echo "Archivos después de ejecución:"
+        ls -la *.json 2>/dev/null || echo "No hay archivos JSON"
+      shell: bash
       
-    - name: Verificar archivo generado
+    - name: Debug - Verificar historial generado
       run: |
         if [ -f "historial_publicaciones.json" ]; then
           echo "✅ Archivo de historial existe"
           ls -lh historial_publicaciones.json
+          echo "Últimas entradas:"
+          tail -20 historial_publicaciones.json
         else
-          echo "⚠️ No se generó archivo de historial"
+          echo "❌ No se generó archivo de historial"
         fi
       shell: bash
       
-    - name: Guardar historial
+    - name: Subir historial
       if: always()
       uses: actions/upload-artifact@v4
       with:

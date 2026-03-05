@@ -1,31 +1,25 @@
-name: Bot Noticias - Redacción Profunda + Imagen Estática
+name: Publicar Noticias
 
 on:
   schedule:
-    - cron: '0 * * * *'  # Cada hora
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
-    
+
     steps:
-      - name: Checkout código
-        uses: actions/checkout@v4
-      
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Descargar repositorio
+        uses: actions/checkout@v3
+
+      - name: Instalar Python
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-      
+          python-version: '3.10'
+
       - name: Instalar dependencias
-        run: |
-          pip install requests feedparser beautifulsoup4
-      
-      - name: Ejecutar Bot de Noticias
-        env:
-          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
-          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-          FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: pip install requests
+
+      - name: Ejecutar bot
         run: python bot_noticias.py

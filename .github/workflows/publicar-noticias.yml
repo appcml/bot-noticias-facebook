@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4  # Actualizado a v4
     
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5  # Actualizado a v5
       with:
         python-version: '3.10'
     
@@ -32,9 +32,10 @@ jobs:
       run: python bot_noticias.py
     
     - name: Guardar historial
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # Actualizado a v4 (esto soluciona el error)
       if: always()
       with:
-        name: historial-noticias
+        name: historial-noticias-${{ github.run_number }}
         path: historial_publicaciones.json
         retention-days: 30
+        overwrite: true  # Necesario en v4 si el nombre ya existe

@@ -8,29 +8,22 @@ on:
 jobs:
   publicar:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Permiso para hacer push
     
     steps:
     - name: Checkout código
       uses: actions/checkout@v4
-      
-    - name: Descargar historial previo
-      id: download
-      uses: actions/download-artifact@v4
       with:
-        name: historial-noticias
-        path: .
-      continue-on-error: true
+        token: ${{ secrets.GITHUB_TOKEN }}  # Token para poder hacer push
       
-    - name: Debug - Verificar archivos
+    - name: Verificar historial
       run: |
-        echo "=== Archivos en el directorio ==="
-        ls -la
         if [ -f "historial_publicaciones.json" ]; then
-          echo "✅ Historial encontrado"
-          echo "Contenido:"
-          cat historial_publicaciones.json | head -30
+          echo "✅ Historial encontrado en repo"
+          cat historial_publicaciones.json | head -20
         else
-          echo "⚠️ No hay historial previo - se creará nuevo"
+          echo "⚠️ No hay historial, se creará"
         fi
       shell: bash
       
@@ -51,32 +44,17 @@ jobs:
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
         DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
-      run: |
-        echo "=== Ejecutando bot ==="
-        python bot_noticias.py
-        echo "=== Bot finalizado ==="
-        echo "Archivos después de ejecución:"
-        ls -la *.json 2>/dev/null || echo "No hay archivos JSON"
-      shell: bash
+      run: python bot_noticias.py
       
-    - name: Debug - Verificar historial generado
+    - name: Commit y push del historial
+      if: always()
       run: |
+        git config --local user.email "bot@github.com"
+        git config --local user.name "Bot Noticias"
+        
         if [ -f "historial_publicaciones.json" ]; then
-          echo "✅ Archivo de historial existe"
-          ls -lh historial_publicaciones.json
-          echo "Últimas entradas:"
-          tail -20 historial_publicaciones.json
-        else
-          echo "❌ No se generó archivo de historial"
+          git add historial_publicaciones.json
+          git diff --staged --quiet || git commit -m "Update: Historial de noticias publicadas"
+          git push || echo "No hay cambios para push"
         fi
       shell: bash
-      
-    - name: Subir historial
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: historial-noticias
-        path: historial_publicaciones.json
-        retention-days: 90
-        if-no-files-found: warn
-        overwrite: true

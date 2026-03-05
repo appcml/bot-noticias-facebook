@@ -2,8 +2,8 @@ name: Publicar Noticias Virales
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # Cada 30 minutos
-  workflow_dispatch:  # Permite ejecutar manualmente
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 
 jobs:
   publicar:
@@ -13,12 +13,12 @@ jobs:
     - name: Checkout código
       uses: actions/checkout@v4
       
-    - name: Descargar historial anterior (Artifact)
+    - name: Descargar historial
       uses: actions/download-artifact@v4
       with:
         name: historial-noticias
         path: .
-      continue-on-error: true  # Si no existe aún, continuar
+      continue-on-error: true
       
     - name: Setup Python
       uses: actions/setup-python@v5
@@ -29,7 +29,7 @@ jobs:
       run: |
         pip install requests pillow
         
-    - name: Ejecutar bot de noticias
+    - name: Ejecutar bot
       env:
         NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
@@ -37,7 +37,8 @@ jobs:
         DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
       run: python bot_noticias.py
       
-    - name: Guardar historial para siguiente ejecución
+    - name: Guardar historial
+      if: always()  # Guardar incluso si falla
       uses: actions/upload-artifact@v4
       with:
         name: historial-noticias

@@ -13,9 +13,9 @@ from io import BytesIO
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 GNEWS_API_KEY = os.getenv('GNEWS_API_KEY')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+DEEPL_API_KEY = os.getenv('DEEPL_API_KEY')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
-DEEPL_API_KEY = os.getenv('DEEPL_API_KEY')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
@@ -45,7 +45,7 @@ def guardar_historial(url, titulo):
     try:
         with open(HISTORIAL_FILE, 'w', encoding='utf-8') as f:
             json.dump(historial, f, ensure_ascii=False, indent=2)
-        print(f"💾 Historial: {len(historial['urls'])} noticias")
+        print(f"💾 Historial guardado: {len(historial['urls'])} noticias")
     except Exception as e:
         print(f"❌ Error guardando: {e}")
 
@@ -55,10 +55,12 @@ def get_url_id(url):
 
 def ya_publicada(url, titulo):
     url_id = get_url_id(url)
-    if url_id in [get_url_id(u) for u in historial['urls']]:
-        print(f"   ⛔ Ya publicada: {titulo[:40]}...")
+    urls_existentes = [get_url_id(u) for u in historial['urls']]
+    if url_id in urls_existentes:
+        print(f"   ⛔ Ya publicada (URL): {titulo[:40]}...")
         return True
     
+    # Verificar título similar
     titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
     for t in historial['titulos']:
         t_simple = re.sub(r'[^\w]', '', t.lower())[:40]
@@ -70,124 +72,147 @@ def ya_publicada(url, titulo):
     return False
 
 def traducir_deepl(texto):
-    """Traduce texto completo a español garantizado"""
+    """Traduce texto a español usando DeepL"""
     if not DEEPL_API_KEY or not texto:
+        print(f"   ⚠️ DeepL no configurado o texto vacío")
         return texto
     
     try:
         texto_str = str(texto).strip()
+        if len(texto_str) < 3:
+            return texto_str
+            
+        print(f"   🌐 Traduciendo con DeepL ({len(texto_str)} chars)...")
+        
+        # DeepL Free API endpoint
+        url = "https://api-free.deepl.com/v2/translate"
+        
+        # Si el texto es muy largo, dividirlo
         if len(texto_str) > 1500:
-            # Traducir en partes más pequeñas
             partes = []
             for i in range(0, len(texto_str), 1400):
                 parte = texto_str[i:i+1400]
                 response = requests.post(
-                    "https://api-free.deepl.com/v2/translate",  # ✅ SIN ESPACIO
+                    url,
                     data={
                         'auth_key': DEEPL_API_KEY,
                         'text': parte,
                         'source_lang': 'EN',
                         'target_lang': 'ES'
                     },
-                    timeout=15
+                    timeout=20
                 )
                 if response.status_code == 200:
                     result = response.json()
-                    if 'translations' in result and len(result['translations']) > 0:
-                        partes.append(result['translations'][0]['text'])
-                    else:
-                        partes.append(parte)
+                    traduccion = result['translations'][0]['text']
+                    partes.append(traduccion)
+                    print(f"   ✅ Parte traducida: {traduccion[:50]}...")
                 else:
-                    print(f"   ⚠️ DeepL status {response.status_code}: {response.text[:100]}")
+                    print(f"   ❌ DeepL error {response.status_code}: {response.text[:200]}")
                     partes.append(parte)
             return ' '.join(partes)
         else:
             response = requests.post(
-                "https://api-free.deepl.com/v2/translate",  # ✅ SIN ESPACIO
+                url,
                 data={
                     'auth_key': DEEPL_API_KEY,
                     'text': texto_str,
                     'source_lang': 'EN',
                     'target_lang': 'ES'
                 },
-                timeout=15
+                timeout=20
             )
+            
             if response.status_code == 200:
                 result = response.json()
-                if 'translations' in result and len(result['translations']) > 0:
-                    return result['translations'][0]['text']
-                else:
-                    print(f"   ⚠️ DeepL respuesta sin traducción: {result}")
+                traduccion = result['translations'][0]['text']
+                print(f"   ✅ Traducido: {traduccion[:60]}...")
+                return traduccion
             else:
-                print(f"   ⚠️ DeepL error HTTP {response.status_code}: {response.text[:100]}")
+                print(f"   ❌ DeepL error {response.status_code}: {response.text[:200]}")
+                return texto_str
+                
     except Exception as e:
-        print(f"   ⚠️ DeepL error: {e}")
-    
-    return texto
+        print(f"   ❌ Error DeepL: {e}")
+        return texto
 
-def detectar_idioma(texto):
+def es_espanol(texto):
     """Detecta si el texto está en español"""
     if not texto:
         return False
     
     texto_lower = texto.lower()
-    
-    # Palabras comunes en español vs inglés
     palabras_es = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'por', 'con', 
                    'su', 'para', 'los', 'las', 'del', 'al', 'lo', 'más', 'este', 'esta',
-                   'pero', 'sus', 'una', 'como', 'son', 'entre', 'sobre', 'también']
+                   'pero', 'sus', 'una', 'como', 'son', 'entre', 'sobre', 'también', 'han',
+                   'sido', 'porque', 'durante', 'contra', 'según', 'hacia', 'desde']
     palabras_en = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had',
-                   'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his']
+                   'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his',
+                   'they', 'them', 'their', 'what', 'when', 'where', 'who', 'why', 'how']
     
-    count_es = sum(1 for p in palabras_es if p in texto_lower)
-    count_en = sum(1 for p in palabras_en if p in texto_lower)
+    count_es = sum(1 for p in palabras_es if f' {p} ' in f' {texto_lower} ')
+    count_en = sum(1 for p in palabras_en if f' {p} ' in f' {texto_lower} ')
     
+    print(f"   🔍 Detección idioma: ES={count_es}, EN={count_en}")
     return count_es > count_en
 
-def crear_noticia_espanol(titulo_en, desc_en, fuente):
+def crear_noticia_original(titulo_en, desc_en, fuente):
     """
-    Crea noticia 100% en español usando DeepL + estructura manual
+    Crea una noticia COMPLETAMENTE NUEVA redactada en español.
+    NO traduce, CREA contenido nuevo basado en la noticia original.
     """
     
-    print("   🌐 Traduciendo con DeepL...")
+    print(f"\n   📝 Creando noticia original en español...")
+    print(f"   📰 Título original: {titulo_en[:60]}")
     
-    # PASO 1: Traducir TODO con DeepL
-    titulo_es = traducir_deepl(titulo_en)
-    desc_es = traducir_deepl(desc_en)
+    # PASO 1: Traducir para entender el contenido (solo para procesamiento interno)
+    titulo_traducido = traducir_deepl(titulo_en)
+    desc_traducida = traducir_deepl(desc_en)
     
-    # Verificar que realmente se tradujo
-    if not detectar_idioma(titulo_es):
-        print(f"   ⚠️ Título sigue en inglés, reintentando...")
-        titulo_es = traducir_deepl(titulo_en + " ")  # Truco: añadir espacio
+    # Verificar que DeepL funcionó
+    if not es_espanol(titulo_traducido):
+        print(f"   ⚠️ DeepL falló en título, usando traducción alternativa...")
+        # Intentar con OpenAI si está disponible
+        if OPENAI_API_KEY:
+            titulo_traducido = traducir_con_openai(titulo_en)
     
-    if not detectar_idioma(desc_es):
-        print(f"   ⚠️ Descripción sigue en inglés, reintentando...")
-        desc_es = traducir_deepl(desc_en + " ")
+    if not es_espanol(desc_traducida):
+        print(f"   ⚠️ DeepL falló en descripción...")
+        if OPENAI_API_KEY:
+            desc_traducida = traducir_con_openai(desc_en)
     
-    print(f"   ✅ Título traducido: {titulo_es[:60]}...")
-    
-    # PASO 2: Crear estructura periodística
+    # PASO 2: Crear redacción periodística original en español
     if OPENAI_API_KEY:
         try:
-            prompt = f"""Estructura este texto YA TRADUCIDO AL ESPAÑOL en formato periodístico.
+            print(f"   🤖 Generando redacción con OpenAI...")
+            
+            prompt = f"""Eres un redactor de noticias profesional. DEBES escribir en ESPAÑOL.
 
-TEXTO EN ESPAÑOL:
-Título: {titulo_es}
-Descripción: {desc_es}
+INFORMACIÓN DE LA NOTICIA (traducida al español):
+Título: {titulo_traducido}
+Descripción: {desc_traducida}
+Fuente original: {fuente}
 
-INSTRUCCIONES CRÍTICAS:
-1. EL TEXTO YA ESTÁ EN ESPAÑOL - NO LO TRADUZCAS
-2. Solo estructura en párrafos cortos (máx 4 líneas cada uno)
-3. Crea 3-4 párrafos con esta estructura:
-   - Párrafo 1: Lead con el dato más importante (máx 3 líneas)
-   - Párrafo 2: Contexto y antecedentes (máx 4 líneas)
-   - Párrafo 3: Desarrollo y reacciones (máx 4 líneas)
-   - Párrafo 4: Cierre con implicaciones (máx 3 líneas)
-4. Longitud total: 800-1200 caracteres
-5. Al final agrega: "Información de {fuente}"
+TU TAREA:
+Escribe una NOTICIA COMPLETA Y ORIGINAL en ESPAÑOL. NO copies el texto anterior.
+Crea una redacción periodística profesional con:
+
+1. UN TITULAR NUEVO en español (máximo 80 caracteres, llamativo)
+2. CUATRO PÁRRAFOS en español:
+   - Lead: El hecho más importante (2-3 líneas)
+   - Contexto: Antecedentes relevantes (3-4 líneas)
+   - Desarrollo: Detalles y reacciones (3-4 líneas)
+   - Cierre: Consecuencias o próximos pasos (2-3 líneas)
+
+REGLAS ESTRICTAS:
+- TODO el texto debe estar en ESPAÑOL
+- NO uses palabras en inglés
+- Longitud total: 900-1300 caracteres
+- Estilo: Periodismo objetivo e informativo
+- Al final agrega: "Fuente: {fuente}"
 
 FORMATO DE RESPUESTA:
-TITULAR: [título en español ya traducido]
+TITULAR: [titular en español]
 
 TEXTO:
 [párrafo 1]
@@ -198,12 +223,12 @@ TEXTO:
 
 [párrafo 4]
 
-Información de {fuente}.
+Fuente: {fuente}.
 
 FIN"""
 
             response = requests.post(
-                'https://api.openai.com/v1/chat/completions',  # ✅ SIN ESPACIO
+                'https://api.openai.com/v1/chat/completions',
                 headers={
                     'Authorization': f'Bearer {OPENAI_API_KEY}',
                     'Content-Type': 'application/json'
@@ -211,31 +236,31 @@ FIN"""
                 json={
                     'model': 'gpt-4o-mini',
                     'messages': [{'role': 'user', 'content': prompt}],
-                    'temperature': 0.1,  # Muy bajo para evitar "creatividad"
-                    'max_tokens': 800
+                    'temperature': 0.4,
+                    'max_tokens': 1000
                 },
-                timeout=30
+                timeout=45
             )
             
             if response.status_code == 200:
                 resultado = response.json()['choices'][0]['message']['content']
+                print(f"   ✅ OpenAI respondió ({len(resultado)} chars)")
                 
-                # Extraer partes
-                titular = titulo_es
-                texto = desc_es
-                
+                # Extraer titular
+                titular = titulo_traducido  # fallback
                 if 'TITULAR:' in resultado:
                     try:
-                        titular_parte = resultado.split('TITULAR:')[1].split('TEXTO:')[0]
-                        titular = titular_parte.strip().strip('"\'')
-                        # Verificar que no metió inglés
-                        if detectar_idioma(titular):
-                            titular = titular
-                        else:
-                            titular = titulo_es
-                    except:
-                        pass
+                        titular = resultado.split('TITULAR:')[1].split('TEXTO:')[0].strip()
+                        titular = titular.strip('"\'').strip()
+                        # Verificar que no esté en inglés
+                        if not es_espanol(titular):
+                            print(f"   ⚠️ Titular en inglés detectado, usando traducido")
+                            titular = titulo_traducido
+                    except Exception as e:
+                        print(f"   ⚠️ Error extrayendo titular: {e}")
                 
+                # Extraer texto
+                texto = desc_traducida  # fallback
                 if 'TEXTO:' in resultado:
                     try:
                         texto_parte = resultado.split('TEXTO:')[1]
@@ -245,56 +270,82 @@ FIN"""
                             texto = texto_parte.strip()
                         
                         # Verificar español
-                        if not detectar_idioma(texto):
-                            print("   ⚠️ OpenAI devolvió inglés, usando manual")
-                            return crear_estructura_manual(titulo_es, desc_es, fuente)
+                        if not es_espanol(texto):
+                            print(f"   ⚠️ Texto tiene inglés, usando generación manual")
+                            return redaccion_manual(titulo_traducido, desc_traducida, fuente)
                             
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"   ⚠️ Error extrayendo texto: {e}")
                 
-                print(f"   ✅ Estructura OK: {len(texto)} chars")
-                return {'titular': titular, 'texto': texto}
-                    
+                print(f"   ✅ Redacción OK: {len(texto)} chars")
+                return {'titular': titular[:100], 'texto': texto[:1500]}
+            else:
+                print(f"   ❌ OpenAI error {response.status_code}: {response.text[:200]}")
+                
         except Exception as e:
-            print(f"   ⚠️ OpenAI estructura falló: {e}")
+            print(f"   ❌ Error OpenAI: {e}")
     
-    # PASO 3: Estructura manual si OpenAI falla
-    return crear_estructura_manual(titulo_es, desc_es, fuente)
+    # Si OpenAI no está disponible o falló, usar redacción manual
+    return redaccion_manual(titulo_traducido, desc_traducida, fuente)
 
-def crear_estructura_manual(titulo, descripcion, fuente):
-    """Crea estructura periodística manual en español"""
-    print("   📝 Creando estructura manual...")
+def traducir_con_openai(texto):
+    """Traducción de respaldo usando OpenAI"""
+    try:
+        prompt = f"""Traduce este texto al ESPAÑOL. Solo devuelve la traducción, nada más:
+
+Texto: {texto}
+
+Traducción en español:"""
+
+        response = requests.post(
+            'https://api.openai.com/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {OPENAI_API_KEY}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'gpt-4o-mini',
+                'messages': [{'role': 'user', 'content': prompt}],
+                'temperature': 0.1,
+                'max_tokens': 500
+            },
+            timeout=20
+        )
+        
+        if response.status_code == 200:
+            return response.json()['choices'][0]['message']['content'].strip()
+    except:
+        pass
+    return texto
+
+def redaccion_manual(titulo, descripcion, fuente):
+    """Crea redacción manual garantizada en español"""
+    print(f"   📝 Creando redacción manual...")
     
+    # Limpiar
     titulo = str(titulo).strip()
-    desc = str(descripcion).strip()
+    desc = re.sub(r'<[^>]+>', '', str(descripcion)).strip()
     
-    # Limpiar HTML si viene de RSS
-    desc = re.sub(r'<[^>]+>', '', desc)
+    # Extraer palabras clave del título para hacerlo más informativo
+    palabras_clave = titulo.replace(':', ' ').replace('-', ' ').replace(',', ' ')
     
-    # Párrafo 1: Lead
-    if len(desc) > 100:
-        parrafo1 = desc[:300] if len(desc) > 300 else desc
-        if not parrafo1.endswith('.'):
-            parrafo1 += '.'
-    else:
-        parrafo1 = f"{desc}. Este acontecimiento ha generado significativa atención en los medios internacionales por su trascendencia inmediata."
+    # Crear párrafos variados basados en el contenido
+    parrafo1 = f"{desc[:300] if len(desc) > 200 else desc} Este acontecimiento ha generado considerable repercusión en los ámbitos político y social a nivel internacional."
     
-    # Párrafos 2-4: Contexto genérico pero en español
-    parrafo2 = "La información ha sido confirmada por diversas fuentes periodísticas de alcance global, destacando la relevancia del hecho en el contexto internacional actual. Las autoridades competentes continúan evaluando la situación de cerca."
+    parrafo2 = f"Las autoridades competentes y diversos actores del escenario global han manifestado su posición respecto a estos hechos. La comunidad internacional mantiene atenta vigilancia sobre el desarrollo de la situación."
     
-    parrafo3 = "Analistas especializados señalan que este tipo de eventos requiere seguimiento constante por parte de la comunidad internacional. La cobertura informativa se mantendrá actualizada conforme se desarrollen los hechos."
+    parrafo3 = f"Analistas políticos señalan que este tipo de acontecimientos podría tener implicaciones significativas en las relaciones bilaterales y multilaterales. La cobertura mediática continúa ampliándose conforme surgen nuevos detalles."
     
-    parrafo4 = f"Los detalles adicionales serán proporcionados a medida que estén disponibles. Información de {fuente}."
+    parrafo4 = f"Se espera que en las próximas horas se proporcionen actualizaciones adicionales sobre este tema de relevancia internacional. Fuente: {fuente}."
     
     texto = f"{parrafo1}\n\n{parrafo2}\n\n{parrafo3}\n\n{parrafo4}"
     
-    if len(texto) < 600:
-        texto += f"\n\nLa situación continúa en desarrollo según reportes de {fuente}."
+    # Asegurar longitud
+    if len(texto) < 800:
+        texto += f"\n\nLa información será actualizada progresivamente según reportes de {fuente}."
     
-    texto = texto[:1500]
-    
-    print(f"   ✅ Manual: {len(texto)} caracteres")
-    return {'titular': titulo[:100], 'texto': texto}
+    print(f"   ✅ Manual: {len(texto)} chars")
+    return {'titular': titulo[:100], 'texto': texto[:1500]}
 
 def buscar_noticias():
     print("\n🔍 Buscando noticias...")
@@ -305,24 +356,24 @@ def buscar_noticias():
     if NEWS_API_KEY:
         try:
             response = requests.get(
-                "https://newsapi.org/v2/top-headlines",  # ✅ SIN ESPACIO
+                "https://newsapi.org/v2/top-headlines",
                 params={'language': 'en', 'pageSize': 20, 'apiKey': NEWS_API_KEY},
-                timeout=10
+                timeout=15
             )
             data = response.json()
             if data.get('status') == 'ok':
                 noticias.extend(data.get('articles', []))
-                print(f"   📡 NewsAPI: {len(data.get('articles', []))}")
+                print(f"   📡 NewsAPI: {len(data.get('articles', []))} noticias")
         except Exception as e:
-            print(f"   ⚠️ NewsAPI: {e}")
+            print(f"   ⚠️ NewsAPI error: {e}")
     
     # GNews
     if GNEWS_API_KEY and len(noticias) < 5:
         try:
             response = requests.get(
-                "https://gnews.io/api/v4/top-headlines",  # ✅ SIN ESPACIO
+                "https://gnews.io/api/v4/top-headlines",
                 params={'lang': 'en', 'max': 20, 'apikey': GNEWS_API_KEY},
-                timeout=10
+                timeout=15
             )
             data = response.json()
             if 'articles' in data:
@@ -334,11 +385,11 @@ def buscar_noticias():
                         'urlToImage': a.get('image'),
                         'source': {'name': a.get('source', {}).get('name', 'GNews')}
                     })
-                print(f"   📡 GNews: {len(data['articles'])}")
+                print(f"   📡 GNews: {len(data['articles'])} noticias")
         except Exception as e:
-            print(f"   ⚠️ GNews: {e}")
+            print(f"   ⚠️ GNews error: {e}")
     
-    # RSS
+    # RSS Feeds
     if len(noticias) < 3:
         rss_feeds = [
             'http://feeds.bbci.co.uk/news/world/rss.xml',
@@ -365,19 +416,19 @@ def buscar_noticias():
                         'source': {'name': feed.feed.get('title', 'RSS')}
                     })
                 print(f"   📡 RSS: {feed_url.split('/')[2]}")
-            except:
-                pass
+            except Exception as e:
+                print(f"   ⚠️ RSS error: {e}")
     
-    print(f"\n📊 Total: {len(noticias)}")
+    print(f"\n📊 Total noticias encontradas: {len(noticias)}")
     
-    # Filtrar nuevas
+    # Filtrar nuevas y válidas
     nuevas = []
     for art in noticias:
         if not art.get('title') or len(art['title']) < 10:
             continue
         if "[Removed]" in art['title']:
             continue
-        if not art.get('url') or not art.get('urlToImage'):
+        if not art.get('url'):
             continue
         
         if ya_publicada(art['url'], art['title']):
@@ -386,14 +437,15 @@ def buscar_noticias():
         nuevas.append(art)
         print(f"   ✅ Nueva: {art['title'][:50]}...")
     
-    print(f"📊 Nuevas: {len(nuevas)}")
+    print(f"📊 Noticias nuevas: {len(nuevas)}")
     return nuevas[:3]
 
 def descargar_imagen(url):
     if not url or not str(url).startswith('http'):
         return None
     try:
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+        print(f"   🖼️ Descargando imagen...")
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
         if response.status_code == 200:
             img = Image.open(BytesIO(response.content))
             if img.mode in ('RGBA', 'P'):
@@ -401,27 +453,37 @@ def descargar_imagen(url):
             img.thumbnail((1200, 1200))
             path = f'/tmp/noticia_{hashlib.md5(str(url).encode()).hexdigest()[:8]}.jpg'
             img.save(path, 'JPEG', quality=85)
+            print(f"   ✅ Imagen guardada: {path}")
             return path
     except Exception as e:
         print(f"   ⚠️ Error imagen: {e}")
     return None
 
 def publicar(titulo, texto, img_path):
-    """Publica en Facebook"""
+    """Publica en Facebook con verificación final"""
     
-    # Verificación final de español
-    if detectar_idioma(texto) and detectar_idioma(titulo):
-        print(f"   ✅ Verificación español: OK")
-    else:
-        print(f"   ⚠️ ALERTA: Texto puede contener inglés")
-        # Último intento de traducción
-        if not detectar_idioma(titulo):
-            titulo = traducir_deepl(titulo)
-        if not detectar_idioma(texto):
-            texto = traducir_deepl(texto)
+    print(f"\n   🔍 Verificación final de idioma...")
+    
+    # Verificación estricta
+    if not es_espanol(titulo):
+        print(f"   ❌ ALERTA: Titular en inglés detectado: {titulo[:50]}")
+        titulo = traducir_deepl(titulo)
+        if not es_espanol(titulo):
+            titulo = "Noticia Internacional"  # Último recurso
+    
+    if not es_espanol(texto):
+        print(f"   ❌ ALERTA: Texto contiene inglés")
+        # Intentar traducir párrafos con inglés
+        lineas = texto.split('\n')
+        lineas_traducidas = []
+        for linea in lineas:
+            if linea.strip() and not es_espanol(linea):
+                linea = traducir_deepl(linea)
+            lineas_traducidas.append(linea)
+        texto = '\n'.join(lineas_traducidas)
     
     # Hashtags en español
-    hashtags = f"#Noticias #Actualidad #{datetime.now().strftime('%Y')} #Internacional #Hoy #Mundo"
+    hashtags = "#Noticias #Actualidad #Internacional #Hoy #Mundo #NoticiasDelDía"
     
     mensaje = f"""📰 {titulo}
 
@@ -431,15 +493,28 @@ def publicar(titulo, texto, img_path):
 
 — Verdad Hoy: Noticias Internacionales"""
     
-    print(f"\n   📝 MENSAJE ({len(mensaje)} caracteres):")
-    print(f"   {'-'*50}")
-    for linea in mensaje.split('\n')[:8]:
+    print(f"\n   📝 PREVIEW ({len(mensaje)} caracteres):")
+    print(f"   {'='*50}")
+    for i, linea in enumerate(mensaje.split('\n')[:6]):
         preview = linea[:60] + "..." if len(linea) > 60 else linea
         print(f"   {preview}")
-    print(f"   {'-'*50}")
+    if len(mensaje.split('\n')) > 6:
+        print(f"   ... ({len(mensaje.split(chr(10))) - 6} líneas más)")
+    print(f"   {'='*50}")
+    
+    # Verificación final
+    palabras_en = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'polls', 'attacks', 'sold']
+    texto_lower = mensaje.lower()
+    encontradas = [p for p in palabras_en if p in texto_lower]
+    if encontradas:
+        print(f"   ⚠️ Palabras en inglés detectadas: {encontradas}")
+        print(f"   ❌ PUBLICACIÓN CANCELADA - Requiere revisión")
+        return False
     
     try:
-        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"  # ✅ SIN ESPACIO
+        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
+        print(f"   📤 Publicando en Facebook...")
+        
         with open(img_path, 'rb') as f:
             response = requests.post(
                 url,
@@ -448,35 +523,41 @@ def publicar(titulo, texto, img_path):
                 timeout=60
             )
             result = response.json()
+            
             if response.status_code == 200 and 'id' in result:
-                print(f"   ✅ Publicado: {result['id']}")
+                print(f"   ✅ PUBLICADO EXITOSAMENTE: {result['id']}")
                 return True
-            print(f"   ❌ FB error: {result.get('error', {}).get('message', result)}")
+            else:
+                error_msg = result.get('error', {}).get('message', str(result))
+                print(f"   ❌ Facebook error: {error_msg}")
+                
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"   ❌ Error publicando: {e}")
+    
     return False
 
 def main():
     noticias = buscar_noticias()
     
     if not noticias:
-        print("\n⚠️ No hay noticias nuevas")
+        print("\n⚠️ No hay noticias nuevas disponibles")
         return False
     
-    print(f"\n🎯 Intentando publicar {len(noticias)} noticia(s)")
+    print(f"\n🎯 Procesando {len(noticias)} noticia(s)")
     
     for i, noticia in enumerate(noticias, 1):
         print(f"\n{'='*60}")
         print(f"📰 NOTICIA {i}/{len(noticias)}")
         print(f"{'='*60}")
         
+        # Descargar imagen
         img_path = descargar_imagen(noticia.get('urlToImage'))
         if not img_path:
-            print("   ⏭️ Sin imagen")
+            print("   ⏭️ Saltando: Sin imagen válida")
             continue
         
-        # Crear noticia en español garantizado
-        resultado = crear_noticia_espanol(
+        # Crear noticia en español (redacción original, no traducción literal)
+        resultado = crear_noticia_original(
             noticia['title'],
             noticia.get('description', ''),
             noticia.get('source', {}).get('name', 'Medios Internacionales')
@@ -491,21 +572,22 @@ def main():
             if os.path.exists(img_path):
                 os.remove(img_path)
             print(f"\n{'='*60}")
-            print("✅ ÉXITO - Publicación en español")
+            print("✅ ÉXITO: Noticia publicada en español")
             print(f"{'='*60}")
             return True
         
+        # Limpiar si falló
         if os.path.exists(img_path):
             os.remove(img_path)
     
-    print("\n❌ Falló todo")
+    print("\n❌ No se pudo publicar ninguna noticia")
     return False
 
 if __name__ == "__main__":
     try:
         exit(0 if main() else 1)
     except Exception as e:
-        print(f"\n💥 Error: {e}")
+        print(f"\n💥 Error crítico: {e}")
         import traceback
         traceback.print_exc()
         exit(1)

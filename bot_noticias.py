@@ -393,51 +393,93 @@ def es_categoria_permitida(titulo, descripcion):
     
     return True
 
-def completar_oracion(texto):
-    """Completa la oración si está cortada"""
+def asegurar_oracion_completa(texto):
+    """Asegura que el texto termine en una oración completa, sin cortes"""
     texto = texto.strip()
     
-    # Si termina con preposición o artículo, completar
-    terminaciones_incompletas = [' que', ' de', ' la', ' el', ' los', ' las', ' un', ' una', 
-                                 ' al', ' del', ' por', ' para', ' con', ' sin', ' sobre',
-                                 ' entre', ' hasta', ' desde', ' ante', ' bajo', ' según',
-                                 ' tras', ' durante', ' mediante', ' excepto', ' salvo',
-                                 ' y', ' o', ' pero', ' aunque', ' porque', ' cuando',
-                                 ' mientras', ' aun', ' incluso', ' también', ' así',
-                                 ' como', ' cual', ' cuyo', ' cuya', ' donde', ' quien']
+    # Si está vacío, retornar vacío
+    if not texto:
+        return texto
     
-    for term in terminaciones_incompletas:
-        if texto.lower().endswith(term):
-            return texto + "..."
+    # Eliminar espacios múltiples
+    texto = re.sub(r'\s+', ' ', texto)
     
-    # Si no tiene puntuación final, agregar punto
-    if not texto.endswith(('.', '!', '?', '...', '"', "'")):
-        return texto + "."
+    # Lista de palabras que indican que la oración está incompleta al final
+    palabras_incompletas = [
+        ' que', ' de', ' la', ' el', ' los', ' las', ' un', ' una', 
+        ' al', ' del', ' por', ' para', ' con', ' sin', ' sobre',
+        ' entre', ' hasta', ' desde', ' ante', ' bajo', ' según',
+        ' tras', ' durante', ' mediante', ' excepto', ' salvo',
+        ' y', ' o', ' pero', ' aunque', ' porque', ' cuando',
+        ' mientras', ' aun', ' incluso', ' también', ' así',
+        ' como', ' cual', ' cuyo', ' cuya', ' donde', ' quien',
+        ' este', ' esta', ' estos', ' estas', ' ese', ' esa', ' esos', ' esas',
+        ' aquel', ' aquella', ' aquellos', ' aquellas',
+        ' mi', ' tu', ' su', ' nuestro', ' vuestro', ' sus',
+        ' con', ' sin', ' para', ' por', ' bajo', ' sobre', ' tras'
+    ]
+    
+    # Verificar si termina con palabra incompleta
+    texto_lower = texto.lower()
+    for palabra in palabras_incompletas:
+        if texto_lower.endswith(palabra):
+            # Buscar la última oración completa antes de esta palabra
+            # Buscar el último punto, signo de exclamación o interrogación
+            for i in range(len(texto) - len(palabra), -1, -1):
+                if texto[i] in '.!?':
+                    texto = texto[:i+1].strip()
+                    break
+            else:
+                # Si no encontramos punto, eliminar la palabra incompleta
+                texto = texto[:-len(palabra)].strip()
+            break
+    
+    # Si no termina con puntuación final, agregar punto
+    if texto and not texto.endswith(('.', '!', '?', '...', '"', "'", ')', ']')):
+        texto += "."
+    
+    return texto
+
+def eliminar_links_texto(texto):
+    """Elimina todos los links del texto, dejando solo el texto plano"""
+    # Eliminar URLs en formato markdown [texto](url)
+    texto = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto)
+    
+    # Eliminar URLs sueltas (http://, https://, www.)
+    texto = re.sub(r'https?://\S+', '', texto)
+    texto = re.sub(r'www\.\S+', '', texto)
+    
+    # Eliminar posibles restos de URLs
+    texto = re.sub(r'\S+\.(com|es|org|net|info|gov|edu)\S*', '', texto, flags=re.IGNORECASE)
+    
+    # Limpiar espacios múltiples que puedan quedar
+    texto = re.sub(r'\s+', ' ', texto).strip()
     
     return texto
 
 def generar_redaccion_completa(titulo, descripcion, fuente, url_fuente, categoria):
-    """Genera redacción periodística COMPLETA sin cortes"""
+    """Genera redacción periodística COMPLETA sin cortes y sin links en el texto"""
     
     print(f"\n   📝 Procesando: {titulo[:50]}...")
     print(f"   🏷️ Categoría: {categoria}")
     
-    # Completar el título si está cortado
-    titulo_completo = completar_oracion(titulo)
-    
-    # Limpiar descripción
+    # Limpiar descripción de HTML y links
     desc_limpia = re.sub(r'<[^>]+>', '', str(descripcion)).strip()
+    desc_limpia = eliminar_links_texto(desc_limpia)
+    
     if len(desc_limpia) < 20:
-        desc_limpia = titulo_completo
+        desc_limpia = titulo
     
     if OPENROUTER_API_KEY:
-        resultado = generar_con_ia(titulo_completo, desc_limpia, fuente, url_fuente, categoria)
+        resultado = generar_con_ia(titulo, desc_limpia, fuente, url_fuente, categoria)
         if resultado and len(resultado['texto']) > 800:
-            # Asegurar que el titular esté completo
-            resultado['titular'] = completar_oracion(resultado['titular'])
+            # Asegurar que el titular esté completo y sin links
+            resultado['titular'] = asegurar_oracion_completa(resultado['titular'])
+            resultado['texto'] = eliminar_links_texto(resultado['texto'])
+            resultado['texto'] = asegurar_oracion_completa(resultado['texto'])
             return resultado
     
-    return plantilla_mejorada(titulo_completo, desc_limpia, fuente, url_fuente, categoria)
+    return plantilla_mejorada(titulo, desc_limpia, fuente, url_fuente, categoria)
 
 def generar_con_ia(titulo, descripcion, fuente, url_fuente, categoria):
     """Genera usando OpenRouter"""
@@ -471,6 +513,7 @@ REGLAS CRÍTICAS:
 - ESPAÑOL NATIVO
 - Longitud total: 1000-1500 caracteres
 - Termina SOLO con la fuente y el link
+- NO incluyas links dentro del texto, solo al final en el cierre
 
 FORMATO OBLIGATORIO:
 TITULAR: [titular completo que termine bien]
@@ -523,9 +566,23 @@ FIN"""
                         cuerpo = extraer_campo(content, 'CUERPO:', 'CIERRE:')
                         cierre = extraer_campo(content, 'CIERRE:', 'FIN')
                         
-                        # Completar oraciones cortadas
-                        titular = completar_oracion(titular)
-                        lead = completar_oracion(lead)
+                        # Limpiar links del contenido
+                        lead = eliminar_links_texto(lead)
+                        cuerpo = eliminar_links_texto(cuerpo)
+                        
+                        # Asegurar oraciones completas
+                        titular = asegurar_oracion_completa(titular)
+                        lead = asegurar_oracion_completa(lead)
+                        
+                        # Procesar cada párrafo del cuerpo para asegurar que esté completo
+                        parrafos = [p.strip() for p in cuerpo.split('\n\n') if p.strip()]
+                        parrafos_completos = []
+                        for p in parrafos:
+                            p = asegurar_oracion_completa(p)
+                            if len(p) > 20:  # Solo incluir párrafos sustanciales
+                                parrafos_completos.append(p)
+                        
+                        cuerpo = '\n\n'.join(parrafos_completos[:3])  # Máximo 3 párrafos
                         
                         if not cierre or 'detalles' in cierre.lower() or 'actualizaciones' in cierre.lower():
                             cierre = f"Fuente: {fuente} - {url_fuente}"
@@ -533,6 +590,12 @@ FIN"""
                         cierre = limpiar_cierre(cierre, fuente, url_fuente)
                         
                         texto_completo = f"{lead}\n\n{cuerpo}\n\n{cierre}"
+                        
+                        # Limpiar cualquier link residual
+                        texto_completo = eliminar_links_texto(texto_completo)
+                        
+                        # Asegurar que termine completo
+                        texto_completo = asegurar_oracion_completa(texto_completo)
                         
                         if len(texto_completo) > 600:
                             print(f"   ✅ IA generó: {len(texto_completo)} caracteres")
@@ -588,16 +651,20 @@ def limpiar_cierre(cierre, fuente, url_fuente):
     
     cierre_limpio = re.sub(r'\s+', ' ', cierre_limpio).strip()
     
-    if len(cierre_limpio) < 10 or 'http' not in cierre_limpio:
+    # Asegurar que el cierre tenga el formato correcto con el link
+    if 'http' not in cierre_limpio or len(cierre_limpio) < 10:
         cierre_limpio = f"Fuente: {fuente} - {url_fuente}"
     
     return cierre_limpio
 
 def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
-    """Plantilla periodística robusta"""
+    """Plantilla periodística robusta con párrafos completos"""
     print(f"   📝 Usando plantilla mejorada...")
     
-    # Crear lead completo
+    # Limpiar descripción de links
+    descripcion = eliminar_links_texto(descripcion)
+    
+    # Crear lead completo a partir de la descripción
     oraciones_desc = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 20]
     
     if len(oraciones_desc) >= 2:
@@ -607,11 +674,18 @@ def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
     else:
         lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes confirmaron la información en las últimas horas."
     
-    # Completar lead si está cortado
-    lead = completar_oracion(lead)
+    # Asegurar que el lead esté completo
+    lead = asegurar_oracion_completa(lead)
     
+    # Limitar longitud pero mantener oración completa
     if len(lead) > 220:
-        lead = lead[:217].rsplit(' ', 1)[0] + "."
+        lead = lead[:217]
+        # Buscar el último punto completo
+        ultimo_punto = lead.rfind('.')
+        if ultimo_punto > 100:
+            lead = lead[:ultimo_punto+1]
+        else:
+            lead += "."
     
     templates_categoria = {
         'politica': {
@@ -665,9 +739,17 @@ def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
             'p3': "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis."
         }
     
+    # Asegurar que cada párrafo esté completo
+    p1 = asegurar_oracion_completa(temps['p1'])
+    p2 = asegurar_oracion_completa(temps['p2'])
+    p3 = asegurar_oracion_completa(temps['p3'])
+    
     cierre = f"Fuente: {fuente} - {url_fuente}"
     
-    texto = f"{lead}\n\n{temps['p1']}\n\n{temps['p2']}\n\n{temps['p3']}\n\n{cierre}"
+    texto = f"{lead}\n\n{p1}\n\n{p2}\n\n{p3}\n\n{cierre}"
+    
+    # Limpiar cualquier link residual
+    texto = eliminar_links_texto(texto)
     
     print(f"   ✅ Plantilla: {len(texto)} caracteres")
     return {
@@ -770,9 +852,12 @@ def buscar_noticias_categorizadas():
                     if m:
                         img = m.group(1)
                 
+                # Limpiar descripción de links
+                desc_limpia = eliminar_links_texto(entry.get('summary', entry.get('description', '')))
+                
                 noticias.append({
                     'title': entry.get('title'),
-                    'description': entry.get('summary', entry.get('description', ''))[:500],
+                    'description': desc_limpia[:500],
                     'url': entry.get('link'),
                     'urlToImage': img,
                     'source': {'name': feed.feed.get('title', categoria_feed)},
@@ -823,7 +908,7 @@ def descargar_imagen(url):
     return None
 
 def publicar_completo(titulo, texto, img_path, categoria, url_fuente, fuente):
-    """Publica en Facebook con hashtag de localización"""
+    """Publica en Facebook con hashtag de localización, sin links en el texto"""
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
@@ -852,18 +937,22 @@ def publicar_completo(titulo, texto, img_path, categoria, url_fuente, fuente):
     if hashtag_local and hashtag_local not in hashtags:
         hashtags = f"{hashtag_local} {hashtags}"
     
-    # Asegurar que el texto no esté cortado
-    texto_limpio = texto.strip()
-    if texto_limpio.endswith(('en', 'de', 'la', 'el', 'un', 'una', 'a', 'con', 'por')):
-        texto_limpio += "."
+    # Limpiar el texto de cualquier link residual
+    texto_limpio = eliminar_links_texto(texto)
     
-    # Verificar que el link de fuente esté incluido
-    if url_fuente not in texto_limpio:
-        texto_limpio += f"\n\nFuente: {url_fuente}"
+    # Asegurar que el texto termine en oración completa
+    texto_limpio = asegurar_oracion_completa(texto_limpio)
     
+    # Verificar que el link de fuente esté incluido solo al final
+    # Primero eliminamos cualquier referencia a fuente que pueda tener
+    texto_limpio = re.sub(r'Fuente:.*?(?=\n|$)', '', texto_limpio, flags=re.IGNORECASE).strip()
+    
+    # Construir mensaje final
     mensaje = f"""📰 {titulo}
 
 {texto_limpio}
+
+Fuente: {fuente} - {url_fuente}
 
 {hashtags}
 
@@ -871,7 +960,7 @@ def publicar_completo(titulo, texto, img_path, categoria, url_fuente, fuente):
     
     print(f"\n   📝 MENSAJE ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
-    for linea in mensaje.split('\n')[:8]:
+    for linea in mensaje.split('\n')[:10]:
         preview = linea[:65] + "..." if len(linea) > 65 else linea
         print(f"   {preview}")
     print(f"   {'='*50}")

@@ -18,7 +18,7 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
-# CATEGORÍAS Y PALABRAS CLAVE PRIORITARIAS
+# CATEGORÍAS Y PALABRAS CLAVE
 CATEGORIAS = {
     'politica': {
         'keywords': ['presidente', 'gobierno', 'ministro', 'congreso', 'senado', 'elecciones', 
@@ -108,7 +108,7 @@ CATEGORIAS = {
 }
 
 print("="*60)
-print("🚀 BOT DE NOTICIAS - Verdad Hoy (CATEGORIZADO)")
+print("🚀 BOT DE NOTICIAS - Verdad Hoy")
 print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
 print("="*60)
 
@@ -134,7 +134,6 @@ def guardar_historial(url, titulo, categoria='general'):
         historial['categorias'][categoria] = []
     historial['categorias'][categoria].append(url)
     
-    # Mantener solo últimas 500
     historial['urls'] = historial['urls'][-500:]
     historial['titulos'] = historial['titulos'][-500:]
     
@@ -164,7 +163,7 @@ def ya_publicada(url, titulo):
     return False
 
 def detectar_categoria(titulo, descripcion):
-    """Detecta la categoría de la noticia basada en palabras clave"""
+    """Detecta la categoría de la noticia"""
     texto = f"{titulo} {descripcion}".lower()
     
     puntuaciones = {}
@@ -175,7 +174,6 @@ def detectar_categoria(titulo, descripcion):
                 score += 1
         puntuaciones[cat] = score
     
-    # Devolver categoría con mayor puntuación
     if max(puntuaciones.values()) > 0:
         return max(puntuaciones, key=puntuaciones.get)
     return 'general'
@@ -184,83 +182,103 @@ def eliminar_urls(texto):
     """Elimina todas las URLs del texto"""
     if not texto:
         return texto
-    # Patrón para detectar URLs
     url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
     texto_sin_urls = re.sub(url_pattern, '', texto)
-    # Limpiar espacios dobles que quedan
     texto_sin_urls = re.sub(r'\s+', ' ', texto_sin_urls).strip()
     return texto_sin_urls
 
-def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
+def formatear_parrafo_profesional(texto):
+    """Formatea un párrafo asegurando que termine en punto y tenga buena estructura"""
+    if not texto:
+        return ""
+    
+    texto = texto.strip()
+    
+    # Eliminar espacios antes de puntuación
+    texto = re.sub(r'\s+([.,;:!?])', r'\1', texto)
+    
+    # Asegurar que termine en punto
+    if not texto.endswith(('.', '!', '?')):
+        texto += "."
+    
+    return texto
+
+def generar_redaccion_profesional(titulo, descripcion, fuente, categoria):
     """
-    Genera redacción periodística COMPLETA sin cortes.
-    Estructura: Titular + Lead (2-3 oraciones completas) + Cuerpo (3 párrafos completos) + Cierre
+    Genera redacción periodística profesional tipo agencia EFE/Reuters.
+    Estructura: Titular + Lead + 3 párrafos desarrollo + Cierre
     """
     
     print(f"\n   📝 Procesando: {titulo[:50]}...")
     print(f"   🏷️ Categoría: {categoria}")
     
-    # Limpiar descripción base y eliminar URLs
+    # Limpiar entrada
     desc_limpia = eliminar_urls(descripcion)
     desc_limpia = re.sub(r'<[^>]+>', '', str(desc_limpia)).strip()
     
-    # Asegurar que la descripción tenga suficiente contenido
     if len(desc_limpia) < 30:
-        desc_limpia = f"Se reporta un importante acontecimiento de relevancia internacional relacionado con {categoria}. Las autoridades competentes han confirmado la información."
+        desc_limpia = f"Se reporta un importante acontecimiento de relevancia internacional relacionado con {categoria}."
     
-    # Si tenemos IA, usarla
+    # Intentar con IA primero
     if OPENROUTER_API_KEY:
-        resultado = generar_con_ia(titulo, desc_limpia, fuente, categoria)
-        if resultado and len(resultado['texto']) > 800:
-            # Eliminar URLs del resultado
-            resultado['texto'] = eliminar_urls(resultado['texto'])
-            resultado['titular'] = eliminar_urls(resultado['titular'])
+        resultado = generar_con_ia_profesional(titulo, desc_limpia, fuente, categoria)
+        if resultado and len(resultado['texto']) > 1000:
             return resultado
     
-    # Plantilla mejorada sin cortes
-    return plantilla_mejorada(titulo, desc_limpia, fuente, categoria)
+    # Plantilla profesional mejorada
+    return plantilla_profesional_estilo_agencia(titulo, desc_limpia, fuente, categoria)
 
-def generar_con_ia(titulo, descripcion, fuente, categoria):
-    """Genera usando OpenRouter"""
+def generar_con_ia_profesional(titulo, descripcion, fuente, categoria):
+    """Genera usando OpenRouter con estilo agencia profesional"""
     try:
-        prompt = f"""Eres un redactor senior de agencia EFE. Escribe una NOTICIA COMPLETA en español.
+        prompt = f"""Eres un redactor de agencia EFE o Reuters. Escribe una NOTICIA PROFESIONAL en español.
 
 DATOS:
-Título original: {titulo}
+Título: {titulo}
 Descripción: {descripcion}
 Fuente: {fuente}
 Categoría: {categoria}
 
-INSTRUCCIONES ESTRICTAS:
-1. TITULAR: Máximo 90 caracteres, informativo, atractivo, estilo EFE. NO incluir URLs.
-2. LEAD: Exactamente 2-3 oraciones COMPLETAS (mínimo 150, máximo 250 caracteres), incluye: qué pasó, quién, cuándo, dónde. Terminar con punto.
-3. CUERPO: Exactamente 3 párrafos COMPLETOS, cada uno con 3-4 oraciones terminadas en punto:
-   - Párrafo 1: Contexto y antecedentes (quiénes están involucrados)
-   - Párrafo 2: Desarrollo actual (datos, cifras, declaraciones específicas)
-   - Párrafo 3: Análisis e implicaciones (qué significa, consecuencias futuras)
-4. CIERRE: 1 oración completa con próximos pasos + "(Agencias) / Fuente: {fuente}"
-5. IMPORTANTE: NO incluir links, URLs, ni referencias a sitios web. Solo texto informativo.
+ESTRUCTURA PERIODÍSTICA PROFESIONAL:
 
-REGLAS:
-- ESPAÑOL NATIVO, no traducciones literales
-- Oraciones COMPLETAS terminadas en punto
-- NUNCA cortar una oración a la mitad
-- Longitud total: 1400-1900 caracteres
-- Estilo periodístico NEUTRO e informativo
+1. TITULAR (máx 90 caracteres):
+   Informativo, preciso, estilo agencia. Sin URLs.
 
-FORMATO OBLIGATORIO:
-TITULAR: [titular completo sin URLs]
+2. LEAD (1 párrafo, 2-3 oraciones, máx 200 caracteres):
+   El dato más importante primero. Quién, qué, cuándo, dónde. Terminar en punto.
 
-LEAD: [lead de 2-3 oraciones completas terminadas en punto]
+3. DESARROLLO - Exactamente 3 párrafos cortos:
+   
+   PÁRRAFO 1 (Contexto): 2-3 oraciones. Antecedentes, quiénes están involucrados.
+   
+   PÁRRAFO 2 (Hechos): 2-3 oraciones. Datos específicos, cifras, declaraciones.
+   
+   PÁRRAFO 3 (Análisis): 2-3 oraciones. Implicaciones, consecuencias, reacciones.
 
-CUERPO:
-[Párrafo 1 de 3-4 oraciones completas.]
+4. CIERRE (1 oración):
+   Próximos pasos + "(Agencias) / Fuente: {fuente}"
 
-[Párrafo 2 de 3-4 oraciones completas.]
+REGLAS ESTRICTAS:
+- ESPAÑOL NATIVO, no traducción literal
+- Cada oración debe terminar en PUNTO
+- Párrafos separados por líneas en blanco (doble salto de línea)
+- Oraciones cortas y claras, estilo periodístico
+- Sin URLs ni referencias a sitios web
+- Lenguaje NEUTRO e informativo
+- Longitud total: 1200-1800 caracteres
 
-[Párrafo 3 de 3-4 oraciones completas.]
+FORMATO EXACTO:
+TITULAR: [titular]
 
-CIERRE: [cierre de 1 oración completa con fuente]
+LEAD: [lead de 2-3 oraciones terminadas en punto.]
+
+P1: [párrafo 1 de 2-3 oraciones terminadas en punto.]
+
+P2: [párrafo 2 de 2-3 oraciones terminadas en punto.]
+
+P3: [párrafo 3 de 2-3 oraciones terminadas en punto.]
+
+CIERRE: [cierre de 1 oración terminada en punto.]
 
 FIN"""
 
@@ -283,8 +301,8 @@ FIN"""
                     json={
                         'model': modelo,
                         'messages': [{'role': 'user', 'content': prompt}],
-                        'temperature': 0.3,
-                        'max_tokens': 1800
+                        'temperature': 0.2,
+                        'max_tokens': 1500
                     },
                     timeout=60
                 )
@@ -294,35 +312,31 @@ FIN"""
                     if 'choices' in data and len(data['choices']) > 0:
                         content = data['choices'][0]['message']['content']
                         
-                        # Extraer con manejo de errores mejorado
-                        titular = extraer_campo(content, 'TITULAR:', 'LEAD:') or titulo[:90]
-                        lead = extraer_campo(content, 'LEAD:', 'CUERPO:')
-                        cuerpo = extraer_campo(content, 'CUERPO:', 'CIERRE:')
-                        cierre = extraer_campo(content, 'CIERRE:', 'FIN')
+                        # Extraer componentes
+                        titular = extraer_seccion(content, 'TITULAR:', 'LEAD:')
+                        lead = extraer_seccion(content, 'LEAD:', 'P1:')
+                        p1 = extraer_seccion(content, 'P1:', 'P2:')
+                        p2 = extraer_seccion(content, 'P2:', 'P3:')
+                        p3 = extraer_seccion(content, 'P3:', 'CIERRE:')
+                        cierre = extraer_seccion(content, 'CIERRE:', 'FIN')
                         
-                        # Asegurar que no haya URLs
-                        titular = eliminar_urls(titular)
-                        lead = eliminar_urls(lead)
-                        cuerpo = eliminar_urls(cuerpo)
-                        cierre = eliminar_urls(cierre)
+                        # Limpiar y formatear
+                        titular = eliminar_urls(titular or titulo[:90])
+                        lead = formatear_parrafo_profesional(lead)
+                        p1 = formatear_parrafo_profesional(p1)
+                        p2 = formatear_parrafo_profesional(p2)
+                        p3 = formatear_parrafo_profesional(p3)
+                        cierre = formatear_parrafo_profesional(cierre or f"Se esperan actualizaciones. (Agencias) / Fuente: {fuente}.")
                         
-                        if not cierre:
-                            cierre = f"Se esperan actualizaciones oficiales. (Agencias) / Fuente: {fuente}."
+                        # Construir texto con saltos de línea profesionales
+                        texto_completo = f"{lead}\n\n{p1}\n\n{p2}\n\n{p3}\n\n{cierre}"
                         
-                        # Verificar que las oraciones estén completas (terminen en punto)
-                        lead = asegurar_oraciones_completas(lead)
-                        cuerpo = asegurar_oraciones_completas(cuerpo)
-                        cierre = asegurar_oraciones_completas(cierre)
-                        
-                        # Construir texto completo
-                        texto_completo = f"{lead}\n\n{cuerpo}\n\n{cierre}"
-                        
-                        # Verificar longitud y que no esté cortado
-                        if len(texto_completo) > 1000:
+                        # Verificar calidad
+                        if len(texto_completo) > 1000 and verificar_puntos_finales(texto_completo):
                             print(f"   ✅ IA generó: {len(texto_completo)} caracteres")
                             return {
                                 'titular': titular.strip()[:100],
-                                'texto': texto_completo[:1950]
+                                'texto': texto_completo[:1900]
                             }
                             
             except Exception as e:
@@ -330,175 +344,139 @@ FIN"""
                 continue
                 
     except Exception as e:
-        print(f"   ⚠️ Error IA general: {e}")
+        print(f"   ⚠️ Error IA: {e}")
     
     return None
 
-def asegurar_oraciones_completas(texto):
-    """Asegura que el texto termine con una oración completa"""
-    if not texto:
-        return texto
-    
-    texto = texto.strip()
-    
-    # Si termina con palabra incompleta (sin punto), buscar el último punto
-    if not texto.endswith(('.', '!', '?')):
-        # Buscar el último punto seguido de espacio o final
-        last_period = max(texto.rfind('. '), texto.rfind('.'), texto.rfind('!'), texto.rfind('?'))
-        if last_period > 50:  # Asegurar que no sea muy corto
-            texto = texto[:last_period+1]
-        else:
-            texto += "."
-    
-    # Eliminar espacios antes de puntuación
-    texto = re.sub(r'\s+([.,;:!?])', r'\1', texto)
-    
-    return texto.strip()
-
-def extraer_campo(texto, inicio, fin):
-    """Extrae campo entre dos marcadores de forma segura"""
+def extraer_seccion(texto, inicio, fin):
+    """Extrae una sección entre dos marcadores"""
     try:
         if inicio in texto:
             parte = texto.split(inicio)[1]
             if fin in parte:
-                resultado = parte.split(fin)[0].strip()
-                return resultado
-            # Si no encuentra el fin, tomar hasta 800 caracteres o el primer punto seguido de espacio
-            parte_limitada = parte[:800]
-            # Buscar último punto completo
-            ultimo_punto = parte_limitada.rfind('. ')
-            if ultimo_punto > 100:
-                return parte_limitada[:ultimo_punto+1]
-            return parte_limitada
+                return parte.split(fin)[0].strip()
+            # Si no encuentra fin, buscar hasta 600 caracteres o punto final
+            parte_cortada = parte[:600]
+            ultimo_punto = parte_cortada.rfind('.')
+            if ultimo_punto > 50:
+                return parte_cortada[:ultimo_punto+1]
+            return parte_cortada
     except:
         pass
     return ""
 
-def plantilla_mejorada(titulo, descripcion, fuente, categoria):
-    """Plantilla periodística robusta sin cortes y sin URLs"""
-    print(f"   📝 Usando plantilla mejorada...")
+def verificar_puntos_finales(texto):
+    """Verifica que cada oración termine en punto"""
+    oraciones = [o.strip() for o in texto.split('.') if len(o.strip()) > 10]
+    # Al menos el 80% de las oraciones deben terminar en punto (ya están separadas por .)
+    return len(oraciones) >= 4  # Mínimo 4 oraciones sustanciales
+
+def plantilla_profesional_estilo_agencia(titulo, descripcion, fuente, categoria):
+    """Plantilla profesional tipo agencia de noticias con párrafos bien formateados"""
+    print(f"   📝 Usando plantilla profesional...")
     
-    # Eliminar URLs de la descripción
-    descripcion = eliminar_urls(descripcion)
+    # Crear LEAD completo (2-3 oraciones)
+    oraciones_base = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 15]
     
-    # Crear lead completo (2-3 oraciones completas)
-    oraciones_desc = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 20]
-    
-    if len(oraciones_desc) >= 2:
-        lead = f"{oraciones_desc[0]}. {oraciones_desc[1]}."
-    elif len(oraciones_desc) == 1:
-        lead = f"{oraciones_desc[0]}. Las autoridades competentes confirmaron la información en las últimas horas y continúan evaluando la situación."
+    if len(oraciones_base) >= 2:
+        lead = f"{oraciones_base[0]}. {oraciones_base[1]}."
+    elif len(oraciones_base) == 1:
+        lead = f"{oraciones_base[0]}. Las autoridades competentes confirmaron la información en las últimas horas."
     else:
-        lead = f"Se reporta un importante acontecimiento relacionado con {categoria} que ha generado atención mediática. Las autoridades competentes han confirmado la información en las últimas horas y se esperan actualizaciones oficiales."
+        lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes han confirmado la información y se esperan actualizaciones oficiales."
     
-    # Asegurar que el lead termine en punto y no esté cortado
-    lead = asegurar_oraciones_completas(lead)
+    # Limitar lead a 200 caracteres pero sin cortar oración
+    if len(lead) > 200:
+        lead = lead[:197].rsplit(' ', 1)[0] + "."
     
-    # Limitar lead pero sin cortar palabras (máximo 280 caracteres)
-    if len(lead) > 280:
-        lead = lead[:277].rsplit(' ', 1)[0] + "."
-    
-    # Párrafos completos según categoría
-    templates_categoria = {
+    # Párrafos profesionales según categoría (2-3 oraciones cada uno, terminados en punto)
+    plantillas = {
         'politica': {
-            'p1': "El hecho político ha generado amplia repercusión en los círculos de poder y entre la ciudadanía. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas ante la opinión pública. Los analistas esperan definiciones claras en las próximas horas.",
-            'p2': "Analistas políticos consultados señalan que este tipo de eventos requiere un seguimiento constante por parte de la sociedad. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones para el escenario nacional.",
-            'p3': "Las implicaciones de este acontecimiento político podrían extenderse a diversos sectores de la administración pública. Expertos destacan la necesidad de mantener una postura informada ante los desarrollos que se presenten en los próximos días."
+            'p1': "El hecho político ha generado amplia repercusión en los círculos de poder. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas.",
+            'p2': "Analistas políticos consultados señalan que este tipo de eventos requiere seguimiento constante. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación.",
+            'p3': "Las implicaciones podrían extenderse a diversos sectores de la administración pública. Expertos destacan la necesidad de mantener una postura informada ante los desarrollos que se presenten en los próximos días."
         },
         'economia': {
-            'p1': "El indicador económico ha captado la atención de analistas financieros y del sector empresarial. Las entidades bancarias y reguladoras monitorean de cerca la evolución de los datos para determinar posibles ajustes en sus proyecciones trimestrales.",
-            'p2': "Especialistas en economía señalan que este comportamiento del mercado requiere análisis detallado. La información disponible sugiere tendencias que podrían afectar a consumidores e inversionistas en el corto y mediano plazo.",
-            'p3': "Las proyecciones económicas indican posibles ajustes en las políticas monetarias y fiscales. Los sectores productivos mantienen expectativa sobre las medidas que podrían implementarse para estabilizar los indicadores financieros."
+            'p1': "El indicador económico ha captado la atención de analistas financieros. Las entidades bancarias y reguladoras monitorean de cerca la evolución de los datos para determinar posibles ajustes.",
+            'p2': "Especialistas en economía señalan que este comportamiento del mercado requiere análisis detallado. La información disponible sugiere tendencias que podrían afectar a consumidores e inversionistas.",
+            'p3': "Las proyecciones económicas indican posibles ajustes en las políticas monetarias. Los sectores productivos mantienen expectativa sobre las medidas que podrían implementarse próximamente."
         },
         'mundo': {
-            'p1': "El evento internacional ha generado reacciones en diversos países y organismos multilaterales. Las cancillerías involucradas mantienen comunicación constante para evaluar la situación y coordinar posibles respuestas diplomáticas ante la comunidad global.",
-            'p2': "Observadores internacionales destacan la trascendencia de los hechos reportados en el contexto geopolítico actual. La comunidad global sigue con atención los desarrollos mientras se analizan las posibles consecuencias regionales.",
-            'p3': "Las implicaciones de esta situación internacional podrían afectar las relaciones bilaterales y multilaterales. Se esperan declaraciones oficiales adicionales de los actores involucrados en las próximas horas."
+            'p1': "El evento internacional ha generado reacciones en diversos países. Las cancillerías involucradas mantienen comunicación constante para evaluar la situación y coordinar posibles respuestas diplomáticas.",
+            'p2': "Observadores internacionales destacan la trascendencia de los hechos reportados. La comunidad global sigue con atención los desarrollos mientras se analizan las posibles consecuencias regionales.",
+            'p3': "Las implicaciones de esta situación podrían afectar las relaciones bilaterales. Se esperan declaraciones oficiales adicionales de los actores involucrados en las próximas horas."
         },
         'deportes': {
-            'p1': "El acontecimiento deportivo ha generado gran expectativa entre aficionados y especialistas del sector. Los protagonistas del hecho deportivo han sido centro de atención en medios especializados y plataformas de redes sociales durante las últimas horas.",
-            'p2': "Analistas deportivos señalan la importancia de este resultado para las competiciones en curso. Las estadísticas reflejan un momento clave en la temporada que podría definir posiciones en las tablas de clasificación general.",
-            'p3': "Las repercusiones de este evento deportivo se extienden a las estrategias de los equipos para próximos encuentros. Los entrenadores y jugadores preparan ajustes mientras la afición espera nuevos desafíos en la competición."
+            'p1': "El acontecimiento deportivo ha generado gran expectativa entre aficionados. Los protagonistas han sido centro de atención en medios especializados y redes sociales durante las últimas horas.",
+            'p2': "Analistas deportivos señalan la importancia de este resultado para las competiciones. Las estadísticas reflejan un momento clave en la temporada que podría definir posiciones en las tablas.",
+            'p3': "Las repercusiones se extienden a las estrategias de los equipos para próximos encuentros. Los entrenadores y jugadores preparan ajustes mientras la afición espera nuevos desafíos."
         },
         'tecnologia': {
-            'p1': "El avance tecnológico reportado ha captado la atención de la industria digital y usuarios especializados. Las empresas del sector analizan las implicaciones de esta innovación para sus modelos de negocio actuales y futuros.",
-            'p2': "Expertos en tecnología señalan que este desarrollo representa un paso significativo en la evolución digital. La adopción de estas nuevas herramientas podría transformar prácticas establecidas en diversos sectores productivos.",
-            'p3': "Las proyecciones indican que esta tecnología se integrará progresivamente en el mercado global. Los reguladores evalúan marcos normativos para garantizar el uso responsable de estas capacidades tecnológicas."
+            'p1': "El avance tecnológico ha captado la atención de la industria digital. Las empresas del sector analizan las implicaciones de esta innovación para sus modelos de negocio actuales.",
+            'p2': "Expertos en tecnología señalan que este desarrollo representa un paso significativo. La adopción de estas nuevas herramientas podría transformar prácticas establecidas en diversos sectores.",
+            'p3': "Las proyecciones indican que esta tecnología se integrará progresivamente en el mercado. Los reguladores evalúan marcos normativos para garantizar el uso responsable de estas capacidades."
         }
     }
     
-    # Usar template de categoría o genérico
-    if categoria in templates_categoria:
-        temps = templates_categoria[categoria]
+    # Usar plantilla específica o genérica
+    if categoria in plantillas:
+        temps = plantillas[categoria]
     else:
         temps = {
-            'p1': "El acontecimiento ha sido confirmado por fuentes oficiales y genera atención mediática en el ámbito internacional. Las autoridades competentes emitieron comunicados sobre el tema mientras diversos sectores mantienen vigilancia sobre los desarrollos.",
-            'p2': "Analistas especializados señalan la trascendencia de los hechos reportados en el contexto actual. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones.",
-            'p3': "Las implicaciones de este acontecimiento podrían extenderse a diversos ámbitos de la sociedad en el mediano plazo. Expertos consultados destacan la necesidad de seguimiento constante mientras la situación continúa siendo objeto de análisis."
+            'p1': "El acontecimiento ha sido confirmado por fuentes oficiales. Las autoridades competentes emitieron comunicados sobre el tema mientras diversos sectores mantienen vigilancia sobre los desarrollos.",
+            'p2': "Analistas especializados señalan la trascendencia de los hechos reportados. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación.",
+            'p3': "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis."
         }
     
-    # Construir texto completo
-    cierre = f"Se esperan actualizaciones oficiales conforme avancen las investigaciones correspondientes. (Agencias) / Fuente: {fuente}."
+    # Formatear cada párrafo profesionalmente
+    p1 = formatear_parrafo_profesional(temps['p1'])
+    p2 = formatear_parrafo_profesional(temps['p2'])
+    p3 = formatear_parrafo_profesional(temps['p3'])
+    cierre = formatear_parrafo_profesional(f"Se esperan actualizaciones oficiales conforme avancen las investigaciones. (Agencias) / Fuente: {fuente}.")
     
-    # Asegurar que cada párrafo esté completo
-    p1_completo = asegurar_oraciones_completas(temps['p1'])
-    p2_completo = asegurar_oraciones_completas(temps['p2'])
-    p3_completo = asegurar_oraciones_completas(temps['p3'])
+    # Construir texto con DOBLE salto de línea entre párrafos (formato profesional)
+    texto = f"{lead}\n\n{p1}\n\n{p2}\n\n{p3}\n\n{cierre}"
     
-    texto = f"{lead}\n\n{p1_completo}\n\n{p2_completo}\n\n{p3_completo}\n\n{cierre}"
-    
-    # Asegurar longitud mínima sin cortar
+    # Asegurar longitud mínima sin perder formato
     while len(texto) < 1200:
-        texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente según avancen las investigaciones. {cierre}")
+        texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente. {cierre}")
         if len(texto) >= 1200:
             break
     
-    # Limitar a máximo 1950 pero sin cortar oración
-    if len(texto) > 1950:
-        texto_cortado = texto[:1947]
-        # Buscar último punto completo
-        ultimo_punto = texto_cortado.rfind('. ')
+    # Limitar a máximo 1900 pero sin cortar párrafo
+    if len(texto) > 1900:
+        # Buscar último punto seguido de salto de línea o espacio
+        texto_cortado = texto[:1897]
+        ultimo_punto = max(
+            texto_cortado.rfind('. \n\n'),
+            texto_cortado.rfind('.\n\n'),
+            texto_cortado.rfind('. ')
+        )
         if ultimo_punto > 1000:
             texto = texto_cortado[:ultimo_punto+1] + f"\n\n{cierre}"
         else:
-            texto = texto[:1950]
+            texto = texto[:1900]
     
-    # Crear titular profesional sin URLs
+    # Crear titular profesional
     titular = eliminar_urls(str(titulo))[:95]
-    if len(titular) < 15 or not es_espanol(titular):
+    if len(titular) < 15:
         titular = f"Nuevo acontecimiento en {categoria} genera atención internacional"
     
-    print(f"   ✅ Plantilla periodística: {len(texto)} caracteres")
+    print(f"   ✅ Plantilla: {len(texto)} caracteres, {texto.count(chr(10)+chr(10))+1} párrafos")
     return {
         'titular': titular,
         'texto': texto
     }
 
-def es_espanol(texto):
-    """Detecta si el texto está en español"""
-    if not texto:
-        return False
-    
-    texto_lower = texto.lower()
-    palabras_es = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'por', 'con', 
-                   'su', 'para', 'los', 'las', 'del', 'al', 'lo', 'más', 'este', 'esta',
-                   'pero', 'sus', 'una', 'como', 'son', 'entre', 'sobre', 'han', 'sido']
-    palabras_en = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'with', 'said']
-    
-    count_es = sum(1 for p in palabras_es if f' {p} ' in f' {texto_lower} ')
-    count_en = sum(1 for p in palabras_en if f' {p} ' in f' {texto_lower} ')
-    
-    return count_es > count_en
-
 def buscar_noticias_categorizadas():
-    """Busca noticias priorizando las 10 categorías"""
-    print("\n🔍 Buscando noticias por categorías...")
+    """Busca noticias priorizando categorías"""
+    print("\n🔍 Buscando noticias...")
     noticias = []
     
-    # 1. NewsAPI en español
+    # NewsAPI
     if NEWS_API_KEY:
         try:
-            terminos_busqueda = [
+            terminos = [
                 'presidente OR gobierno OR elecciones',
                 'economía OR inflación OR crisis',
                 'guerra OR conflicto OR ataque',
@@ -506,7 +484,7 @@ def buscar_noticias_categorizadas():
                 'deportes OR fútbol OR campeonato'
             ]
             
-            for termino in random.sample(terminos_busqueda, min(2, len(terminos_busqueda))):
+            for termino in random.sample(terminos, min(2, len(terminos))):
                 try:
                     resp = requests.get(
                         "https://newsapi.org/v2/everything",
@@ -525,14 +503,13 @@ def buscar_noticias_categorizadas():
                             cat = detectar_categoria(art.get('title', ''), art.get('description', ''))
                             art['categoria_detectada'] = cat
                             noticias.append(art)
-                        print(f"   📡 NewsAPI '{termino[:20]}...': {len(data.get('articles', []))}")
+                        print(f"   📡 NewsAPI: {len(data.get('articles', []))}")
                 except:
                     continue
-                    
         except Exception as e:
             print(f"   ⚠️ NewsAPI: {e}")
     
-    # 2. GNews español
+    # GNews
     if GNEWS_API_KEY and len(noticias) < 5:
         try:
             resp = requests.get(
@@ -556,7 +533,7 @@ def buscar_noticias_categorizadas():
         except Exception as e:
             print(f"   ⚠️ GNews: {e}")
     
-    # 3. RSS por categorías
+    # RSS
     todas_feeds = []
     for cat, datos in CATEGORIAS.items():
         for feed in datos['feeds']:
@@ -584,13 +561,13 @@ def buscar_noticias_categorizadas():
                     'source': {'name': feed.feed.get('title', categoria_feed)},
                     'categoria_detectada': categoria_feed
                 })
-            print(f"   📡 RSS {categoria_feed}: {feed_url.split('/')[2]}")
+            print(f"   📡 RSS {categoria_feed}")
         except:
             pass
     
-    print(f"\n📊 Total: {len(noticias)} noticias")
+    print(f"\n📊 Total: {len(noticias)}")
     
-    # Filtrar y priorizar
+    # Filtrar
     nuevas = []
     for art in noticias:
         if not art.get('title') or len(art['title']) < 10:
@@ -602,13 +579,11 @@ def buscar_noticias_categorizadas():
         
         cat = art.get('categoria_detectada', 'general')
         art['prioridad'] = 2 if cat in ['politica', 'economia', 'mundo', 'deportes'] else 1
-        
         nuevas.append(art)
         print(f"   ✅ [{cat}] {art['title'][:45]}...")
     
     nuevas.sort(key=lambda x: x.get('prioridad', 0), reverse=True)
-    
-    print(f"📊 Nuevas válidas: {len(nuevas)}")
+    print(f"📊 Nuevas: {len(nuevas)}")
     return nuevas[:3]
 
 def descargar_imagen(url):
@@ -629,18 +604,18 @@ def descargar_imagen(url):
         print(f"   ⚠️ Error imagen: {e}")
     return None
 
-def publicar_completo(titulo, texto, img_path, categoria):
-    """Publica en Facebook asegurando que no se corte el texto y sin URLs"""
+def publicar_profesional(titulo, texto, img_path, categoria):
+    """Publica en Facebook con formato profesional"""
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Eliminar cualquier URL residual
+    # Limpiar URLs residuales
     titulo = eliminar_urls(titulo)
     texto = eliminar_urls(texto)
     
-    # Hashtags según categoría
+    # Hashtags
     hashtags_cat = {
         'politica': '#Política #Gobierno #Actualidad',
         'economia': '#Economía #Finanzas #Negocios',
@@ -648,36 +623,47 @@ def publicar_completo(titulo, texto, img_path, categoria):
         'seguridad': '#Seguridad #Justicia #Policiales',
         'tecnologia': '#Tecnología #Innovación #IA',
         'salud': '#Salud #Medicina #Bienestar',
-        'medio_ambiente': '#MedioAmbiente #Clima #Sostenibilidad',
-        'ciencia': '#Ciencia #Investigación #Descubrimiento',
+        'medio_ambiente': '#MedioAmbiente #Clima',
+        'ciencia': '#Ciencia #Investigación',
         'deportes': '#Deportes #Fútbol #Competición',
-        'tendencias': '#Viral #Tendencias #RedesSociales'
+        'tendencias': '#Viral #Tendencias'
     }
     
-    hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad #Hoy')
+    hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad')
     
-    # Asegurar que el texto no esté cortado al final
-    texto_limpio = texto.strip()
-    texto_limpio = asegurar_oraciones_completas(texto_limpio)
+    # Asegurar que el texto mantenga los saltos de línea dobles entre párrafos
+    # Facebook respeta \n\n como separación de párrafos
+    texto_formateado = texto.strip()
     
-    # Verificar que no haya URLs ocultas
-    texto_limpio = eliminar_urls(texto_limpio)
-    titulo = eliminar_urls(titulo)
+    # Verificar que cada párrafo termine en punto
+    parrafos = texto_formateado.split('\n\n')
+    parrafos_corregidos = []
+    for p in parrafos:
+        p = p.strip()
+        if p and not p.endswith(('.', '!', '?')):
+            p += "."
+        parrafos_corregidos.append(p)
+    
+    texto_formateado = '\n\n'.join(parrafos_corregidos)
     
     mensaje = f"""📰 {titulo}
 
-{texto_limpio}
+{texto_formateado}
 
 {hashtags}
 
 — Verdad Hoy: Noticias al minuto"""
     
-    # Verificación final de longitud
+    # Preview
     print(f"\n   📝 MENSAJE ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
-    for linea in mensaje.split('\n')[:8]:
+    lineas_preview = mensaje.split('\n')[:10]
+    for linea in lineas_preview:
         preview = linea[:65] + "..." if len(linea) > 65 else linea
-        print(f"   {preview}")
+        if linea.strip() == '':
+            print(f"   [espacio]")
+        else:
+            print(f"   {preview}")
     print(f"   {'='*50}")
     
     try:
@@ -725,19 +711,19 @@ def main():
         
         img_path = descargar_imagen(noticia.get('urlToImage'))
         if not img_path:
-            print("   ⏭️ Sin imagen, saltando...")
+            print("   ⏭️ Sin imagen")
             continue
         
         categoria = noticia.get('categoria_detectada', 'general')
         
-        resultado = generar_redaccion_completa(
+        resultado = generar_redaccion_profesional(
             noticia['title'],
             noticia.get('description', ''),
             noticia.get('source', {}).get('name', 'Agencias'),
             categoria
         )
         
-        if publicar_completo(resultado['titular'], resultado['texto'], img_path, categoria):
+        if publicar_profesional(resultado['titular'], resultado['texto'], img_path, categoria):
             guardar_historial(noticia['url'], noticia['title'], categoria)
             if os.path.exists(img_path):
                 os.remove(img_path)

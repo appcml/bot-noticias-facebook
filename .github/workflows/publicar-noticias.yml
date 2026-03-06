@@ -22,14 +22,15 @@ jobs:
         path: .
       continue-on-error: true
       
-    - name: Verificar historial
+    - name: Crear historial si no existe
       run: |
-        if [ -f "historial_publicaciones.json" ]; then
-          echo "✅ Historial encontrado"
-          cat historial_publicaciones.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'📊 {len(d[\\\"urls\\\"])} URLs, {len(d.get(\\\"videos\\\", []))} videos')" 2>/dev/null || echo "📄 Archivo existe"
-        else
-          echo "⚠️ Sin historial previo, creando nuevo"
+        if [ ! -f "historial_publicaciones.json" ]; then
+          echo "⚠️ Creando historial nuevo"
           echo '{"urls": [], "titulos": [], "ultima_publicacion": null, "videos": []}' > historial_publicaciones.json
+          echo "✅ Historial creado"
+        else
+          echo "✅ Historial encontrado"
+          cat historial_publicaciones.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'📊 {len(d[\\\"urls\\\"])} URLs, {len(d.get(\\\"videos\\\", []))} videos')" 2>/dev/null || echo "📄 Archivo válido"
         fi
       shell: bash
       
@@ -97,6 +98,8 @@ jobs:
         if [ -f "historial_publicaciones.json" ]; then
           echo "📊 Historial final:"
           cat historial_publicaciones.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'URLs: {len(d[\\\"urls\\\"])}, Videos: {len(d.get(\\\"videos\\\", []))}, Última: {d.get(\\\"ultima_publicacion\\\",\\\"N/A\\\")[:19] if d.get(\\\"ultima_publicacion\\\") else \\\"N/A\\\"}')" 2>/dev/null || echo "✅ Archivo actualizado"
+        else
+          echo "⚠️ No se encontró historial después de ejecutar"
         fi
       shell: bash
       

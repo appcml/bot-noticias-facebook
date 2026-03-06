@@ -18,35 +18,132 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
+# CATEGORÍAS Y PALABRAS CLAVE PRIORITARIAS
+CATEGORIAS = {
+    'politica': {
+        'keywords': ['presidente', 'gobierno', 'ministro', 'congreso', 'senado', 'elecciones', 
+                    'reforma', 'ley', 'constitución', 'corrupción', 'destitución', 'parlamento',
+                    'oposición', 'debate político', 'coalición', 'protesta', 'referéndum'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/espana/portada',
+            'https://www.abc.es/rss/feeds/abc_Espana.xml',
+        ]
+    },
+    'economia': {
+        'keywords': ['inflación', 'economía', 'crisis económica', 'mercado financiero', 'bolsa',
+                    'inversión', 'banco', 'impuestos', 'empleo', 'desempleo', 'dólar', 'precio',
+                    'recesión', 'crecimiento económico', 'deuda pública', 'subsidio'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/economia/portada',
+            'https://e00-elmundo.uecdn.es/elmundo/rss/economia.xml',
+        ]
+    },
+    'mundo': {
+        'keywords': ['conflicto internacional', 'crisis internacional', 'diplomacia', 'sanciones',
+                    'tratado', 'migración', 'refugiados', 'geopolítica', 'guerra', 'tensión',
+                    'ataque', 'bombardeo', 'misil', 'ejército', 'operación militar', 'invasión'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada',
+            'https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml',
+        ]
+    },
+    'seguridad': {
+        'keywords': ['crimen', 'delito', 'robo', 'homicidio', 'detenido', 'narcotráfico', 
+                    'banda criminal', 'justicia', 'tribunal', 'juicio', 'condena', 'fiscalía',
+                    'operativo policial', 'seguridad ciudadana', 'investigación'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/sociedad/portada',
+        ]
+    },
+    'tecnologia': {
+        'keywords': ['inteligencia artificial', 'IA', 'tecnología', 'ciberseguridad', 'hackeo',
+                    'redes sociales', 'smartphone', 'innovación', 'startup', 'aplicación',
+                    'robótica', 'internet', 'plataforma digital', 'big data'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/tecnologia/portada',
+            'https://www.xataka.com/feedburner.xml',
+        ]
+    },
+    'salud': {
+        'keywords': ['pandemia', 'vacuna', 'enfermedad', 'hospital', 'salud', 'medicina',
+                    'tratamiento', 'virus', 'epidemia', 'salud mental', 'investigación médica',
+                    'sistema de salud', 'nutrición'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada',
+        ]
+    },
+    'medio_ambiente': {
+        'keywords': ['cambio climático', 'calentamiento global', 'sequía', 'inundación',
+                    'incendio forestal', 'contaminación', 'energía renovable', 'sostenibilidad',
+                    'biodiversidad', 'crisis climática', 'fenómeno climático'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/clima-medio-ambiente/portada',
+        ]
+    },
+    'ciencia': {
+        'keywords': ['descubrimiento', 'científicos', 'investigación', 'espacio', 'astronomía',
+                    'misión espacial', 'planeta', 'universo', 'genética', 'física', 'biología'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada',
+        ]
+    },
+    'deportes': {
+        'keywords': ['fútbol', 'liga', 'campeonato', 'mundial', 'copa', 'partido', 'resultado',
+                    'jugador', 'equipo', 'entrenador', 'fichaje', 'victoria', 'derrota',
+                    'competición', 'olimpiadas', 'deportes'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/deportes/portada',
+            'https://www.clarin.com/rss/deportes/',
+            'https://e00-elmundo.uecdn.es/elmundo/rss/deportes.xml',
+        ]
+    },
+    'tendencias': {
+        'keywords': ['viral', 'tendencia', 'video viral', 'redes sociales', 'fenómeno viral',
+                    'reto viral', 'curiosidad', 'sorprendente', 'impactante', 'polémica',
+                    'última hora', 'urgente', 'confirmado', 'revelan', 'histórico'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/gente/portada',
+        ]
+    }
+}
+
 print("="*60)
-print("🚀 BOT DE NOTICIAS - Verdad Hoy (ESPAÑOL)")
+print("🚀 BOT DE NOTICIAS - Verdad Hoy (CATEGORIZADO)")
 print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
 print("="*60)
 
 # CARGAR HISTORIAL
-historial = {'urls': [], 'titulos': [], 'ultima_publicacion': None}
+historial = {'urls': [], 'titulos': [], 'ultima_publicacion': None, 'categorias': {}}
 
 if os.path.exists(HISTORIAL_FILE):
     try:
         with open(HISTORIAL_FILE, 'r', encoding='utf-8') as f:
             historial = json.load(f)
-        print(f"📚 Historial cargado: {len(historial['urls'])} noticias")
+        print(f"📚 Historial: {len(historial['urls'])} noticias")
     except Exception as e:
-        print(f"⚠️ Error cargando historial: {e}")
+        print(f"⚠️ Error historial: {e}")
 
-def guardar_historial(url, titulo):
+def guardar_historial(url, titulo, categoria='general'):
     historial['urls'].append(url)
     historial['titulos'].append(titulo[:100])
     historial['ultima_publicacion'] = datetime.now().isoformat()
+    
+    if 'categorias' not in historial:
+        historial['categorias'] = {}
+    if categoria not in historial['categorias']:
+        historial['categorias'][categoria] = []
+    historial['categorias'][categoria].append(url)
+    
+    # Mantener solo últimas 500
     historial['urls'] = historial['urls'][-500:]
     historial['titulos'] = historial['titulos'][-500:]
     
     try:
         with open(HISTORIAL_FILE, 'w', encoding='utf-8') as f:
             json.dump(historial, f, ensure_ascii=False, indent=2)
-        print(f"💾 Historial guardado: {len(historial['urls'])} noticias")
+        print(f"💾 Historial guardado ({categoria})")
     except Exception as e:
-        print(f"❌ Error guardando historial: {e}")
+        print(f"❌ Error guardando: {e}")
 
 def get_url_id(url):
     url_limpia = str(url).lower().strip().rstrip('/')
@@ -54,8 +151,7 @@ def get_url_id(url):
 
 def ya_publicada(url, titulo):
     url_id = get_url_id(url)
-    urls_existentes = [get_url_id(u) for u in historial['urls']]
-    if url_id in urls_existentes:
+    if url_id in [get_url_id(u) for u in historial['urls']]:
         return True
     
     titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
@@ -67,35 +163,87 @@ def ya_publicada(url, titulo):
                 return True
     return False
 
-def generar_con_ia(titulo, descripcion, fuente):
-    """Genera redacción usando OpenRouter (IA gratuita)"""
+def detectar_categoria(titulo, descripcion):
+    """Detecta la categoría de la noticia basada en palabras clave"""
+    texto = f"{titulo} {descripcion}".lower()
     
-    if not OPENROUTER_API_KEY:
-        return plantilla_periodistica(titulo, descripcion, fuente)
+    puntuaciones = {}
+    for cat, datos in CATEGORIAS.items():
+        score = 0
+        for keyword in datos['keywords']:
+            if keyword.lower() in texto:
+                score += 1
+        puntuaciones[cat] = score
     
-    try:
-        prompt = f"""Eres un redactor de agencia EFE. Escribe una NOTICIA en ESPAÑOL.
+    # Devolver categoría con mayor puntuación
+    if max(puntuaciones.values()) > 0:
+        return max(puntuaciones, key=puntuaciones.get)
+    return 'general'
 
-Título: {titulo}
+def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
+    """
+    Genera redacción periodística COMPLETA sin cortes.
+    Estructura: Titular + Lead (2-3 oraciones) + Cuerpo (3 párrafos) + Cierre
+    """
+    
+    print(f"\n   📝 Procesando: {titulo[:50]}...")
+    print(f"   🏷️ Categoría: {categoria}")
+    
+    # Limpiar descripción base
+    desc_limpia = re.sub(r'<[^>]+>', '', str(descripcion)).strip()
+    if len(desc_limpia) < 20:
+        desc_limpia = titulo
+    
+    # Si tenemos IA, usarla
+    if OPENROUTER_API_KEY:
+        resultado = generar_con_ia(titulo, desc_limpia, fuente, categoria)
+        if resultado and len(resultado['texto']) > 800:
+            return resultado
+    
+    # Plantilla mejorada sin cortes
+    return plantilla_mejorada(titulo, desc_limpia, fuente, categoria)
+
+def generar_con_ia(titulo, descripcion, fuente, categoria):
+    """Genera usando OpenRouter"""
+    try:
+        prompt = f"""Eres un redactor senior de agencia EFE. Escribe una NOTICIA COMPLETA en español.
+
+DATOS:
+Título original: {titulo}
 Descripción: {descripcion}
 Fuente: {fuente}
+Categoría: {categoria}
 
-ESTRUCTURA:
-TITULAR: (máx 80 chars, estilo periodístico)
-LEAD: (primera línea, máx 140 chars, lo más importante)
-CUERPO: (3 párrafos: contexto, desarrollo, análisis)
-CIERRE: (1 línea, próximos pasos + fuente)
+INSTRUCCIONES ESTRICTAS:
+1. TITULAR: Máximo 90 caracteres, informativo, atractivo, estilo EFE
+2. LEAD: 2-3 oraciones completas (máximo 200 caracteres), incluye: qué pasó, quién, cuándo, dónde
+3. CUERPO: Exactamente 3 párrafos completos:
+   - Párrafo 1: Contexto y antecedentes (quiénes están involucrados)
+   - Párrafo 2: Desarrollo actual (datos, cifras, declaraciones específicas)
+   - Párrafo 3: Análisis e implicaciones (qué significa, consecuencias futuras)
+4. CIERRE: 1 línea con próximos pasos + "(Agencias) / Fuente: {fuente}"
 
 REGLAS:
-- ESPAÑOL nativo, no traducción
-- 1000-1800 caracteres totales
-- Estilo: Agencia EFE/Reuters/AP
-- Termina con: (Agencias) / Fuente: {fuente}
+- ESPAÑOL NATIVO, no traducciones
+- Oraciones COMPLETAS, no cortar palabras
+- Longitud total: 1200-1800 caracteres
+- Estilo periodístico NEUTRO
+- Números y datos específicos si están en la descripción
 
-FORMATO:
-TITULAR: [titular]
-LEAD: [lead]
-CUERPO: [cuerpo]
+FORMATO OBLIGATORIO:
+TITULAR: [titular completo]
+
+LEAD: [lead completo de 2-3 oraciones]
+
+CUERPO:
+[Párrafo 1 completo - contexto]
+
+[Párrafo 2 completo - desarrollo]
+
+[Párrafo 3 completo - análisis]
+
+CIERRE: [cierre con fuente]
+
 FIN"""
 
         modelos = [
@@ -118,158 +266,254 @@ FIN"""
                         'model': modelo,
                         'messages': [{'role': 'user', 'content': prompt}],
                         'temperature': 0.3,
-                        'max_tokens': 1200
+                        'max_tokens': 1500
                     },
-                    timeout=45
+                    timeout=60
                 )
                 
                 if response.status_code == 200:
                     data = response.json()
-                    if 'choices' in data:
+                    if 'choices' in data and len(data['choices']) > 0:
                         content = data['choices'][0]['message']['content']
                         
-                        # Extraer partes
-                        titular = titulo[:90]
-                        lead = ""
-                        cuerpo = ""
+                        # Extraer con manejo de errores mejorado
+                        titular = extraer_campo(content, 'TITULAR:', 'LEAD:') or titulo[:90]
+                        lead = extraer_campo(content, 'LEAD:', 'CUERPO:')
+                        cuerpo = extraer_campo(content, 'CUERPO:', 'CIERRE:')
+                        cierre = extraer_campo(content, 'CIERRE:', 'FIN')
                         
-                        if 'TITULAR:' in content:
-                            titular = content.split('TITULAR:')[1].split('LEAD:')[0].strip()[:90]
-                        if 'LEAD:' in content:
-                            lead = content.split('LEAD:')[1].split('CUERPO:')[0].strip()
-                        if 'CUERPO:' in content:
-                            cuerpo = content.split('CUERPO:')[1].split('FIN')[0].strip()
+                        if not cierre:
+                            cierre = f"Se esperan actualizaciones. (Agencias) / Fuente: {fuente}."
                         
-                        texto_final = f"{lead}\n\n{cuerpo}".strip()
+                        # Construir texto completo
+                        texto_completo = f"{lead}\n\n{cuerpo}\n\n{cierre}"
                         
-                        if len(texto_final) > 500:
-                            return {'titular': titular, 'texto': texto_final[:1900]}
+                        # Verificar que no esté cortado
+                        if len(texto_completo) > 600 and not texto_completo.endswith(('en ', 'de ', 'la ', 'el ', 'un ', 'una ')):
+                            print(f"   ✅ IA generó: {len(texto_completo)} caracteres")
+                            return {
+                                'titular': titular.strip()[:100],
+                                'texto': texto_completo[:1950]
+                            }
                             
             except Exception as e:
-                print(f"⚠️ Error con {modelo}: {e}")
+                print(f"   ⚠️ Error {modelo}: {e}")
                 continue
                 
     except Exception as e:
-        print(f"⚠️ Error IA: {e}")
+        print(f"   ⚠️ Error IA general: {e}")
     
-    return plantilla_periodistica(titulo, descripcion, fuente)
+    return None
 
-def plantilla_periodistica(titulo, descripcion, fuente):
-    """Plantilla profesional en español"""
-    desc = re.sub(r'<[^>]+>', '', str(descripcion))
-    if len(desc) < 20:
-        desc = "Las autoridades confirmaron un importante acontecimiento de relevancia nacional."
+def extraer_campo(texto, inicio, fin):
+    """Extrae campo entre dos marcadores"""
+    try:
+        if inicio in texto:
+            parte = texto.split(inicio)[1]
+            if fin in parte:
+                return parte.split(fin)[0].strip()
+            return parte.strip()[:500]
+    except:
+        pass
+    return ""
+
+def plantilla_mejorada(titulo, descripcion, fuente, categoria):
+    """Plantilla periodística robusta sin cortes"""
+    print(f"   📝 Usando plantilla mejorada...")
     
-    lead = desc[:140] if len(desc) > 100 else "Se reporta un hecho de importancia nacional en desarrollo."
+    # Crear lead completo (2-3 oraciones)
+    oraciones_desc = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 20]
     
-    p2 = "El acontecimiento ha sido confirmado por fuentes oficiales y genera atención mediática. "
-    p2 += "Las autoridades competentes emitieron comunicados sobre el tema. "
-    p2 += "Diversos sectores mantienen vigilancia sobre los desarrollos."
+    if len(oraciones_desc) >= 2:
+        lead = f"{oraciones_desc[0]}. {oraciones_desc[1]}."
+    elif len(oraciones_desc) == 1:
+        lead = f"{oraciones_desc[0]}. Las autoridades competentes confirmaron la información en las últimas horas."
+    else:
+        lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes confirmaron la información en las últimas horas y se esperan actualizaciones."
     
-    p3 = "Analistas señalan la trascendencia de los hechos reportados. "
-    p3 += "La cobertura informativa continúa ampliándose conforme surgen nuevos detalles. "
-    p3 += "Medios de comunicación destacan la relevancia del caso."
+    # Limitar lead a 200 caracteres pero sin cortar palabras
+    if len(lead) > 200:
+        lead = lead[:197].rsplit(' ', 1)[0] + "."
     
-    p4 = "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. "
-    p4 += "Expertos consultados destacan la necesidad de seguimiento. "
-    p4 += "La situación continúa siendo objeto de análisis."
+    # Párrafos completos según categoría
+    templates_categoria = {
+        'politica': {
+            'p1': "El hecho político ha generado amplia repercusión en los círculos de poder y entre la ciudadanía. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas ante la opinión pública.",
+            'p2': "Analistas políticos consultados señalan que este tipo de eventos requiere un seguimiento constante por parte de la sociedad. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones.",
+            'p3': "Las implicaciones de este acontecimiento político podrían extenderse a diversos sectores de la administración pública. Expertos destacan la necesidad de mantener una postura informada ante los desarrollos que se presenten en las próximas horas."
+        },
+        'economia': {
+            'p1': "El indicador económico ha captado la atención de analistas financieros y del sector empresarial. Las entidades bancarias y reguladoras monitorean de cerca la evolución de los datos para determinar posibles ajustes en sus proyecciones.",
+            'p2': "Especialistas en economía señalan que este comportamiento del mercado requiere análisis detallado. La información disponible sugiere tendencias que podrían afectar a consumidores e inversionistas en el corto y mediano plazo.",
+            'p3': "Las proyecciones económicas indican posibles ajustes en las políticas monetarias y fiscales. Los sectores productivos mantienen expectativa sobre las medidas que podrían implementarse para estabilizar los indicadores."
+        },
+        'mundo': {
+            'p1': "El evento internacional ha generado reacciones en diversos países y organismos multilaterales. Las cancillerías involucradas mantienen comunicación constante para evaluar la situación y coordinar posibles respuestas diplomáticas.",
+            'p2': "Observadores internacionales destacan la trascendencia de los hechos reportados en el contexto geopolítico actual. La comunidad global sigue con atención los desarrollos mientras se analizan las posibles consecuencias regionales.",
+            'p3': "Las implicaciones de esta situación internacional podrían afectar las relaciones bilaterales y multilaterales. Se esperan declaraciones oficiales adicionales de los actores involucrados en las próximas horas."
+        },
+        'deportes': {
+            'p1': "El acontecimiento deportivo ha generado gran expectativa entre aficionados y especialistas. Los protagonistas del hecho deportivo han sido centro de atención en medios especializados y redes sociales.",
+            'p2': "Analistas deportivos señalan la importancia de este resultado para las competiciones en curso. Las estadísticas reflejan un momento clave en la temporada que podría definir posiciones en las tablas de clasificación.",
+            'p3': "Las repercusiones de este evento deportivo se extienden a las estrategias de los equipos para próximos encuentros. Los entrenadores y jugadores preparan ajustes mientras la afición espera nuevos desafíos."
+        },
+        'tecnologia': {
+            'p1': "El avance tecnológico reportado ha captado la atención de la industria digital y usuarios especializados. Las empresas del sector analizan las implicaciones de esta innovación para sus modelos de negocio.",
+            'p2': "Expertos en tecnología señalan que este desarrollo representa un paso significativo en la evolución digital. La adopción de estas nuevas herramientas podría transformar prácticas establecidas en diversos sectores productivos.",
+            'p3': "Las proyecciones indican que esta tecnología se integrará progresivamente en el mercado. Los reguladores evalúan marcos normativos para garantizar el uso responsable de estas capacidades."
+        }
+    }
     
-    p5 = f"Se esperan actualizaciones oficiales. (Agencias) / Fuente: {fuente}."
+    # Usar template de categoría o genérico
+    if categoria in templates_categoria:
+        temps = templates_categoria[categoria]
+    else:
+        temps = {
+            'p1': "El acontecimiento ha sido confirmado por fuentes oficiales y genera atención mediática. Las autoridades competentes emitieron comunicados sobre el tema mientras diversos sectores mantienen vigilancia sobre los desarrollos.",
+            'p2': "Analistas señalan la trascendencia de los hechos reportados. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones.",
+            'p3': "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis."
+        }
     
-    texto = f"{lead}\n\n{p2}\n\n{p3}\n\n{p4}\n\n{p5}"
+    # Construir texto completo
+    cierre = f"Se esperan actualizaciones oficiales. (Agencias) / Fuente: {fuente}."
     
+    texto = f"{lead}\n\n{temps['p1']}\n\n{temps['p2']}\n\n{temps['p3']}\n\n{cierre}"
+    
+    # Asegurar longitud mínima sin cortar
     while len(texto) < 1000:
-        texto += " Los detalles serán proporcionados oportunamente."
+        texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente. {cierre}")
     
-    return {'titular': titulo[:90], 'texto': texto[:1950]}
+    print(f"   ✅ Plantilla: {len(texto)} caracteres")
+    return {
+        'titular': titulo[:95],
+        'texto': texto[:1950]
+    }
 
-def buscar_noticias():
-    """Busca noticias en español"""
-    print("\n🔍 Buscando noticias en ESPAÑOL...")
+def buscar_noticias_categorizadas():
+    """Busca noticias priorizando las 10 categorías"""
+    print("\n🔍 Buscando noticias por categorías...")
     noticias = []
     
-    # NewsAPI
+    # 1. NewsAPI en español con palabras clave de categorías
     if NEWS_API_KEY:
         try:
-            resp = requests.get(
-                "https://newsapi.org/v2/top-headlines",
-                params={'language': 'es', 'pageSize': 15, 'apiKey': NEWS_API_KEY},
-                timeout=15
-            )
-            data = resp.json()
-            if data.get('status') == 'ok':
-                noticias.extend(data.get('articles', []))
-                print(f"   📡 NewsAPI: {len(data.get('articles', []))}")
+            # Buscar con términos de alta relevancia
+            terminos_busqueda = [
+                'presidente OR gobierno OR elecciones',
+                'economía OR inflación OR crisis',
+                'guerra OR conflicto OR ataque',
+                'tecnología OR inteligencia artificial',
+                'deportes OR fútbol OR campeonato'
+            ]
+            
+            for termino in random.sample(terminos_busqueda, min(2, len(terminos_busqueda))):
+                try:
+                    resp = requests.get(
+                        "https://newsapi.org/v2/everything",
+                        params={
+                            'q': termino,
+                            'language': 'es',
+                            'sortBy': 'publishedAt',
+                            'pageSize': 10,
+                            'apiKey': NEWS_API_KEY
+                        },
+                        timeout=15
+                    )
+                    data = resp.json()
+                    if data.get('status') == 'ok':
+                        for art in data.get('articles', []):
+                            cat = detectar_categoria(art.get('title', ''), art.get('description', ''))
+                            art['categoria_detectada'] = cat
+                            noticias.append(art)
+                        print(f"   📡 NewsAPI '{termino[:20]}...': {len(data.get('articles', []))}")
+                except:
+                    continue
+                    
         except Exception as e:
             print(f"   ⚠️ NewsAPI: {e}")
     
-    # GNews
+    # 2. GNews español
     if GNEWS_API_KEY and len(noticias) < 5:
         try:
             resp = requests.get(
                 "https://gnews.io/api/v4/top-headlines",
-                params={'lang': 'es', 'max': 15, 'apikey': GNEWS_API_KEY},
+                params={'lang': 'es', 'max': 20, 'apikey': GNEWS_API_KEY},
                 timeout=15
             )
             data = resp.json()
             if 'articles' in data:
                 for a in data['articles']:
+                    cat = detectar_categoria(a.get('title', ''), a.get('description', ''))
                     noticias.append({
                         'title': a.get('title'),
                         'description': a.get('description'),
                         'url': a.get('url'),
                         'urlToImage': a.get('image'),
-                        'source': {'name': a.get('source', {}).get('name', 'GNews')}
+                        'source': {'name': a.get('source', {}).get('name', 'GNews')},
+                        'categoria_detectada': cat
                     })
                 print(f"   📡 GNews: {len(data['articles'])}")
         except Exception as e:
             print(f"   ⚠️ GNews: {e}")
     
-    # RSS Español
-    if len(noticias) < 3:
-        feeds = [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
-            'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml',
-            'https://www.clarin.com/rss/lo-ultimo/',
-            'https://www.lanacion.com.ar/arc/outboundfeeds/rss/?outputType=xml',
-        ]
-        
-        for feed_url in random.sample(feeds, min(2, len(feeds))):
-            try:
-                feed = feedparser.parse(feed_url)
-                for entry in feed.entries[:4]:
-                    img = ''
-                    if hasattr(entry, 'media_content') and entry.media_content:
-                        img = entry.media_content[0].get('url', '')
-                    elif 'summary' in entry:
-                        m = re.search(r'src="(https?://[^"]+\.(?:jpg|jpeg|png))"', entry.summary, re.I)
-                        if m:
-                            img = m.group(1)
-                    
-                    noticias.append({
-                        'title': entry.get('title'),
-                        'description': entry.get('summary', '')[:400],
-                        'url': entry.get('link'),
-                        'urlToImage': img,
-                        'source': {'name': feed.feed.get('title', 'Medios')}
-                    })
-                print(f"   📡 RSS: {feed_url.split('/')[2]}")
-            except:
-                pass
+    # 3. RSS por categorías (rotativas)
+    todas_feeds = []
+    for cat, datos in CATEGORIAS.items():
+        for feed in datos['feeds']:
+            todas_feeds.append((cat, feed))
     
-    # Filtrar
+    # Seleccionar 4 feeds aleatorios de diferentes categorías
+    feeds_seleccionados = random.sample(todas_feeds, min(4, len(todas_feeds)))
+    
+    for categoria_feed, feed_url in feeds_seleccionados:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries[:3]:
+                # Buscar imagen
+                img = ''
+                if hasattr(entry, 'media_content') and entry.media_content:
+                    img = entry.media_content[0].get('url', '')
+                elif 'summary' in entry:
+                    m = re.search(r'src="(https?://[^"]+\.(?:jpg|jpeg|png))"', entry.summary, re.I)
+                    if m:
+                        img = m.group(1)
+                
+                noticias.append({
+                    'title': entry.get('title'),
+                    'description': entry.get('summary', entry.get('description', ''))[:500],
+                    'url': entry.get('link'),
+                    'urlToImage': img,
+                    'source': {'name': feed.feed.get('title', categoria_feed)},
+                    'categoria_detectada': categoria_feed
+                })
+            print(f"   📡 RSS {categoria_feed}: {feed_url.split('/')[2]}")
+        except:
+            pass
+    
+    print(f"\n📊 Total: {len(noticias)} noticias")
+    
+    # Filtrar y priorizar
     nuevas = []
     for art in noticias:
         if not art.get('title') or len(art['title']) < 10:
             continue
-        if "[Removed]" in art['title'] or ya_publicada(art['url'], art['title']):
+        if "[Removed]" in art['title']:
+            continue
+        if ya_publicada(art['url'], art['title']):
             continue
         
+        # Priorizar ciertas categorías
+        cat = art.get('categoria_detectada', 'general')
+        art['prioridad'] = 2 if cat in ['politica', 'economia', 'mundo', 'deportes'] else 1
+        
         nuevas.append(art)
-        print(f"   ✅ Nueva: {art['title'][:50]}...")
+        print(f"   ✅ [{cat}] {art['title'][:45]}...")
     
-    print(f"📊 Total nuevas: {len(nuevas)}")
-    return nuevas[:2]
+    # Ordenar por prioridad
+    nuevas.sort(key=lambda x: x.get('prioridad', 0), reverse=True)
+    
+    print(f"📊 Nuevas válidas: {len(nuevas)}")
+    return nuevas[:3]
 
 def descargar_imagen(url):
     if not url or not str(url).startswith('http'):
@@ -289,23 +533,56 @@ def descargar_imagen(url):
         print(f"   ⚠️ Error imagen: {e}")
     return None
 
-def publicar(titulo, texto, img_path):
+def publicar_completo(titulo, texto, img_path, categoria):
+    """Publica en Facebook asegurando que no se corte el texto"""
+    
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
         return False
     
+    # Hashtags según categoría
+    hashtags_cat = {
+        'politica': '#Política #Gobierno #Actualidad',
+        'economia': '#Economía #Finanzas #Negocios',
+        'mundo': '#Internacional #Mundo #Geopolítica',
+        'seguridad': '#Seguridad #Justicia #Policiales',
+        'tecnologia': '#Tecnología #Innovación #IA',
+        'salud': '#Salud #Medicina #Bienestar',
+        'medio_ambiente': #MedioAmbiente #Clima #Sostenibilidad',
+        'ciencia': '#Ciencia #Investigación #Descubrimiento',
+        'deportes': '#Deportes #Fútbol #Competición',
+        'tendencias': '#Viral #Tendencias #RedesSociales'
+    }
+    
+    hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad #Hoy')
+    
+    # Asegurar que el texto no esté cortado al final
+    texto_limpio = texto.strip()
+    if texto_limpio.endswith(('en', 'de', 'la', 'el', 'un', 'una', 'a', 'con', 'por')):
+        texto_limpio += "."
+    
     mensaje = f"""📰 {titulo}
 
-{texto}
+{texto_limpio}
 
-#Noticias #Actualidad #Español #Hoy
+{hashtags}
 
-— Verdad Hoy"""
+— Verdad Hoy: Noticias al minuto"""
     
-    print(f"\n📝 Publicando ({len(mensaje)} chars)...")
+    # Verificación final de longitud (Facebook permite ~63206 caracteres, pero imagen+texto es menos)
+    # Para posts con imagen, el límite práctico es menor, así que mantenemos under 2000
+    
+    print(f"\n   📝 MENSAJE ({len(mensaje)} caracteres):")
+    print(f"   {'='*50}")
+    for linea in mensaje.split('\n')[:6]:
+        preview = linea[:65] + "..." if len(linea) > 65 else linea
+        print(f"   {preview}")
+    print(f"   {'='*50}")
     
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
+        print(f"   📤 Publicando...")
+        
         with open(img_path, 'rb') as f:
             resp = requests.post(
                 url,
@@ -316,54 +593,69 @@ def publicar(titulo, texto, img_path):
             result = resp.json()
             
             if resp.status_code == 200 and 'id' in result:
-                print(f"✅ PUBLICADO: {result['id']}")
+                print(f"   ✅ PUBLICADO: {result['id']}")
                 return True
             else:
-                print(f"❌ Error: {result.get('error', {}).get('message', result)}")
+                error = result.get('error', {}).get('message', str(result))
+                print(f"   ❌ Error: {error}")
                 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"   ❌ Error: {e}")
     
     return False
 
 def main():
-    noticias = buscar_noticias()
+    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
+        print("❌ Faltan credenciales de Facebook")
+        return False
+    
+    noticias = buscar_noticias_categorizadas()
     
     if not noticias:
         print("⚠️ No hay noticias nuevas")
         return False
     
+    print(f"\n🎯 Procesando {len(noticias)} noticia(s)")
+    
     for i, noticia in enumerate(noticias, 1):
-        print(f"\n{'='*50}")
+        print(f"\n{'='*60}")
         print(f"📰 NOTICIA {i}/{len(noticias)}")
-        print(f"{'='*50}")
+        print(f"{'='*60}")
         
         img_path = descargar_imagen(noticia.get('urlToImage'))
         if not img_path:
+            print("   ⏭️ Sin imagen, saltando...")
             continue
         
-        resultado = generar_con_ia(
+        categoria = noticia.get('categoria_detectada', 'general')
+        
+        resultado = generar_redaccion_completa(
             noticia['title'],
             noticia.get('description', ''),
-            noticia.get('source', {}).get('name', 'Agencias')
+            noticia.get('source', {}).get('name', 'Agencias'),
+            categoria
         )
         
-        if publicar(resultado['titular'], resultado['texto'], img_path):
-            guardar_historial(noticia['url'], noticia['title'])
+        if publicar_completo(resultado['titular'], resultado['texto'], img_path, categoria):
+            guardar_historial(noticia['url'], noticia['title'], categoria)
             if os.path.exists(img_path):
                 os.remove(img_path)
+            print(f"\n{'='*60}")
+            print("✅ ÉXITO")
+            print(f"{'='*60}")
             return True
         
         if os.path.exists(img_path):
             os.remove(img_path)
     
+    print("\n❌ No se pudo publicar")
     return False
 
 if __name__ == "__main__":
     try:
         exit(0 if main() else 1)
     except Exception as e:
-        print(f"💥 Error: {e}")
+        print(f"\n💥 Error crítico: {e}")
         import traceback
         traceback.print_exc()
         exit(1)

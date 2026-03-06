@@ -18,7 +18,7 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
-# CATEGORÍAS Y PALABRAS CLAVE PRIORITARIAS
+# CATEGORÍAS Y PALABRAS CLAVE PRIORITARIAS (SIN DEPORTES NI TENDENCIAS)
 CATEGORIAS = {
     'politica': {
         'keywords': ['presidente', 'gobierno', 'ministro', 'congreso', 'senado', 'elecciones', 
@@ -85,24 +85,6 @@ CATEGORIAS = {
                     'misión espacial', 'planeta', 'universo', 'genética', 'física', 'biología'],
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada',
-        ]
-    },
-    'deportes': {
-        'keywords': ['fútbol', 'liga', 'campeonato', 'mundial', 'copa', 'partido', 'resultado',
-                    'jugador', 'equipo', 'entrenador', 'fichaje', 'victoria', 'derrota',
-                    'competición', 'olimpiadas', 'deportes'],
-        'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/deportes/portada',
-            'https://www.clarin.com/rss/deportes/',
-            'https://e00-elmundo.uecdn.es/elmundo/rss/deportes.xml',
-        ]
-    },
-    'tendencias': {
-        'keywords': ['viral', 'tendencia', 'video viral', 'redes sociales', 'fenómeno viral',
-                    'reto viral', 'curiosidad', 'sorprendente', 'impactante', 'polémica',
-                    'última hora', 'urgente', 'confirmado', 'revelan', 'histórico'],
-        'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/gente/portada',
         ]
     }
 }
@@ -179,6 +161,44 @@ def detectar_categoria(titulo, descripcion):
     if max(puntuaciones.values()) > 0:
         return max(puntuaciones, key=puntuaciones.get)
     return 'general'
+
+def es_categoria_permitida(titulo, descripcion):
+    """Verifica que la noticia NO sea de deportes o tendencias virales"""
+    texto = f"{titulo} {descripcion}".lower()
+    
+    # Palabras clave de deportes (para excluir)
+    palabras_deportes = ['fútbol', 'futbol', 'liga', 'campeonato', 'mundial', 'copa', 'partido', 
+                         'resultado', 'jugador', 'equipo', 'entrenador', 'fichaje', 'victoria', 
+                         'derrota', 'competición', 'olimpiadas', 'deportes', 'gol', 'marcador',
+                         'torneo', 'final', 'semifinal', 'cuartos', 'clasificación', 'descenso',
+                         'ascenso', 'premier', 'champions', 'laliga', 'serie a', 'bundesliga',
+                         'nba', 'tenis', 'f1', 'ciclismo', 'atletismo', 'natación', 'baloncesto',
+                         'voleibol', 'hockey', 'rugby', 'cricket', 'béisbol', 'softbol',
+                         'tottenham', 'barcelona', 'real madrid', 'atlético', 'sevilla', 'valencia',
+                         'betis', 'celta', 'espanyol', 'getafe', 'granada', 'osasuna', 'rayo',
+                         'alavés', 'las palmas', 'leganés', 'mallorca', 'valladolid']
+    
+    # Palabras clave de tendencias virales (para excluir)
+    palabras_tendencias = ['viral', 'tendencia', 'video viral', 'fenómeno viral', 'reto viral',
+                          'curiosidad', 'sorprendente', 'impactante', 'insólito', 'increíble',
+                          'se vuelve viral', 'causa polémica', 'genera debate', 'se vuelve tendencia',
+                          'tiktok', 'challenge', 'meme', 'influencer', 'youtuber', 'streamer',
+                          'famoso', 'celebridad', 'actor', 'cantante', 'bailarín', 'show',
+                          'espectáculo', 'concierto', 'festival', 'premios', 'gala', 'alfombra roja']
+    
+    # Verificar si contiene palabras de deportes
+    for palabra in palabras_deportes:
+        if palabra in texto:
+            print(f"   ⛔ EXCLUIDA (Deportes): contiene '{palabra}'")
+            return False
+    
+    # Verificar si contiene palabras de tendencias virales
+    for palabra in palabras_tendencias:
+        if palabra in texto:
+            print(f"   ⛔ EXCLUIDA (Tendencias): contiene '{palabra}'")
+            return False
+    
+    return True
 
 def generar_redaccion_completa(titulo, descripcion, fuente, url_fuente, categoria):
     """
@@ -392,15 +412,30 @@ def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
             'p2': "Observadores internacionales destacan la trascendencia de los hechos reportados en el contexto geopolítico actual. La comunidad global sigue con atención los desarrollos mientras se analizan las posibles consecuencias regionales.",
             'p3': "Las implicaciones de esta situación internacional podrían afectar las relaciones bilaterales y multilaterales. Se esperan declaraciones oficiales adicionales de los actores involucrados en las próximas horas."
         },
-        'deportes': {
-            'p1': "El acontecimiento deportivo ha generado gran expectativa entre aficionados y especialistas. Los protagonistas del hecho deportivo han sido centro de atención en medios especializados y redes sociales.",
-            'p2': "Analistas deportivos señalan la importancia de este resultado para las competiciones en curso. Las estadísticas reflejan un momento clave en la temporada que podría definir posiciones en las tablas de clasificación.",
-            'p3': "Las repercusiones de este evento deportivo se extienden a las estrategias de los equipos para próximos encuentros. Los entrenadores y jugadores preparan ajustes mientras la afición espera nuevos desafíos."
-        },
         'tecnologia': {
             'p1': "El avance tecnológico reportado ha captado la atención de la industria digital y usuarios especializados. Las empresas del sector analizan las implicaciones de esta innovación para sus modelos de negocio.",
             'p2': "Expertos en tecnología señalan que este desarrollo representa un paso significativo en la evolución digital. La adopción de estas nuevas herramientas podría transformar prácticas establecidas en diversos sectores productivos.",
             'p3': "Las proyecciones indican que esta tecnología se integrará progresivamente en el mercado. Los reguladores evalúan marcos normativos para garantizar el uso responsable de estas capacidades."
+        },
+        'seguridad': {
+            'p1': "El hecho delictual ha generado preocupación entre las autoridades y la población. Los organismos de seguridad activaron protocolos de investigación para esclarecer los hechos y dar con los responsables.",
+            'p2': "Fuentes policiales confirmaron que el caso está siendo tratado con la seriedad que corresponde. La investigación avanza con diversas líneas de trabajo para recolectar evidencia y testimonios relevantes.",
+            'p3': "Las autoridades judiciales evalúan las implicaciones legales del caso. Se espera que en los próximos días haya novedades sobre la resolución de la investigación y posibles detenciones."
+        },
+        'salud': {
+            'p1': "La información sanitaria ha sido confirmada por autoridades del sector salud y organismos competentes. Los profesionales médicos evalúan la situación para determinar las medidas más apropiadas.",
+            'p2': "Especialistas en salud pública analizan los datos disponibles y sus posibles repercusiones en la población. Los centros de salud se mantienen alerta ante cualquier evolución de la situación reportada.",
+            'p3': "Las autoridades sanitarias recomiendan mantener la calma y seguir los protocolos establecidos. Se continúa monitoreando la situación para tomar decisiones basadas en evidencia científica."
+        },
+        'medio_ambiente': {
+            'p1': "El fenómeno ambiental ha activado las alarmas de organismos especializados y autoridades locales. Los expertos evalúan el impacto del hecho en los ecosistemas y la población cercana.",
+            'p2': "Estudios preliminares indican la necesidad de medidas de mitigación y prevención. Las comunidades afectadas reciben asistencia mientras se analizan las causas y consecuencias del evento.",
+            'p3': "Los científicos advierten sobre la importancia de políticas sostenibles para prevenir situaciones similares. Se esperan informes técnicos detallados en las próximas semanas."
+        },
+        'ciencia': {
+            'p1': "El hallazgo científico ha sido validado por la comunidad académica internacional. Los investigadores responsables publicaron sus conclusiones en revistas especializadas de alto impacto.",
+            'p2': "Este descubrimiento abre nuevas líneas de investigación que podrían transformar el entendimiento actual del tema. Laboratorios de todo el mundo muestran interés en replicar los estudios.",
+            'p3': "Las aplicaciones prácticas de este avance podrían beneficiar diversos sectores en el mediano plazo. Se prevé que el reconocimiento internacional incentive nuevas inversiones en investigación."
         }
     }
     
@@ -427,23 +462,26 @@ def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
     }
 
 def buscar_noticias_categorizadas():
-    """Busca noticias priorizando las 10 categorías"""
+    """Busca noticias priorizando las 8 categorías permitidas (sin deportes ni tendencias)"""
     print("\n🔍 Buscando noticias por categorías...")
     noticias = []
     
-    # 1. NewsAPI en español con palabras clave de categorías
+    # 1. NewsAPI en español con palabras clave de categorías (SIN deportes)
     if NEWS_API_KEY:
         try:
-            # Buscar con términos de alta relevancia
+            # Buscar con términos de alta relevancia (excluyendo deportes)
             terminos_busqueda = [
                 'presidente OR gobierno OR elecciones',
                 'economía OR inflación OR crisis',
                 'guerra OR conflicto OR ataque',
                 'tecnología OR inteligencia artificial',
-                'deportes OR fútbol OR campeonato'
+                'salud OR pandemia OR vacuna',
+                'cambio climático OR medio ambiente',
+                'ciencia OR espacio OR descubrimiento',
+                'seguridad OR crimen OR justicia'
             ]
             
-            for termino in random.sample(terminos_busqueda, min(2, len(terminos_busqueda))):
+            for termino in random.sample(terminos_busqueda, min(3, len(terminos_busqueda))):
                 try:
                     resp = requests.get(
                         "https://newsapi.org/v2/everything",
@@ -459,6 +497,10 @@ def buscar_noticias_categorizadas():
                     data = resp.json()
                     if data.get('status') == 'ok':
                         for art in data.get('articles', []):
+                            # Verificar que no sea deportes o tendencias
+                            if not es_categoria_permitida(art.get('title', ''), art.get('description', '')):
+                                continue
+                            
                             cat = detectar_categoria(art.get('title', ''), art.get('description', ''))
                             art['categoria_detectada'] = cat
                             noticias.append(art)
@@ -480,6 +522,10 @@ def buscar_noticias_categorizadas():
             data = resp.json()
             if 'articles' in data:
                 for a in data['articles']:
+                    # Verificar que no sea deportes o tendencias
+                    if not es_categoria_permitida(a.get('title', ''), a.get('description', '')):
+                        continue
+                    
                     cat = detectar_categoria(a.get('title', ''), a.get('description', ''))
                     noticias.append({
                         'title': a.get('title'),
@@ -493,7 +539,7 @@ def buscar_noticias_categorizadas():
         except Exception as e:
             print(f"   ⚠️ GNews: {e}")
     
-    # 3. RSS por categorías (rotativas)
+    # 3. RSS por categorías (rotativas) - SIN feeds de deportes
     todas_feeds = []
     for cat, datos in CATEGORIAS.items():
         for feed in datos['feeds']:
@@ -506,6 +552,10 @@ def buscar_noticias_categorizadas():
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:3]:
+                # Verificar que no sea deportes o tendencias
+                if not es_categoria_permitida(entry.get('title', ''), entry.get('summary', '')):
+                    continue
+                
                 # Buscar imagen
                 img = ''
                 if hasattr(entry, 'media_content') and entry.media_content:
@@ -539,9 +589,9 @@ def buscar_noticias_categorizadas():
         if ya_publicada(art['url'], art['title']):
             continue
         
-        # Priorizar ciertas categorías
+        # Priorizar ciertas categorías (sin deportes)
         cat = art.get('categoria_detectada', 'general')
-        art['prioridad'] = 2 if cat in ['politica', 'economia', 'mundo', 'deportes'] else 1
+        art['prioridad'] = 2 if cat in ['politica', 'economia', 'mundo'] else 1
         
         nuevas.append(art)
         print(f"   ✅ [{cat}] {art['title'][:45]}...")
@@ -577,7 +627,7 @@ def publicar_completo(titulo, texto, img_path, categoria, url_fuente):
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Hashtags según categoría
+    # Hashtags según categoría (sin deportes ni tendencias)
     hashtags_cat = {
         'politica': '#Política #Gobierno #Actualidad',
         'economia': '#Economía #Finanzas #Negocios',
@@ -586,9 +636,7 @@ def publicar_completo(titulo, texto, img_path, categoria, url_fuente):
         'tecnologia': '#Tecnología #Innovación #IA',
         'salud': '#Salud #Medicina #Bienestar',
         'medio_ambiente': '#MedioAmbiente #Clima #Sostenibilidad',
-        'ciencia': '#Ciencia #Investigación #Descubrimiento',
-        'deportes': '#Deportes #Fútbol #Competición',
-        'tendencias': '#Viral #Tendencias #RedesSociales'
+        'ciencia': '#Ciencia #Investigación #Descubrimiento'
     }
     
     hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad #Hoy')

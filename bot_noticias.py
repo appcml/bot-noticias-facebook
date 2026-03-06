@@ -180,10 +180,10 @@ def detectar_categoria(titulo, descripcion):
         return max(puntuaciones, key=puntuaciones.get)
     return 'general'
 
-def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
+def generar_redaccion_completa(titulo, descripcion, fuente, url_fuente, categoria):
     """
     Genera redacción periodística COMPLETA sin cortes.
-    Estructura: Titular + Lead (2-3 oraciones) + Cuerpo (3 párrafos) + Cierre
+    Estructura: Titular + Lead (2-3 oraciones) + Cuerpo (3 párrafos) + Fuente con link
     """
     
     print(f"\n   📝 Procesando: {titulo[:50]}...")
@@ -196,14 +196,14 @@ def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     
     # Si tenemos IA, usarla
     if OPENROUTER_API_KEY:
-        resultado = generar_con_ia(titulo, desc_limpia, fuente, categoria)
+        resultado = generar_con_ia(titulo, desc_limpia, fuente, url_fuente, categoria)
         if resultado and len(resultado['texto']) > 800:
             return resultado
     
-    # Plantilla mejorada sin cortes
-    return plantilla_mejorada(titulo, desc_limpia, fuente, categoria)
+    # Plantilla mejorada con fuente y link
+    return plantilla_mejorada(titulo, desc_limpia, fuente, url_fuente, categoria)
 
-def generar_con_ia(titulo, descripcion, fuente, categoria):
+def generar_con_ia(titulo, descripcion, fuente, url_fuente, categoria):
     """Genera usando OpenRouter"""
     try:
         prompt = f"""Eres un redactor senior de agencia EFE. Escribe una NOTICIA COMPLETA en español.
@@ -212,6 +212,7 @@ DATOS:
 Título original: {titulo}
 Descripción: {descripcion}
 Fuente: {fuente}
+URL: {url_fuente}
 Categoría: {categoria}
 
 INSTRUCCIONES ESTRICTAS:
@@ -221,14 +222,16 @@ INSTRUCCIONES ESTRICTAS:
    - Párrafo 1: Contexto y antecedentes (quiénes están involucrados)
    - Párrafo 2: Desarrollo actual (datos, cifras, declaraciones específicas)
    - Párrafo 3: Análisis e implicaciones (qué significa, consecuencias futuras)
-4. CIERRE: 1 línea con próximos pasos + "(Agencias) / Fuente: {fuente}"
+4. CIERRE: SOLO la fuente con link: "Fuente: {fuente} - {url_fuente}"
 
 REGLAS:
 - ESPAÑOL NATIVO, no traducciones
 - Oraciones COMPLETAS, no cortar palabras
-- Longitud total: 1200-1800 caracteres
+- Longitud total: 1000-1500 caracteres (sin contar el link)
 - Estilo periodístico NEUTRO
-- Números y datos específicos si están en la descripción
+- NO uses frases genéricas como "Los detalles serán proporcionados oportunamente"
+- NO uses "Se esperan actualizaciones"
+- Termina SOLO con la fuente y el link
 
 FORMATO OBLIGATORIO:
 TITULAR: [titular completo]
@@ -242,7 +245,7 @@ CUERPO:
 
 [Párrafo 3 completo - análisis]
 
-CIERRE: [cierre con fuente]
+CIERRE: Fuente: {fuente} - {url_fuente}
 
 FIN"""
 
@@ -282,14 +285,18 @@ FIN"""
                         cuerpo = extraer_campo(content, 'CUERPO:', 'CIERRE:')
                         cierre = extraer_campo(content, 'CIERRE:', 'FIN')
                         
-                        if not cierre:
-                            cierre = f"Se esperan actualizaciones. (Agencias) / Fuente: {fuente}."
+                        # Si no hay cierre o es genérico, crear uno con fuente y link
+                        if not cierre or 'detalles' in cierre.lower() or 'actualizaciones' in cierre.lower():
+                            cierre = f"Fuente: {fuente} - {url_fuente}"
+                        
+                        # Limpiar cierre de frases genéricas
+                        cierre = limpiar_cierre(cierre, fuente, url_fuente)
                         
                         # Construir texto completo
                         texto_completo = f"{lead}\n\n{cuerpo}\n\n{cierre}"
                         
                         # Verificar que no esté cortado
-                        if len(texto_completo) > 600 and not texto_completo.endswith(('en ', 'de ', 'la ', 'el ', 'un ', 'una ')):
+                        if len(texto_completo) > 600:
                             print(f"   ✅ IA generó: {len(texto_completo)} caracteres")
                             return {
                                 'titular': titular.strip()[:100],
@@ -317,8 +324,41 @@ def extraer_campo(texto, inicio, fin):
         pass
     return ""
 
-def plantilla_mejorada(titulo, descripcion, fuente, categoria):
-    """Plantilla periodística robusta sin cortes"""
+def limpiar_cierre(cierre, fuente, url_fuente):
+    """Elimina frases genéricas del cierre y deja solo fuente con link"""
+    frases_eliminar = [
+        r'Los detalles adicionales serán proporcionados oportunamente\.?',
+        r'Los detalles serán proporcionados oportunamente\.?',
+        r'Se esperan actualizaciones oficiales\.?',
+        r'Se esperan actualizaciones\.?',
+        r'Se esperan declaraciones oficiales adicionales\.?',
+        r'Se esperan nuevos datos confirmados\.?',
+        r'La información será actualizada progresivamente\.?',
+        r'La información será proporcionada oportunamente\.?',
+        r'\(Agencias\)',
+        r'\(Agencia\)',
+        r'Agencias\.',
+        r'Agencia\.',
+        r'—\s*$',
+        r'-\s*$'
+    ]
+    
+    cierre_limpio = cierre
+    
+    for frase in frases_eliminar:
+        cierre_limpio = re.sub(frase, '', cierre_limpio, flags=re.IGNORECASE)
+    
+    # Limpiar espacios múltiples y líneas vacías
+    cierre_limpio = re.sub(r'\s+', ' ', cierre_limpio).strip()
+    
+    # Si quedó vacío o muy corto, usar fuente con link
+    if len(cierre_limpio) < 10 or 'http' not in cierre_limpio:
+        cierre_limpio = f"Fuente: {fuente} - {url_fuente}"
+    
+    return cierre_limpio
+
+def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
+    """Plantilla periodística robusta sin cortes y con fuente + link"""
     print(f"   📝 Usando plantilla mejorada...")
     
     # Crear lead completo (2-3 oraciones)
@@ -329,7 +369,7 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
     elif len(oraciones_desc) == 1:
         lead = f"{oraciones_desc[0]}. Las autoridades competentes confirmaron la información en las últimas horas."
     else:
-        lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes confirmaron la información en las últimas horas y se esperan actualizaciones."
+        lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes confirmaron la información en las últimas horas."
     
     # Limitar lead a 200 caracteres pero sin cortar palabras
     if len(lead) > 200:
@@ -374,14 +414,11 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
             'p3': "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis."
         }
     
+    # Cierre profesional: solo fuente con link
+    cierre = f"Fuente: {fuente} - {url_fuente}"
+    
     # Construir texto completo
-    cierre = f"Se esperan actualizaciones oficiales. (Agencias) / Fuente: {fuente}."
-    
     texto = f"{lead}\n\n{temps['p1']}\n\n{temps['p2']}\n\n{temps['p3']}\n\n{cierre}"
-    
-    # Asegurar longitud mínima sin cortar
-    while len(texto) < 1000:
-        texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente. {cierre}")
     
     print(f"   ✅ Plantilla: {len(texto)} caracteres")
     return {
@@ -533,14 +570,14 @@ def descargar_imagen(url):
         print(f"   ⚠️ Error imagen: {e}")
     return None
 
-def publicar_completo(titulo, texto, img_path, categoria):
+def publicar_completo(titulo, texto, img_path, categoria, url_fuente):
     """Publica en Facebook asegurando que no se corte el texto"""
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Hashtags según categoría - CORREGIDO: comillas completas
+    # Hashtags según categoría
     hashtags_cat = {
         'politica': '#Política #Gobierno #Actualidad',
         'economia': '#Economía #Finanzas #Negocios',
@@ -561,6 +598,10 @@ def publicar_completo(titulo, texto, img_path, categoria):
     if texto_limpio.endswith(('en', 'de', 'la', 'el', 'un', 'una', 'a', 'con', 'por')):
         texto_limpio += "."
     
+    # Verificar que el link de fuente esté incluido
+    if url_fuente not in texto_limpio:
+        texto_limpio += f"\n\nFuente: {url_fuente}"
+    
     mensaje = f"""📰 {titulo}
 
 {texto_limpio}
@@ -572,18 +613,18 @@ def publicar_completo(titulo, texto, img_path, categoria):
     # Verificación final de longitud
     print(f"\n   📝 MENSAJE ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
-    for linea in mensaje.split('\n')[:6]:
+    for linea in mensaje.split('\n')[:8]:
         preview = linea[:65] + "..." if len(linea) > 65 else linea
         print(f"   {preview}")
     print(f"   {'='*50}")
     
     try:
-        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
+        url_fb = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
         print(f"   📤 Publicando...")
         
         with open(img_path, 'rb') as f:
             resp = requests.post(
-                url,
+                url_fb,
                 files={'file': f},
                 data={'message': mensaje, 'access_token': FB_ACCESS_TOKEN},
                 timeout=60
@@ -626,15 +667,17 @@ def main():
             continue
         
         categoria = noticia.get('categoria_detectada', 'general')
+        url_fuente = noticia.get('url', '')
         
         resultado = generar_redaccion_completa(
             noticia['title'],
             noticia.get('description', ''),
             noticia.get('source', {}).get('name', 'Agencias'),
+            url_fuente,
             categoria
         )
         
-        if publicar_completo(resultado['titular'], resultado['texto'], img_path, categoria):
+        if publicar_completo(resultado['titular'], resultado['texto'], img_path, categoria, url_fuente):
             guardar_historial(noticia['url'], noticia['title'], categoria)
             if os.path.exists(img_path):
                 os.remove(img_path)

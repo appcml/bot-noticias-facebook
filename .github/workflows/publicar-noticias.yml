@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: write  # Necesario para artifacts
+      actions: write
     
     steps:
     - name: Checkout código
@@ -30,7 +30,7 @@ jobs:
           cat historial_publicaciones.json | head -c 200
         else
           echo "⚠️ Sin historial previo, creando nuevo"
-          echo '{"urls": [], "titulos": [], "ultima_publicacion": null}' > historial_publicaciones.json
+          echo '{"urls": [], "titulos": [], "ultima_publicacion": null, "categorias": {}}' > historial_publicaciones.json
         fi
         echo ""
       shell: bash
@@ -61,11 +61,18 @@ jobs:
       env:
         NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
-        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}  # IA gratuita
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
       run: |
         echo "🚀 Iniciando bot de noticias..."
+        echo "📋 Variables configuradas:"
+        if [ -n "$NEWS_API_KEY" ]; then echo "  ✅ NEWS_API_KEY"; else echo "  ⚠️ NEWS_API_KEY no configurada"; fi
+        if [ -n "$GNEWS_API_KEY" ]; then echo "  ✅ GNEWS_API_KEY"; else echo "  ⚠️ GNEWS_API_KEY no configurada"; fi
+        if [ -n "$OPENROUTER_API_KEY" ]; then echo "  ✅ OPENROUTER_API_KEY (IA Gratuita)"; else echo "  ⚠️ OPENROUTER_API_KEY no configurada"; fi
+        if [ -n "$FB_PAGE_ID" ]; then echo "  ✅ FB_PAGE_ID"; else echo "  ❌ FB_PAGE_ID FALTA"; fi
+        if [ -n "$FB_ACCESS_TOKEN" ]; then echo "  ✅ FB_ACCESS_TOKEN"; else echo "  ❌ FB_ACCESS_TOKEN FALTA"; fi
+        echo ""
         python bot_noticias.py
         echo "🏁 Bot finalizado con código: $?"
       shell: bash

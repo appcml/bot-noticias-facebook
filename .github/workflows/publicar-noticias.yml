@@ -27,8 +27,7 @@ jobs:
         if [ -f "historial_publicaciones.json" ]; then
           echo "✅ Historial encontrado"
         else
-          echo "⚠️ Sin historial previo, creando nuevo"
-          echo '{"urls": [], "titulos": [], "ultima_publicacion": null}' > historial_publicaciones.json
+          echo '{"urls": [], "titulos": [], "ultima_publicacion": null, "videos": []}' > historial_publicaciones.json
         fi
       shell: bash
       
@@ -40,6 +39,10 @@ jobs:
     - name: Instalar dependencias
       run: |
         pip install requests pillow feedparser
+        # Instalar yt-dlp para descargar videos
+        sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+        sudo chmod a+rx /usr/local/bin/yt-dlp
+        yt-dlp --version
         echo "✅ Dependencias instaladas"
         
     - name: Verificar archivos
@@ -53,7 +56,6 @@ jobs:
         NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        # DEEPL_API_KEY eliminado
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
       run: |

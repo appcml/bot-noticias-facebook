@@ -153,66 +153,192 @@ def limpiar_ingles(texto):
     if not texto:
         return texto
     
+    # Diccionario de reemplazos - CORREGIDO con comas en todas las líneas
     reemplazos = {
-        r'\bthe\b': '', r'\band\b': 'y', r'\bfor\b': 'para', r'\bare\b': 'son',
-        r'\bnot\b': 'no', r'\bbut\b': 'pero', r'\bwith\b': 'con', r'\bthat\b': 'que',
-        r'\bthis\b': 'este', r'\bwill\b': '', r'\bsaid\b': 'dijo', r'\btold\b': 'dijo',
-        r'\bon\b': 'en', r'\bat\b': 'en', r'\bby\b': 'por', r'\bfrom\b': 'desde',
-        r'\bto\b': 'a', r'\bin\b': 'en', r'\bof\b': 'de', r'\bas\b': 'como',
-        r'\bit\b': 'eso', r'\btheir\b': 'su', r'\bthem\b': 'ellos', r'\bthey\b': 'ellos',
-        r'\bwe\b': 'nosotros', r'\bour\b': 'nuestro', r'\bus\b': 'nos', r'\bI\b': 'yo',
-        r'\bmy\b': 'mi', r'\bme\b': 'me', r'\byou\b': 'tú', r'\byour\b': 'tu',
-        r'\bhe\b': 'él', r'\bhim\b': 'él', r'\bhis\b': 'su', r'\bshe\b': 'ella',
-        r'\bher\b': 'ella', r'\bwas\b': 'fue', r'\bhas\b': 'tiene', r'\bhave\b': 'tienen',
-        r'\bhad\b': 'tuvo', r'\bbeen\b': 'sido', r'\bbeing\b': 'siendo', r'\bis\b': 'es',
-        r'\bwere\b': 'eran', r'\bdo\b': 'hacer', r'\bdoes\b': 'hace', r'\bdid\b': 'hizo',
-        r'\bdone\b': 'hecho', r'\bdoing\b': 'haciendo', r'\bcan\b': 'poder',
-        r'\bcould\b': 'podría', r'\bwould\b': 'haría', r'\bshould\b': 'debería',
-        r'\bmay\b': 'puede', r'\bmight\b': 'podría', r'\bmust\b': 'debe',
-        r'\babout\b': 'sobre', r'\bafter\b': 'después', r'\bbefore\b': 'antes',
-        r'\bduring\b': 'durante', r'\bbetween\b': 'entre', r'\bagainst\b': 'contra',
-        r'\bunder\b': 'bajo', r'\bover\b': 'sobre', r'\bthrough\b': 'a través',
-        r'\binto\b': 'en', r'\bout\b': 'fuera', r'\bup\b': 'arriba', r'\bdown\b': 'abajo',
-        r'\bhere\b': 'aquí', r'\bthere\b': 'allí', r'\bwhere\b': 'donde',
-        r'\bwhen\b': 'cuando', r'\bwhy\b': 'por qué', r'\bhow\b': 'cómo',
-        r'\bwhat\b': 'qué', r'\bwhich\b': 'cuál', r'\bwho\b': 'quién',
-        r'\ball\b': 'todo', r'\beach\b': 'cada', r'\bevery\b': 'cada',
-        r'\bboth\b': 'ambos', r'\bfew\b': 'pocos', r'\bmore\b': 'más',
-        r'\bmost\b': 'la mayoría', r'\bother\b': 'otro', r'\bsome\b': 'algunos',
-        r'\bsuch\b': 'tal', r'\bno\b': 'no', r'\bnone\b': 'ninguno',
-        r'\bone\b': 'uno', r'\btwo\b': 'dos', r'\bthree\b': 'tres',
-        r'\bfour\b': 'cuatro', r'\bfive\b': 'cinco', r'\bfirst\b': 'primero',
-        r'\bsecond\b': 'segundo', r'\bthird\b': 'tercero', r'\blast\b': 'último',
-        r'\bgood\b': 'bueno', r'\bnew\b': 'nuevo', r'\blong\b': 'largo',
-        r'\bgreat\b': 'gran', r'\blittle\b': 'pequeño', r'\bown\b': 'propio',
-        r'\bold\b': 'viejo', r'\bright\b': 'correcto', r'\bbig\b': 'grande',
-        r'\bhigh\b': 'alto', r'\bdifferent\b': 'diferente', r'\bsmall\b': 'pequeño',
-        r'\blarge\b': 'grande', r'\bnext\b': 'siguiente', r'\bearly\b': 'temprano',
-        r'\byoung\b': 'joven', r'\bimportant\b': 'importante', r'\bsame\b': 'mismo',
-        r'\bable\b': 'capaz', r'\bofficials\b': 'oficiales', r'\bgovernment\b': 'gobierno',
-        r'\bstatement\b': 'declaración', r'\breport\b': 'reporte', r'\breports\b': 'reportes',
-        r'\bsources\b': 'fuentes', r'\bnews\b': 'noticias', r'\bmeeting\b': 'reunión',
-        r'\bpeople\b': 'personas', r'\bcountry\b': 'país', r'\bworld\b': 'mundo',
-        r'\binternational\b': 'internacional', r'\bnational\b': 'nacional',
-        r'\bpublic\b': 'público', r'\bpresident\b': 'presidente', r'\bminister\b': 'ministro',
-        r'\bsecretary\b': 'secretario', r'\bspokesperson\b': 'portavoz',
-        r'\bannouncement\b': 'anuncio', r'\bcontroversy\b': 'controversia',
-        r'\bcontinue\b': 'continuar', r'\baccording\b': 'según', r'\baccording to\b': 'según',
-        r'\bfaces\b': 'enfrenta', r'\binvestigation\b': 'investigación',
-        r'\ballegations\b': 'alegatos', r'\bethical\b': 'ético', r'\bethics\b': 'ética',
-        r'\bsupport\b': 'apoyo', r'\bagainst\b': 'contra', r'\battack\b': 'ataque',
-        r'\battacks\b': 'ataques', r'\bpoll\b': 'encuesta', r'\bpolls\b': 'encuestas',
-        r'\bsold\b': 'vendido', r'\biran\b': 'Irán', r'\bwhite house\b': 'Casa Blanca',
-        r'\breasoning\b': 'razonamiento', r'\bresonating\b': 'resonando',
-        r'\bamericans\b': 'estadounidenses', r'\bamerican\b': 'estadounidense',
-        r'\bsurvey\b': 'encuesta', r'\badults\b': 'adultos', r'\bconducted\b': 'realizada',
-        r'\bapprove\b': 'aprueban', r'\bdisapprove\b': 'desaprueban', r'\bsomewhat\b': 'algo',
-        r'\bstrongly\b': 'fuertemente', r'\bsure\b': 'seguro', r'\bdon\'t\b': 'no',
-        r'\baren't\b': 'no están', r'\bisn't\b': 'no está', r'\bwon't\b': 'no',
-        r'\bcan't\b': 'no pueden', r'\bdidn't\b': 'no', r'\bwasn't\b': 'no era',
-        r'\bweren't\b': 'no eran', r'\bhaven't\b': 'no han', r'\bhasn't\b': 'no ha',
-        r'\bhadn't\b': 'no había', r'\bwouldn't\b': 'no', r'\bshouldn't\b': 'no deberían',
-        r'\bcouldn't\b': 'no podían', r'\bmightn't\b': 'no podrían', r'\bmustn't\b': 'no deben',
+        r'\bthe\b': '',
+        r'\band\b': 'y',
+        r'\bfor\b': 'para',
+        r'\bare\b': 'son',
+        r'\bnot\b': 'no',
+        r'\bbut\b': 'pero',
+        r'\bwith\b': 'con',
+        r'\bthat\b': 'que',
+        r'\bthis\b': 'este',
+        r'\bwill\b': '',
+        r'\bsaid\b': 'dijo',
+        r'\btold\b': 'dijo',
+        r'\bon\b': 'en',
+        r'\bat\b': 'en',
+        r'\bby\b': 'por',
+        r'\bfrom\b': 'desde',
+        r'\bto\b': 'a',
+        r'\bin\b': 'en',
+        r'\bof\b': 'de',
+        r'\bas\b': 'como',
+        r'\bit\b': 'eso',
+        r'\btheir\b': 'su',
+        r'\bthem\b': 'ellos',
+        r'\bthey\b': 'ellos',
+        r'\bwe\b': 'nosotros',
+        r'\bour\b': 'nuestro',
+        r'\bus\b': 'nos',
+        r'\bI\b': 'yo',
+        r'\bmy\b': 'mi',
+        r'\bme\b': 'me',
+        r'\byou\b': 'tú',
+        r'\byour\b': 'tu',
+        r'\bhe\b': 'él',
+        r'\bhim\b': 'él',
+        r'\bhis\b': 'su',
+        r'\bshe\b': 'ella',
+        r'\bher\b': 'ella',
+        r'\bwas\b': 'fue',
+        r'\bhas\b': 'tiene',
+        r'\bhave\b': 'tienen',
+        r'\bhad\b': 'tuvo',
+        r'\bbeen\b': 'sido',
+        r'\bbeing\b': 'siendo',
+        r'\bis\b': 'es',
+        r'\bwere\b': 'eran',
+        r'\bdo\b': 'hacer',
+        r'\bdoes\b': 'hace',
+        r'\bdid\b': 'hizo',
+        r'\bdone\b': 'hecho',
+        r'\bdoing\b': 'haciendo',
+        r'\bcan\b': 'poder',
+        r'\bcould\b': 'podría',
+        r'\bwould\b': 'haría',
+        r'\bshould\b': 'debería',
+        r'\bmay\b': 'puede',
+        r'\bmight\b': 'podría',
+        r'\bmust\b': 'debe',
+        r'\babout\b': 'sobre',
+        r'\bafter\b': 'después',
+        r'\bbefore\b': 'antes',
+        r'\bduring\b': 'durante',
+        r'\bbetween\b': 'entre',
+        r'\bagainst\b': 'contra',
+        r'\bunder\b': 'bajo',
+        r'\bover\b': 'sobre',
+        r'\bthrough\b': 'a través',
+        r'\binto\b': 'en',
+        r'\bout\b': 'fuera',
+        r'\bup\b': 'arriba',
+        r'\bdown\b': 'abajo',
+        r'\bhere\b': 'aquí',
+        r'\bthere\b': 'allí',
+        r'\bwhere\b': 'donde',
+        r'\bwhen\b': 'cuando',
+        r'\bwhy\b': 'por qué',
+        r'\bhow\b': 'cómo',
+        r'\bwhat\b': 'qué',
+        r'\bwhich\b': 'cuál',
+        r'\bwho\b': 'quién',
+        r'\ball\b': 'todo',
+        r'\beach\b': 'cada',
+        r'\bevery\b': 'cada',
+        r'\bboth\b': 'ambos',
+        r'\bfew\b': 'pocos',
+        r'\bmore\b': 'más',
+        r'\bmost\b': 'la mayoría',
+        r'\bother\b': 'otro',
+        r'\bsome\b': 'algunos',
+        r'\bsuch\b': 'tal',
+        r'\bno\b': 'no',
+        r'\bnone\b': 'ninguno',
+        r'\bone\b': 'uno',
+        r'\btwo\b': 'dos',
+        r'\bthree\b': 'tres',
+        r'\bfour\b': 'cuatro',
+        r'\bfive\b': 'cinco',
+        r'\bfirst\b': 'primero',
+        r'\bsecond\b': 'segundo',
+        r'\bthird\b': 'tercero',
+        r'\blast\b': 'último',
+        r'\bgood\b': 'bueno',
+        r'\bnew\b': 'nuevo',
+        r'\blong\b': 'largo',
+        r'\bgreat\b': 'gran',
+        r'\blittle\b': 'pequeño',
+        r'\bown\b': 'propio',
+        r'\bold\b': 'viejo',
+        r'\bright\b': 'correcto',
+        r'\bbig\b': 'grande',
+        r'\bhigh\b': 'alto',
+        r'\bdifferent\b': 'diferente',
+        r'\bsmall\b': 'pequeño',
+        r'\blarge\b': 'grande',
+        r'\bnext\b': 'siguiente',
+        r'\bearly\b': 'temprano',
+        r'\byoung\b': 'joven',
+        r'\bimportant\b': 'importante',
+        r'\bsame\b': 'mismo',
+        r'\bable\b': 'capaz',
+        r'\bofficials\b': 'oficiales',
+        r'\bgovernment\b': 'gobierno',
+        r'\bstatement\b': 'declaración',
+        r'\breport\b': 'reporte',
+        r'\breports\b': 'reportes',
+        r'\bsources\b': 'fuentes',
+        r'\bnews\b': 'noticias',
+        r'\bmeeting\b': 'reunión',
+        r'\bpeople\b': 'personas',
+        r'\bcountry\b': 'país',
+        r'\bworld\b': 'mundo',
+        r'\binternational\b': 'internacional',
+        r'\bnational\b': 'nacional',
+        r'\bpublic\b': 'público',
+        r'\bpresident\b': 'presidente',
+        r'\bminister\b': 'ministro',
+        r'\bsecretary\b': 'secretario',
+        r'\bspokesperson\b': 'portavoz',
+        r'\bannouncement\b': 'anuncio',
+        r'\bcontroversy\b': 'controversia',
+        r'\bcontinue\b': 'continuar',
+        r'\baccording\b': 'según',
+        r'\baccording to\b': 'según',
+        r'\bfaces\b': 'enfrenta',
+        r'\binvestigation\b': 'investigación',
+        r'\ballegations\b': 'alegatos',
+        r'\bethical\b': 'ético',
+        r'\bethics\b': 'ética',
+        r'\bsupport\b': 'apoyo',
+        r'\bagainst\b': 'contra',
+        r'\battack\b': 'ataque',
+        r'\battacks\b': 'ataques',
+        r'\bpoll\b': 'encuesta',
+        r'\bpolls\b': 'encuestas',
+        r'\bsold\b': 'vendido',
+        r'\biran\b': 'Irán',
+        r'\bwhite house\b': 'Casa Blanca',
+        r'\breasoning\b': 'razonamiento',
+        r'\bresonating\b': 'resonando',
+        r'\bamericans\b': 'estadounidenses',
+        r'\bamerican\b': 'estadounidense',
+        r'\bsurvey\b': 'encuesta',
+        r'\badults\b': 'adultos',
+        r'\bconducted\b': 'realizada',
+        r'\bapprove\b': 'aprueban',
+        r'\bdisapprove\b': 'desaprueban',
+        r'\bsomewhat\b': 'algo',
+        r'\bstrongly\b': 'fuertemente',
+        r'\bsure\b': 'seguro',
+        r'\bdon\'t\b': 'no',
+        r'\baren't\b': 'no están',
+        r'\bisn't\b': 'no está',
+        r'\bwon't\b': 'no',
+        r'\bcan't\b': 'no pueden',
+        r'\bdidn't\b': 'no',
+        r'\bwasn't\b': 'no era',
+        r'\bweren't\b': 'no eran',
+        r'\bhaven't\b': 'no han',
+        r'\bhasn't\b': 'no ha',
+        r'\bhadn't\b': 'no había',
+        r'\bwouldn't\b': 'no',
+        r'\bshouldn't\b': 'no deberían',
+        r'\bcouldn't\b': 'no podían',
+        r'\bmightn't\b': 'no podrían',
+        r'\bmustn't\b': 'no deben',
     }
     
     texto_limpio = texto
@@ -330,7 +456,7 @@ FIN"""
                 json={
                     'model': 'gpt-4o-mini',
                     'messages': [{'role': 'user', 'content': prompt}],
-                    'temperature': 0.2,  # Muy bajo para mantener objetividad
+                    'temperature': 0.2,
                     'max_tokens': 1200
                 },
                 timeout=50
@@ -541,7 +667,7 @@ def buscar_noticias_video():
     rss_videos_es = [
         'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/videos/portada',
         'https://www.rtve.es/noticias/rss/',
-        'https://feeds.bbci.co.uk/mundo/rss.xml',  # BBC Mundo a veces tiene videos
+        'https://feeds.bbci.co.uk/mundo/rss.xml',
     ]
     
     for feed_url in rss_videos_es:
@@ -591,11 +717,8 @@ def buscar_noticias_video():
         except Exception as e:
             print(f"   ⚠️ Error RSS video: {e}")
     
-    # También buscar en YouTube Data API si hay API key (opcional)
-    # Por ahora usamos solo RSS
-    
     print(f"📊 Videos encontrados: {len(videos)}")
-    return videos[:2]  # Máximo 2 videos
+    return videos[:2]
 
 def descargar_imagen(url):
     """Descarga imagen de noticia"""
@@ -774,7 +897,7 @@ def publicar_video(titulo, texto, video_path):
                     'description': mensaje,
                     'access_token': FB_ACCESS_TOKEN
                 },
-                timeout=300  # 5 minutos para videos
+                timeout=300
             )
             result = response.json()
             
@@ -795,7 +918,7 @@ def main():
         print("\n❌ ERROR: Faltan credenciales de Facebook")
         return False
     
-    # Estrategia: 70% imágenes, 30% videos (si hay disponibles)
+    # Estrategia: 70% imágenes, 30% videos
     tipo_contenido = random.choices(['imagen', 'video'], weights=[70, 30])[0]
     
     if tipo_contenido == 'video':
@@ -841,7 +964,7 @@ def main():
         
         print("\n⚠️ No se encontraron videos, cambiando a modo imagen...")
     
-    # Modo imagen (default o fallback)
+    # Modo imagen
     print("\n🖼️ Modo: IMAGEN")
     noticias = buscar_noticias_imagen()
     
@@ -876,7 +999,7 @@ def main():
             print("   ⏭️ Sin imagen")
             continue
         
-        # Generar redacción periodística profesional (1000-2000 chars)
+        # Generar redacción periodística profesional
         resultado = generar_redaccion_periodistica(
             noticia['title'],
             noticia.get('description', ''),

@@ -18,7 +18,7 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
-# CATEGORÍAS Y PALABRAS CLAVE (SIN DEPORTES NI TENDENCIAS)
+# CATEGORÍAS Y PALABRAS CLAVE PRIORITARIAS
 CATEGORIAS = {
     'politica': {
         'keywords': ['presidente', 'gobierno', 'ministro', 'congreso', 'senado', 'elecciones', 
@@ -86,162 +86,25 @@ CATEGORIAS = {
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada',
         ]
+    },
+    'deportes': {
+        'keywords': ['fútbol', 'liga', 'campeonato', 'mundial', 'copa', 'partido', 'resultado',
+                    'jugador', 'equipo', 'entrenador', 'fichaje', 'victoria', 'derrota',
+                    'competición', 'olimpiadas', 'deportes'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/deportes/portada',
+            'https://www.clarin.com/rss/deportes/',
+            'https://e00-elmundo.uecdn.es/elmundo/rss/deportes.xml',
+        ]
+    },
+    'tendencias': {
+        'keywords': ['viral', 'tendencia', 'video viral', 'redes sociales', 'fenómeno viral',
+                    'reto viral', 'curiosidad', 'sorprendente', 'impactante', 'polémica',
+                    'última hora', 'urgente', 'confirmado', 'revelan', 'histórico'],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/gente/portada',
+        ]
     }
-}
-
-# DICCIONARIO DE PAÍSES PARA HASHTAGS LOCALES
-PAISES_HASHTAGS = {
-    # Latinoamérica
-    'chile': '#Chile',
-    'argentina': '#Argentina',
-    'mexico': '#México',
-    'méxico': '#México',
-    'colombia': '#Colombia',
-    'peru': '#Perú',
-    'perú': '#Perú',
-    'venezuela': '#Venezuela',
-    'brasil': '#Brasil',
-    'ecuador': '#Ecuador',
-    'bolivia': '#Bolivia',
-    'paraguay': '#Paraguay',
-    'uruguay': '#Uruguay',
-    'guatemala': '#Guatemala',
-    'honduras': '#Honduras',
-    'elsalvador': '#ElSalvador',
-    'el salvador': '#ElSalvador',
-    'nicaragua': '#Nicaragua',
-    'costarica': '#CostaRica',
-    'costa rica': '#CostaRica',
-    'panama': '#Panamá',
-    'panamá': '#Panamá',
-    'cuba': '#Cuba',
-    'repdominicana': '#RepúblicaDominicana',
-    'república dominicana': '#RepúblicaDominicana',
-    'puertorico': '#PuertoRico',
-    'puerto rico': '#PuertoRico',
-    
-    # Europa
-    'españa': '#España',
-    'francia': '#Francia',
-    'alemania': '#Alemania',
-    'italia': '#Italia',
-    'reinounido': '#ReinoUnido',
-    'reino unido': '#ReinoUnido',
-    'portugal': '#Portugal',
-    'paisesbajos': '#PaísesBajos',
-    'países bajos': '#PaísesBajos',
-    'belgica': '#Bélgica',
-    'bélgica': '#Bélgica',
-    'suiza': '#Suiza',
-    'austria': '#Austria',
-    'suecia': '#Suecia',
-    'noruega': '#Noruega',
-    'dinamarca': '#Dinamarca',
-    'finlandia': '#Finlandia',
-    'polonia': '#Polonia',
-    'ucrania': '#Ucrania',
-    'rusia': '#Rusia',
-    'hungria': '#Hungría',
-    'hungría': '#Hungría',
-    'chequia': '#Chequia',
-    'eslovaquia': '#Eslovaquia',
-    'rumana': '#Rumanía',
-    'rumanía': '#Rumanía',
-    'bulgaria': '#Bulgaria',
-    'croacia': '#Croacia',
-    'serbia': '#Serbia',
-    'grecia': '#Grecia',
-    'turquia': '#Turquía',
-    'turquía': '#Turquía',
-    
-    # Norteamérica
-    'estadosunidos': '#EEUU',
-    'estados unidos': '#EEUU',
-    'usa': '#EEUU',
-    'canada': '#Canadá',
-    'canadá': '#Canadá',
-    
-    # Asia
-    'china': '#China',
-    'japon': '#Japón',
-    'japón': '#Japón',
-    'india': '#India',
-    'coreasur': '#CoreaDelSur',
-    'corea del sur': '#CoreaDelSur',
-    'coreanorte': '#CoreaDelNorte',
-    'corea del norte': '#CoreaDelNorte',
-    'tailandia': '#Tailandia',
-    'vietnam': '#Vietnam',
-    'indonesia': '#Indonesia',
-    'filipinas': '#Filipinas',
-    'malasia': '#Malasia',
-    'singapur': '#Singapur',
-    'israel': '#Israel',
-    'irán': '#Irán',
-    'iran': '#Irán',
-    'arabiasaudita': '#ArabiaSaudita',
-    'arabia saudita': '#ArabiaSaudita',
-    'emiratos': '#EmiratosÁrabes',
-    'emiratos arabes': '#EmiratosÁrabes',
-    
-    # África
-    'sudafrica': '#Sudáfrica',
-    'sudáfrica': '#Sudáfrica',
-    'nigeria': '#Nigeria',
-    'egipto': '#Egipto',
-    'marruecos': '#Marruecos',
-    'argelia': '#Argelia',
-    'kenia': '#Kenia',
-    'etiopia': '#Etiopía',
-    'etiopía': '#Etiopía',
-    
-    # Oceanía
-    'australia': '#Australia',
-    'nuevazelanda': '#NuevaZelanda',
-    'nueva zelanda': '#NuevaZelanda',
-    
-    # Ciudades importantes
-    'santiago': '#Santiago',
-    'buenosaires': '#BuenosAires',
-    'buenos aires': '#BuenosAires',
-    'ciudaddemexico': '#CDMX',
-    'ciudad de mexico': '#CDMX',
-    'bogota': '#Bogotá',
-    'bogotá': '#Bogotá',
-    'lima': '#Lima',
-    'caracas': '#Caracas',
-    'saopaulo': '#SaoPaulo',
-    'sao paulo': '#SaoPaulo',
-    'riodejaneiro': '#RioDeJaneiro',
-    'rio de janeiro': '#RioDeJaneiro',
-    'madrid': '#Madrid',
-    'barcelona': '#Barcelona',
-    'paris': '#París',
-    'parís': '#París',
-    'londres': '#Londres',
-    'berlin': '#Berlín',
-    'berlín': '#Berlín',
-    'roma': '#Roma',
-    'lisboa': '#Lisboa',
-    'amsterdam': '#Ámsterdam',
-    'ámsterdam': '#Ámsterdam',
-    'bruselas': '#Bruselas',
-    'viena': '#Viena',
-    'nuevayork': '#NuevaYork',
-    'nueva york': '#NuevaYork',
-    'losangeles': '#LosÁngeles',
-    'los angeles': '#LosÁngeles',
-    'miami': '#Miami',
-    'chicago': '#Chicago',
-    'tokio': '#Tokio',
-    'pekin': '#Pekín',
-    'pekín': '#Pekín',
-    'shanghai': '#Shanghái',
-    'shanghái': '#Shanghái',
-    'hongkong': '#HongKong',
-    'hong kong': '#HongKong',
-    'sidney': '#Sídney',
-    'sídney': '#Sídney',
 }
 
 print("="*60)
@@ -271,6 +134,7 @@ def guardar_historial(url, titulo, categoria='general'):
         historial['categorias'][categoria] = []
     historial['categorias'][categoria].append(url)
     
+    # Mantener solo últimas 500
     historial['urls'] = historial['urls'][-500:]
     historial['titulos'] = historial['titulos'][-500:]
     
@@ -311,177 +175,35 @@ def detectar_categoria(titulo, descripcion):
                 score += 1
         puntuaciones[cat] = score
     
+    # Devolver categoría con mayor puntuación
     if max(puntuaciones.values()) > 0:
         return max(puntuaciones, key=puntuaciones.get)
     return 'general'
 
-def detectar_pais(titulo, descripcion, fuente):
-    """Detecta el país de la noticia para hashtag local"""
-    texto = f"{titulo} {descripcion} {fuente}".lower()
-    texto_sin_espacios = re.sub(r'\s+', '', texto)
-    
-    # Buscar en diccionario de países
-    for pais, hashtag in PAISES_HASHTAGS.items():
-        # Buscar con espacios y sin espacios
-        if pais in texto or re.sub(r'\s+', '', pais) in texto_sin_espacios:
-            return hashtag
-    
-    # Detección por dominio de fuente
-    dominio_pais = {
-        '.cl': '#Chile',
-        '.ar': '#Argentina',
-        '.mx': '#México',
-        '.co': '#Colombia',
-        '.pe': '#Perú',
-        '.ve': '#Venezuela',
-        '.br': '#Brasil',
-        '.ec': '#Ecuador',
-        '.bo': '#Bolivia',
-        '.py': '#Paraguay',
-        '.uy': '#Uruguay',
-        '.es': '#España',
-        '.fr': '#Francia',
-        '.de': '#Alemania',
-        '.it': '#Italia',
-        '.uk': '#ReinoUnido',
-        '.pt': '#Portugal',
-        '.us': '#EEUU',
-        '.ca': '#Canadá',
-        '.cn': '#China',
-        '.jp': '#Japón',
-        '.in': '#India',
-    }
-    
-    fuente_lower = fuente.lower()
-    for dominio, hashtag in dominio_pais.items():
-        if dominio in fuente_lower:
-            return hashtag
-    
-    return None
-
-def es_categoria_permitida(titulo, descripcion):
-    """Verifica que la noticia NO sea de deportes o tendencias virales"""
-    texto = f"{titulo} {descripcion}".lower()
-    
-    palabras_deportes = ['fútbol', 'futbol', 'liga', 'campeonato', 'mundial', 'copa', 'partido', 
-                         'resultado', 'jugador', 'equipo', 'entrenador', 'fichaje', 'victoria', 
-                         'derrota', 'competición', 'olimpiadas', 'deportes', 'gol', 'marcador',
-                         'torneo', 'final', 'semifinal', 'cuartos', 'clasificación', 'descenso',
-                         'ascenso', 'premier', 'champions', 'laliga', 'serie a', 'bundesliga',
-                         'nba', 'tenis', 'f1', 'ciclismo', 'atletismo', 'natación', 'baloncesto',
-                         'voleibol', 'hockey', 'rugby', 'cricket', 'béisbol', 'softbol',
-                         'tottenham', 'barcelona', 'real madrid', 'atlético', 'sevilla', 'valencia',
-                         'betis', 'celta', 'espanyol', 'getafe', 'granada', 'osasuna', 'rayo',
-                         'alavés', 'las palmas', 'leganés', 'mallorca', 'valladolid']
-    
-    palabras_tendencias = ['viral', 'tendencia', 'video viral', 'fenómeno viral', 'reto viral',
-                          'curiosidad', 'sorprendente', 'impactante', 'insólito', 'increíble',
-                          'se vuelve viral', 'causa polémica', 'genera debate', 'se vuelve tendencia',
-                          'tiktok', 'challenge', 'meme', 'influencer', 'youtuber', 'streamer',
-                          'famoso', 'celebridad', 'actor', 'cantante', 'bailarín', 'show',
-                          'espectáculo', 'concierto', 'festival', 'premios', 'gala', 'alfombra roja']
-    
-    for palabra in palabras_deportes:
-        if palabra in texto:
-            print(f"   ⛔ EXCLUIDA (Deportes): contiene '{palabra}'")
-            return False
-    
-    for palabra in palabras_tendencias:
-        if palabra in texto:
-            print(f"   ⛔ EXCLUIDA (Tendencias): contiene '{palabra}'")
-            return False
-    
-    return True
-
-def asegurar_oracion_completa(texto):
-    """Asegura que el texto termine en una oración completa, sin cortes"""
-    texto = texto.strip()
-    
-    # Si está vacío, retornar vacío
-    if not texto:
-        return texto
-    
-    # Eliminar espacios múltiples
-    texto = re.sub(r'\s+', ' ', texto)
-    
-    # Lista de palabras que indican que la oración está incompleta al final
-    palabras_incompletas = [
-        ' que', ' de', ' la', ' el', ' los', ' las', ' un', ' una', 
-        ' al', ' del', ' por', ' para', ' con', ' sin', ' sobre',
-        ' entre', ' hasta', ' desde', ' ante', ' bajo', ' según',
-        ' tras', ' durante', ' mediante', ' excepto', ' salvo',
-        ' y', ' o', ' pero', ' aunque', ' porque', ' cuando',
-        ' mientras', ' aun', ' incluso', ' también', ' así',
-        ' como', ' cual', ' cuyo', ' cuya', ' donde', ' quien',
-        ' este', ' esta', ' estos', ' estas', ' ese', ' esa', ' esos', ' esas',
-        ' aquel', ' aquella', ' aquellos', ' aquellas',
-        ' mi', ' tu', ' su', ' nuestro', ' vuestro', ' sus',
-        ' con', ' sin', ' para', ' por', ' bajo', ' sobre', ' tras'
-    ]
-    
-    # Verificar si termina con palabra incompleta
-    texto_lower = texto.lower()
-    for palabra in palabras_incompletas:
-        if texto_lower.endswith(palabra):
-            # Buscar la última oración completa antes de esta palabra
-            # Buscar el último punto, signo de exclamación o interrogación
-            for i in range(len(texto) - len(palabra), -1, -1):
-                if texto[i] in '.!?':
-                    texto = texto[:i+1].strip()
-                    break
-            else:
-                # Si no encontramos punto, eliminar la palabra incompleta
-                texto = texto[:-len(palabra)].strip()
-            break
-    
-    # Si no termina con puntuación final, agregar punto
-    if texto and not texto.endswith(('.', '!', '?', '...', '"', "'", ')', ']')):
-        texto += "."
-    
-    return texto
-
-def eliminar_links_texto(texto):
-    """Elimina todos los links del texto, dejando solo el texto plano"""
-    # Eliminar URLs en formato markdown [texto](url)
-    texto = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto)
-    
-    # Eliminar URLs sueltas (http://, https://, www.)
-    texto = re.sub(r'https?://\S+', '', texto)
-    texto = re.sub(r'www\.\S+', '', texto)
-    
-    # Eliminar posibles restos de URLs
-    texto = re.sub(r'\S+\.(com|es|org|net|info|gov|edu)\S*', '', texto, flags=re.IGNORECASE)
-    
-    # Limpiar espacios múltiples que puedan quedar
-    texto = re.sub(r'\s+', ' ', texto).strip()
-    
-    return texto
-
-def generar_redaccion_completa(titulo, descripcion, fuente, url_fuente, categoria):
-    """Genera redacción periodística COMPLETA sin cortes y sin links en el texto"""
+def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
+    """
+    Genera redacción periodística COMPLETA sin cortes.
+    Estructura: Titular + Lead (2-3 oraciones) + Cuerpo (3 párrafos) + Cierre
+    """
     
     print(f"\n   📝 Procesando: {titulo[:50]}...")
     print(f"   🏷️ Categoría: {categoria}")
     
-    # Limpiar descripción de HTML y links
+    # Limpiar descripción base
     desc_limpia = re.sub(r'<[^>]+>', '', str(descripcion)).strip()
-    desc_limpia = eliminar_links_texto(desc_limpia)
-    
     if len(desc_limpia) < 20:
         desc_limpia = titulo
     
+    # Si tenemos IA, usarla
     if OPENROUTER_API_KEY:
-        resultado = generar_con_ia(titulo, desc_limpia, fuente, url_fuente, categoria)
+        resultado = generar_con_ia(titulo, desc_limpia, fuente, categoria)
         if resultado and len(resultado['texto']) > 800:
-            # Asegurar que el titular esté completo y sin links
-            resultado['titular'] = asegurar_oracion_completa(resultado['titular'])
-            resultado['texto'] = eliminar_links_texto(resultado['texto'])
-            resultado['texto'] = asegurar_oracion_completa(resultado['texto'])
             return resultado
     
-    return plantilla_mejorada(titulo, desc_limpia, fuente, url_fuente, categoria)
+    # Plantilla mejorada sin cortes
+    return plantilla_mejorada(titulo, desc_limpia, fuente, categoria)
 
-def generar_con_ia(titulo, descripcion, fuente, url_fuente, categoria):
+def generar_con_ia(titulo, descripcion, fuente, categoria):
     """Genera usando OpenRouter"""
     try:
         prompt = f"""Eres un redactor senior de agencia EFE. Escribe una NOTICIA COMPLETA en español.
@@ -490,44 +212,37 @@ DATOS:
 Título original: {titulo}
 Descripción: {descripcion}
 Fuente: {fuente}
-URL: {url_fuente}
 Categoría: {categoria}
 
 INSTRUCCIONES ESTRICTAS:
-1. TITULAR: Máximo 100 caracteres, DEBE ser una oración COMPLETA con sentido. NO puede terminar en "que", "de", "la", "el", etc. Debe terminar con sustantivo o verbo completo.
-   Ejemplo bueno: "Senado aprueba proyecto de ley sobre derechos humanos"
-   Ejemplo malo: "Senado aprueba proyecto de ley que"
-
-2. LEAD: 2-3 oraciones completas (máximo 220 caracteres), incluye: qué pasó, quién, cuándo, dónde. Oraciones completas, no cortadas.
-
+1. TITULAR: Máximo 90 caracteres, informativo, atractivo, estilo EFE
+2. LEAD: 2-3 oraciones completas (máximo 200 caracteres), incluye: qué pasó, quién, cuándo, dónde
 3. CUERPO: Exactamente 3 párrafos completos:
-   - Párrafo 1: Contexto y antecedentes
-   - Párrafo 2: Desarrollo actual (datos, cifras, declaraciones)
-   - Párrafo 3: Análisis e implicaciones
+   - Párrafo 1: Contexto y antecedentes (quiénes están involucrados)
+   - Párrafo 2: Desarrollo actual (datos, cifras, declaraciones específicas)
+   - Párrafo 3: Análisis e implicaciones (qué significa, consecuencias futuras)
+4. CIERRE: 1 línea con próximos pasos + "(Agencias) / Fuente: {fuente}"
 
-4. CIERRE: SOLO la fuente con link: "Fuente: {fuente} - {url_fuente}"
-
-REGLAS CRÍTICAS:
-- TODAS las oraciones deben estar COMPLETAS
-- El titular NO puede terminar en preposiciones o artículos
-- ESPAÑOL NATIVO
-- Longitud total: 1000-1500 caracteres
-- Termina SOLO con la fuente y el link
-- NO incluyas links dentro del texto, solo al final en el cierre
+REGLAS:
+- ESPAÑOL NATIVO, no traducciones
+- Oraciones COMPLETAS, no cortar palabras
+- Longitud total: 1200-1800 caracteres
+- Estilo periodístico NEUTRO
+- Números y datos específicos si están en la descripción
 
 FORMATO OBLIGATORIO:
-TITULAR: [titular completo que termine bien]
+TITULAR: [titular completo]
 
-LEAD: [lead completo]
+LEAD: [lead completo de 2-3 oraciones]
 
 CUERPO:
-[Párrafo 1]
+[Párrafo 1 completo - contexto]
 
-[Párrafo 2]
+[Párrafo 2 completo - desarrollo]
 
-[Párrafo 3]
+[Párrafo 3 completo - análisis]
 
-CIERRE: Fuente: {fuente} - {url_fuente}
+CIERRE: [cierre con fuente]
 
 FIN"""
 
@@ -561,43 +276,20 @@ FIN"""
                     if 'choices' in data and len(data['choices']) > 0:
                         content = data['choices'][0]['message']['content']
                         
+                        # Extraer con manejo de errores mejorado
                         titular = extraer_campo(content, 'TITULAR:', 'LEAD:') or titulo[:90]
                         lead = extraer_campo(content, 'LEAD:', 'CUERPO:')
                         cuerpo = extraer_campo(content, 'CUERPO:', 'CIERRE:')
                         cierre = extraer_campo(content, 'CIERRE:', 'FIN')
                         
-                        # Limpiar links del contenido
-                        lead = eliminar_links_texto(lead)
-                        cuerpo = eliminar_links_texto(cuerpo)
+                        if not cierre:
+                            cierre = f"Se esperan actualizaciones. (Agencias) / Fuente: {fuente}."
                         
-                        # Asegurar oraciones completas
-                        titular = asegurar_oracion_completa(titular)
-                        lead = asegurar_oracion_completa(lead)
-                        
-                        # Procesar cada párrafo del cuerpo para asegurar que esté completo
-                        parrafos = [p.strip() for p in cuerpo.split('\n\n') if p.strip()]
-                        parrafos_completos = []
-                        for p in parrafos:
-                            p = asegurar_oracion_completa(p)
-                            if len(p) > 20:  # Solo incluir párrafos sustanciales
-                                parrafos_completos.append(p)
-                        
-                        cuerpo = '\n\n'.join(parrafos_completos[:3])  # Máximo 3 párrafos
-                        
-                        if not cierre or 'detalles' in cierre.lower() or 'actualizaciones' in cierre.lower():
-                            cierre = f"Fuente: {fuente} - {url_fuente}"
-                        
-                        cierre = limpiar_cierre(cierre, fuente, url_fuente)
-                        
+                        # Construir texto completo
                         texto_completo = f"{lead}\n\n{cuerpo}\n\n{cierre}"
                         
-                        # Limpiar cualquier link residual
-                        texto_completo = eliminar_links_texto(texto_completo)
-                        
-                        # Asegurar que termine completo
-                        texto_completo = asegurar_oracion_completa(texto_completo)
-                        
-                        if len(texto_completo) > 600:
+                        # Verificar que no esté cortado
+                        if len(texto_completo) > 600 and not texto_completo.endswith(('en ', 'de ', 'la ', 'el ', 'un ', 'una ')):
                             print(f"   ✅ IA generó: {len(texto_completo)} caracteres")
                             return {
                                 'titular': titular.strip()[:100],
@@ -625,46 +317,11 @@ def extraer_campo(texto, inicio, fin):
         pass
     return ""
 
-def limpiar_cierre(cierre, fuente, url_fuente):
-    """Elimina frases genéricas del cierre"""
-    frases_eliminar = [
-        r'Los detalles adicionales serán proporcionados oportunamente\.?',
-        r'Los detalles serán proporcionados oportunamente\.?',
-        r'Se esperan actualizaciones oficiales\.?',
-        r'Se esperan actualizaciones\.?',
-        r'Se esperan declaraciones oficiales adicionales\.?',
-        r'Se esperan nuevos datos confirmados\.?',
-        r'La información será actualizada progresivamente\.?',
-        r'La información será proporcionada oportunamente\.?',
-        r'\(Agencias\)',
-        r'\(Agencia\)',
-        r'Agencias\.',
-        r'Agencia\.',
-        r'—\s*$',
-        r'-\s*$'
-    ]
-    
-    cierre_limpio = cierre
-    
-    for frase in frases_eliminar:
-        cierre_limpio = re.sub(frase, '', cierre_limpio, flags=re.IGNORECASE)
-    
-    cierre_limpio = re.sub(r'\s+', ' ', cierre_limpio).strip()
-    
-    # Asegurar que el cierre tenga el formato correcto con el link
-    if 'http' not in cierre_limpio or len(cierre_limpio) < 10:
-        cierre_limpio = f"Fuente: {fuente} - {url_fuente}"
-    
-    return cierre_limpio
-
-def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
-    """Plantilla periodística robusta con párrafos completos"""
+def plantilla_mejorada(titulo, descripcion, fuente, categoria):
+    """Plantilla periodística robusta sin cortes"""
     print(f"   📝 Usando plantilla mejorada...")
     
-    # Limpiar descripción de links
-    descripcion = eliminar_links_texto(descripcion)
-    
-    # Crear lead completo a partir de la descripción
+    # Crear lead completo (2-3 oraciones)
     oraciones_desc = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 20]
     
     if len(oraciones_desc) >= 2:
@@ -672,21 +329,13 @@ def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
     elif len(oraciones_desc) == 1:
         lead = f"{oraciones_desc[0]}. Las autoridades competentes confirmaron la información en las últimas horas."
     else:
-        lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes confirmaron la información en las últimas horas."
+        lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes confirmaron la información en las últimas horas y se esperan actualizaciones."
     
-    # Asegurar que el lead esté completo
-    lead = asegurar_oracion_completa(lead)
+    # Limitar lead a 200 caracteres pero sin cortar palabras
+    if len(lead) > 200:
+        lead = lead[:197].rsplit(' ', 1)[0] + "."
     
-    # Limitar longitud pero mantener oración completa
-    if len(lead) > 220:
-        lead = lead[:217]
-        # Buscar el último punto completo
-        ultimo_punto = lead.rfind('.')
-        if ultimo_punto > 100:
-            lead = lead[:ultimo_punto+1]
-        else:
-            lead += "."
-    
+    # Párrafos completos según categoría
     templates_categoria = {
         'politica': {
             'p1': "El hecho político ha generado amplia repercusión en los círculos de poder y entre la ciudadanía. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas ante la opinión pública.",
@@ -703,33 +352,19 @@ def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
             'p2': "Observadores internacionales destacan la trascendencia de los hechos reportados en el contexto geopolítico actual. La comunidad global sigue con atención los desarrollos mientras se analizan las posibles consecuencias regionales.",
             'p3': "Las implicaciones de esta situación internacional podrían afectar las relaciones bilaterales y multilaterales. Se esperan declaraciones oficiales adicionales de los actores involucrados en las próximas horas."
         },
+        'deportes': {
+            'p1': "El acontecimiento deportivo ha generado gran expectativa entre aficionados y especialistas. Los protagonistas del hecho deportivo han sido centro de atención en medios especializados y redes sociales.",
+            'p2': "Analistas deportivos señalan la importancia de este resultado para las competiciones en curso. Las estadísticas reflejan un momento clave en la temporada que podría definir posiciones en las tablas de clasificación.",
+            'p3': "Las repercusiones de este evento deportivo se extienden a las estrategias de los equipos para próximos encuentros. Los entrenadores y jugadores preparan ajustes mientras la afición espera nuevos desafíos."
+        },
         'tecnologia': {
             'p1': "El avance tecnológico reportado ha captado la atención de la industria digital y usuarios especializados. Las empresas del sector analizan las implicaciones de esta innovación para sus modelos de negocio.",
             'p2': "Expertos en tecnología señalan que este desarrollo representa un paso significativo en la evolución digital. La adopción de estas nuevas herramientas podría transformar prácticas establecidas en diversos sectores productivos.",
             'p3': "Las proyecciones indican que esta tecnología se integrará progresivamente en el mercado. Los reguladores evalúan marcos normativos para garantizar el uso responsable de estas capacidades."
-        },
-        'seguridad': {
-            'p1': "El hecho delictual ha generado preocupación entre las autoridades y la población. Los organismos de seguridad activaron protocolos de investigación para esclarecer los hechos y dar con los responsables.",
-            'p2': "Fuentes policiales confirmaron que el caso está siendo tratado con la seriedad que corresponde. La investigación avanza con diversas líneas de trabajo para recolectar evidencia y testimonios relevantes.",
-            'p3': "Las autoridades judiciales evalúan las implicaciones legales del caso. Se espera que en los próximos días haya novedades sobre la resolución de la investigación y posibles detenciones."
-        },
-        'salud': {
-            'p1': "La información sanitaria ha sido confirmada por autoridades del sector salud y organismos competentes. Los profesionales médicos evalúan la situación para determinar las medidas más apropiadas.",
-            'p2': "Especialistas en salud pública analizan los datos disponibles y sus posibles repercusiones en la población. Los centros de salud se mantienen alerta ante cualquier evolución de la situación reportada.",
-            'p3': "Las autoridades sanitarias recomiendan mantener la calma y seguir los protocolos establecidos. Se continúa monitoreando la situación para tomar decisiones basadas en evidencia científica."
-        },
-        'medio_ambiente': {
-            'p1': "El fenómeno ambiental ha activado las alarmas de organismos especializados y autoridades locales. Los expertos evalúan el impacto del hecho en los ecosistemas y la población cercana.",
-            'p2': "Estudios preliminares indican la necesidad de medidas de mitigación y prevención. Las comunidades afectadas reciben asistencia mientras se analizan las causas y consecuencias del evento.",
-            'p3': "Los científicos advierten sobre la importancia de políticas sostenibles para prevenir situaciones similares. Se esperan informes técnicos detallados en las próximas semanas."
-        },
-        'ciencia': {
-            'p1': "El hallazgo científico ha sido validado por la comunidad académica internacional. Los investigadores responsables publicaron sus conclusiones en revistas especializadas de alto impacto.",
-            'p2': "Este descubrimiento abre nuevas líneas de investigación que podrían transformar el entendimiento actual del tema. Laboratorios de todo el mundo muestran interés en replicar los estudios.",
-            'p3': "Las aplicaciones prácticas de este avance podrían beneficiar diversos sectores en el mediano plazo. Se prevé que el reconocimiento internacional incentive nuevas inversiones en investigación."
         }
     }
     
+    # Usar template de categoría o genérico
     if categoria in templates_categoria:
         temps = templates_categoria[categoria]
     else:
@@ -739,43 +374,39 @@ def plantilla_mejorada(titulo, descripcion, fuente, url_fuente, categoria):
             'p3': "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis."
         }
     
-    # Asegurar que cada párrafo esté completo
-    p1 = asegurar_oracion_completa(temps['p1'])
-    p2 = asegurar_oracion_completa(temps['p2'])
-    p3 = asegurar_oracion_completa(temps['p3'])
+    # Construir texto completo
+    cierre = f"Se esperan actualizaciones oficiales. (Agencias) / Fuente: {fuente}."
     
-    cierre = f"Fuente: {fuente} - {url_fuente}"
+    texto = f"{lead}\n\n{temps['p1']}\n\n{temps['p2']}\n\n{temps['p3']}\n\n{cierre}"
     
-    texto = f"{lead}\n\n{p1}\n\n{p2}\n\n{p3}\n\n{cierre}"
-    
-    # Limpiar cualquier link residual
-    texto = eliminar_links_texto(texto)
+    # Asegurar longitud mínima sin cortar
+    while len(texto) < 1000:
+        texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente. {cierre}")
     
     print(f"   ✅ Plantilla: {len(texto)} caracteres")
     return {
-        'titular': titulo[:100],
+        'titular': titulo[:95],
         'texto': texto[:1950]
     }
 
 def buscar_noticias_categorizadas():
-    """Busca noticias priorizando las 8 categorías permitidas"""
+    """Busca noticias priorizando las 10 categorías"""
     print("\n🔍 Buscando noticias por categorías...")
     noticias = []
     
+    # 1. NewsAPI en español con palabras clave de categorías
     if NEWS_API_KEY:
         try:
+            # Buscar con términos de alta relevancia
             terminos_busqueda = [
                 'presidente OR gobierno OR elecciones',
                 'economía OR inflación OR crisis',
                 'guerra OR conflicto OR ataque',
                 'tecnología OR inteligencia artificial',
-                'salud OR pandemia OR vacuna',
-                'cambio climático OR medio ambiente',
-                'ciencia OR espacio OR descubrimiento',
-                'seguridad OR crimen OR justicia'
+                'deportes OR fútbol OR campeonato'
             ]
             
-            for termino in random.sample(terminos_busqueda, min(3, len(terminos_busqueda))):
+            for termino in random.sample(terminos_busqueda, min(2, len(terminos_busqueda))):
                 try:
                     resp = requests.get(
                         "https://newsapi.org/v2/everything",
@@ -791,9 +422,6 @@ def buscar_noticias_categorizadas():
                     data = resp.json()
                     if data.get('status') == 'ok':
                         for art in data.get('articles', []):
-                            if not es_categoria_permitida(art.get('title', ''), art.get('description', '')):
-                                continue
-                            
                             cat = detectar_categoria(art.get('title', ''), art.get('description', ''))
                             art['categoria_detectada'] = cat
                             noticias.append(art)
@@ -804,6 +432,7 @@ def buscar_noticias_categorizadas():
         except Exception as e:
             print(f"   ⚠️ NewsAPI: {e}")
     
+    # 2. GNews español
     if GNEWS_API_KEY and len(noticias) < 5:
         try:
             resp = requests.get(
@@ -814,9 +443,6 @@ def buscar_noticias_categorizadas():
             data = resp.json()
             if 'articles' in data:
                 for a in data['articles']:
-                    if not es_categoria_permitida(a.get('title', ''), a.get('description', '')):
-                        continue
-                    
                     cat = detectar_categoria(a.get('title', ''), a.get('description', ''))
                     noticias.append({
                         'title': a.get('title'),
@@ -830,20 +456,20 @@ def buscar_noticias_categorizadas():
         except Exception as e:
             print(f"   ⚠️ GNews: {e}")
     
+    # 3. RSS por categorías (rotativas)
     todas_feeds = []
     for cat, datos in CATEGORIAS.items():
         for feed in datos['feeds']:
             todas_feeds.append((cat, feed))
     
+    # Seleccionar 4 feeds aleatorios de diferentes categorías
     feeds_seleccionados = random.sample(todas_feeds, min(4, len(todas_feeds)))
     
     for categoria_feed, feed_url in feeds_seleccionados:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:3]:
-                if not es_categoria_permitida(entry.get('title', ''), entry.get('summary', '')):
-                    continue
-                
+                # Buscar imagen
                 img = ''
                 if hasattr(entry, 'media_content') and entry.media_content:
                     img = entry.media_content[0].get('url', '')
@@ -852,12 +478,9 @@ def buscar_noticias_categorizadas():
                     if m:
                         img = m.group(1)
                 
-                # Limpiar descripción de links
-                desc_limpia = eliminar_links_texto(entry.get('summary', entry.get('description', '')))
-                
                 noticias.append({
                     'title': entry.get('title'),
-                    'description': desc_limpia[:500],
+                    'description': entry.get('summary', entry.get('description', ''))[:500],
                     'url': entry.get('link'),
                     'urlToImage': img,
                     'source': {'name': feed.feed.get('title', categoria_feed)},
@@ -869,6 +492,7 @@ def buscar_noticias_categorizadas():
     
     print(f"\n📊 Total: {len(noticias)} noticias")
     
+    # Filtrar y priorizar
     nuevas = []
     for art in noticias:
         if not art.get('title') or len(art['title']) < 10:
@@ -878,12 +502,14 @@ def buscar_noticias_categorizadas():
         if ya_publicada(art['url'], art['title']):
             continue
         
+        # Priorizar ciertas categorías
         cat = art.get('categoria_detectada', 'general')
-        art['prioridad'] = 2 if cat in ['politica', 'economia', 'mundo'] else 1
+        art['prioridad'] = 2 if cat in ['politica', 'economia', 'mundo', 'deportes'] else 1
         
         nuevas.append(art)
         print(f"   ✅ [{cat}] {art['title'][:45]}...")
     
+    # Ordenar por prioridad
     nuevas.sort(key=lambda x: x.get('prioridad', 0), reverse=True)
     
     print(f"📊 Nuevas válidas: {len(nuevas)}")
@@ -907,19 +533,14 @@ def descargar_imagen(url):
         print(f"   ⚠️ Error imagen: {e}")
     return None
 
-def publicar_completo(titulo, texto, img_path, categoria, url_fuente, fuente):
-    """Publica en Facebook con hashtag de localización, sin links en el texto"""
+def publicar_completo(titulo, texto, img_path, categoria):
+    """Publica en Facebook asegurando que no se corte el texto"""
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Detectar país para hashtag local
-    hashtag_local = detectar_pais(titulo, texto, fuente)
-    if hashtag_local:
-        print(f"   📍 Hashtag local detectado: {hashtag_local}")
-    
-    # Hashtags según categoría
+    # Hashtags según categoría - CORREGIDO: comillas completas
     hashtags_cat = {
         'politica': '#Política #Gobierno #Actualidad',
         'economia': '#Economía #Finanzas #Negocios',
@@ -928,50 +549,41 @@ def publicar_completo(titulo, texto, img_path, categoria, url_fuente, fuente):
         'tecnologia': '#Tecnología #Innovación #IA',
         'salud': '#Salud #Medicina #Bienestar',
         'medio_ambiente': '#MedioAmbiente #Clima #Sostenibilidad',
-        'ciencia': '#Ciencia #Investigación #Descubrimiento'
+        'ciencia': '#Ciencia #Investigación #Descubrimiento',
+        'deportes': '#Deportes #Fútbol #Competición',
+        'tendencias': '#Viral #Tendencias #RedesSociales'
     }
     
     hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad #Hoy')
     
-    # Agregar hashtag local si se detectó
-    if hashtag_local and hashtag_local not in hashtags:
-        hashtags = f"{hashtag_local} {hashtags}"
+    # Asegurar que el texto no esté cortado al final
+    texto_limpio = texto.strip()
+    if texto_limpio.endswith(('en', 'de', 'la', 'el', 'un', 'una', 'a', 'con', 'por')):
+        texto_limpio += "."
     
-    # Limpiar el texto de cualquier link residual
-    texto_limpio = eliminar_links_texto(texto)
-    
-    # Asegurar que el texto termine en oración completa
-    texto_limpio = asegurar_oracion_completa(texto_limpio)
-    
-    # Verificar que el link de fuente esté incluido solo al final
-    # Primero eliminamos cualquier referencia a fuente que pueda tener
-    texto_limpio = re.sub(r'Fuente:.*?(?=\n|$)', '', texto_limpio, flags=re.IGNORECASE).strip()
-    
-    # Construir mensaje final
     mensaje = f"""📰 {titulo}
 
 {texto_limpio}
-
-Fuente: {fuente} - {url_fuente}
 
 {hashtags}
 
 — Verdad Hoy: Noticias al minuto"""
     
+    # Verificación final de longitud
     print(f"\n   📝 MENSAJE ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
-    for linea in mensaje.split('\n')[:10]:
+    for linea in mensaje.split('\n')[:6]:
         preview = linea[:65] + "..." if len(linea) > 65 else linea
         print(f"   {preview}")
     print(f"   {'='*50}")
     
     try:
-        url_fb = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
+        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
         print(f"   📤 Publicando...")
         
         with open(img_path, 'rb') as f:
             resp = requests.post(
-                url_fb,
+                url,
                 files={'file': f},
                 data={'message': mensaje, 'access_token': FB_ACCESS_TOKEN},
                 timeout=60
@@ -1014,18 +626,15 @@ def main():
             continue
         
         categoria = noticia.get('categoria_detectada', 'general')
-        url_fuente = noticia.get('url', '')
-        fuente = noticia.get('source', {}).get('name', 'Agencias')
         
         resultado = generar_redaccion_completa(
             noticia['title'],
             noticia.get('description', ''),
-            fuente,
-            url_fuente,
+            noticia.get('source', {}).get('name', 'Agencias'),
             categoria
         )
         
-        if publicar_completo(resultado['titular'], resultado['texto'], img_path, categoria, url_fuente, fuente):
+        if publicar_completo(resultado['titular'], resultado['texto'], img_path, categoria):
             guardar_historial(noticia['url'], noticia['title'], categoria)
             if os.path.exists(img_path):
                 os.remove(img_path)

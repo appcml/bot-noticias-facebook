@@ -12,14 +12,14 @@ from io import BytesIO
 # CONFIGURACIÓN
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 GNEWS_API_KEY = os.getenv('GNEWS_API_KEY')
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')  # IA gratuita
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
 print("="*60)
-print("🚀 BOT DE NOTICIAS - Verdad Hoy")
+print("🚀 BOT DE NOTICIAS - Verdad Hoy (ESPAÑOL)")
 print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
 print("="*60)
 
@@ -33,10 +33,10 @@ if not FB_ACCESS_TOKEN:
     print("❌ FB_ACCESS_TOKEN no configurado")
 else:
     print(f"✅ FB_ACCESS_TOKEN configurado")
-if OPENAI_API_KEY:
-    print("✅ OPENAI_API_KEY configurado")
+if OPENROUTER_API_KEY:
+    print("✅ OPENROUTER_API_KEY configurado (IA Gratuita)")
 else:
-    print("⚠️ OPENAI_API_KEY no configurado")
+    print("⚠️ OPENROUTER_API_KEY no configurado - usará plantilla")
 
 # CARGAR HISTORIAL
 historial = {'urls': [], 'titulos': [], 'ultima_publicacion': None}
@@ -83,215 +83,35 @@ def ya_publicada(url, titulo):
                 return True
     return False
 
-def traducir_google(texto):
-    """Traduce usando MyMemory API (gratuito)"""
-    if not texto:
-        return texto
-    
-    try:
-        texto_str = str(texto).strip()
-        if len(texto_str) < 3:
-            return texto_str
-        
-        print(f"   🌐 Traduciendo...")
-        
-        url = "https://api.mymemory.translated.net/get"
-        params = {
-            'q': texto_str[:500],
-            'langpair': 'en|es'
-        }
-        
-        response = requests.get(url, params=params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if 'responseData' in data and 'translatedText' in data['responseData']:
-                traduccion = data['responseData']['translatedText']
-                if traduccion.lower() != texto_str.lower():
-                    return traduccion
-        
-        return traducir_libretranslate(texto_str)
-        
-    except Exception as e:
-        return traducir_libretranslate(texto)
-
-def traducir_libretranslate(texto):
-    """Traduce usando LibreTranslate (gratuito)"""
-    if not texto:
-        return texto
-    
-    try:
-        texto_str = str(texto).strip()
-        if len(texto_str) < 3:
-            return texto_str
-        
-        servidores = [
-            "https://libretranslate.de/translate",
-            "https://translate.argosopentech.com/translate",
-            "https://libretranslate.pussthecat.org/translate"
-        ]
-        
-        for servidor in servidores:
-            try:
-                response = requests.post(
-                    servidor,
-                    headers={"Content-Type": "application/json"},
-                    json={
-                        "q": texto_str[:1000],
-                        "source": "en",
-                        "target": "es",
-                        "format": "text"
-                    },
-                    timeout=15
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    if 'translatedText' in result:
-                        return result['translatedText']
-                        
-            except:
-                continue
-        
-        return texto_str
-        
-    except:
-        return texto
-
-def limpiar_ingles(texto):
-    """Elimina palabras en inglés comunes"""
-    if not texto:
-        return texto
-    
-    reemplazos = {
-        r'\bthe\b': '', r'\band\b': 'y', r'\bfor\b': 'para', r'\bare\b': 'son',
-        r'\bnot\b': 'no', r'\bbut\b': 'pero', r'\bwith\b': 'con', r'\bthat\b': 'que',
-        r'\bthis\b': 'este', r'\bwill\b': '', r'\bsaid\b': 'dijo', r'\btold\b': 'dijo',
-        r'\bon\b': 'en', r'\bat\b': 'en', r'\bby\b': 'por', r'\bfrom\b': 'desde',
-        r'\bto\b': 'a', r'\bin\b': 'en', r'\bof\b': 'de', r'\bas\b': 'como',
-        r'\bit\b': 'eso', r'\btheir\b': 'su', r'\bthem\b': 'ellos', r'\bthey\b': 'ellos',
-        r'\bwe\b': 'nosotros', r'\bour\b': 'nuestro', r'\bus\b': 'nos', r'\bI\b': 'yo',
-        r'\bmy\b': 'mi', r'\bme\b': 'me', r'\byou\b': 'usted', r'\byour\b': 'su',
-        r'\bhe\b': 'él', r'\bhim\b': 'él', r'\bhis\b': 'su', r'\bshe\b': 'ella',
-        r'\bher\b': 'ella', r'\bwas\b': 'fue', r'\bhas\b': 'tiene', r'\bhave\b': 'tienen',
-        r'\bhad\b': 'tuvo', r'\bbeen\b': 'sido', r'\bbeing\b': 'siendo', r'\bis\b': 'es',
-        r'\bwere\b': 'eran', r'\bdo\b': 'hacer', r'\bdoes\b': 'hace', r'\bdid\b': 'hizo',
-        r'\bdone\b': 'hecho', r'\bdoing\b': 'haciendo', r'\bcan\b': 'puede',
-        r'\bcould\b': 'podría', r'\bwould\b': 'haría', r'\bshould\b': 'debería',
-        r'\bmay\b': 'puede', r'\bmight\b': 'podría', r'\bmust\b': 'debe',
-        r'\babout\b': 'sobre', r'\bafter\b': 'después', r'\bbefore\b': 'antes',
-        r'\bduring\b': 'durante', r'\bbetween\b': 'entre', r'\bagainst\b': 'contra',
-        r'\bunder\b': 'bajo', r'\bover\b': 'sobre', r'\bthrough\b': 'mediante',
-        r'\binto\b': 'en', r'\bout\b': 'fuera', r'\bup\b': 'arriba', r'\bdown\b': 'abajo',
-        r'\bhere\b': 'aquí', r'\bthere\b': 'allí', r'\bwhere\b': 'donde',
-        r'\bwhen\b': 'cuando', r'\bwhy\b': 'por qué', r'\bhow\b': 'cómo',
-        r'\bwhat\b': 'qué', r'\bwhich\b': 'cuál', r'\bwho\b': 'quién',
-        r'\ball\b': 'todos', r'\beach\b': 'cada', r'\bevery\b': 'cada',
-        r'\bboth\b': 'ambos', r'\bfew\b': 'pocos', r'\bmore\b': 'más',
-        r'\bmost\b': 'la mayoría', r'\bother\b': 'otro', r'\bsome\b': 'algunos',
-        r'\bsuch\b': 'tal', r'\bno\b': 'no', r'\bnone\b': 'ninguno',
-        r'\bone\b': 'uno', r'\btwo\b': 'dos', r'\bfirst\b': 'primero',
-        r'\bsecond\b': 'segundo', r'\blast\b': 'último', r'\bgood\b': 'bueno',
-        r'\bnew\b': 'nuevo', r'\blong\b': 'largo', r'\bgreat\b': 'gran',
-        r'\blittle\b': 'pequeño', r'\bown\b': 'propio', r'\bold\b': 'viejo',
-        r'\bright\b': 'correcto', r'\bbig\b': 'grande', r'\bhigh\b': 'alto',
-        r'\bdifferent\b': 'diferente', r'\bsmall\b': 'pequeño', r'\blarge\b': 'grande',
-        r'\bnext\b': 'siguiente', r'\bearly\b': 'temprano', r'\byoung\b': 'joven',
-        r'\bimportant\b': 'importante', r'\bsame\b': 'mismo', r'\bable\b': 'capaz',
-        r'\bofficials\b': 'funcionarios', r'\bgovernment\b': 'gobierno',
-        r'\bstatement\b': 'declaración', r'\breport\b': 'informe', r'\breports\b': 'informes',
-        r'\bsources\b': 'fuentes', r'\bnews\b': 'noticias', r'\bmeeting\b': 'reunión',
-        r'\bpeople\b': 'personas', r'\bcountry\b': 'país', r'\bworld\b': 'mundo',
-        r'\binternational\b': 'internacional', r'\bnational\b': 'nacional',
-        r'\bpublic\b': 'público', r'\bpresident\b': 'presidente', r'\bminister\b': 'ministro',
-        r'\bsecretary\b': 'secretario', r'\bspokesperson\b': 'portavoz',
-        r'\bannouncement\b': 'anuncio', r'\bcontroversy\b': 'controversia',
-        r'\bcontinue\b': 'continuar', r'\baccording\b': 'según', r'\baccording to\b': 'según',
-        r'\bfaces\b': 'enfrenta', r'\binvestigation\b': 'investigación',
-        r'\ballegations\b': 'alegatos', r'\bethical\b': 'ético', r'\bethics\b': 'ética',
-        r'\bsupport\b': 'apoyo', r'\bagainst\b': 'contra', r'\battack\b': 'ataque',
-        r'\battacks\b': 'ataques', r'\bpoll\b': 'encuesta', r'\bpolls\b': 'encuestas',
-        r'\bsold\b': 'convencidos', r'\biran\b': 'Irán', r'\bwhite house\b': 'Casa Blanca',
-        r'\breasoning\b': 'razonamiento', r'\bresonating\b': 'resonando',
-        r'\bamericans\b': 'estadounidenses', r'\bamerican\b': 'estadounidense',
-        r'\bsurvey\b': 'encuesta', r'\bconducted\b': 'realizada', r'\badults\b': 'adultos',
-        r'\bapprove\b': 'aprueban', r'\bdisapprove\b': 'desaprueban',
-        r'\bstrongly\b': 'firmemente', r'\bsomewhat\b': 'algo', r'\bunsure\b': 'inseguros',
-    }
-    
-    texto_limpio = texto
-    for ingles, espanol in reemplazos.items():
-        texto_limpio = re.sub(ingles, espanol, texto_limpio, flags=re.IGNORECASE)
-    
-    texto_limpio = re.sub(r'\s+', ' ', texto_limpio).strip()
-    texto_limpio = re.sub(r'\s+([.,;:!?])', r'\1', texto_limpio)
-    
-    return texto_limpio
-
-def es_espanol(texto):
-    """Detecta si el texto está en español"""
-    if not texto:
-        return False
-    
-    texto_lower = texto.lower()
-    palabras_es = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'por', 'con', 
-                   'su', 'para', 'los', 'las', 'del', 'al', 'lo', 'más', 'este', 'esta',
-                   'pero', 'sus', 'una', 'como', 'son', 'entre', 'sobre', 'también', 'han',
-                   'sido', 'porque', 'durante', 'contra', 'según', 'hacia', 'desde', 'dos',
-                   'fue', 'será', 'cada', 'mismo', 'misma', 'otro', 'otra', 'gran', 'nuevo',
-                   'nueva', 'primer', 'primera', 'tras', 'puede', 'parte', 'años', 'año',
-                   'hace', 'hoy', 'país', 'mundo', 'gobierno', 'estado', 'nacional', 
-                   'internacional', 'relevancia', 'información', 'autoridades', 'importante',
-                   'acontecimiento', 'hecho', 'situación', 'desarrollo', 'declaraciones']
-    palabras_en = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'with', 'said', 'told',
-                   'officials', 'government', 'statement', 'report', 'reports', 'sources',
-                   'news', 'meeting', 'people', 'country', 'world', 'international', 
-                   'national', 'public', 'president', 'minister', 'secretary', 'spokesperson',
-                   'announcement', 'controversy', 'continue', 'according', 'faces', 
-                   'investigation', 'allegations', 'ethical', 'ethics', 'support', 'against',
-                   'attack', 'attacks', 'poll', 'polls', 'sold', 'reasoning', 'resonating',
-                   'americans', 'american', 'white', 'house', 'survey', 'conducted', 'adults']
-    
-    count_es = sum(1 for p in palabras_es if f' {p} ' in f' {texto_lower} ')
-    count_en = sum(1 for p in palabras_en if f' {p} ' in f' {texto_lower} ')
-    
-    return count_es > count_en
-
-def generar_redaccion_periodistica(titulo_en, desc_en, fuente):
+def generar_con_ia_gratuita(titulo, descripcion, fuente):
     """
-    Genera una redacción periodística profesional en español.
-    Estructura: Titular + Lead + Cuerpo (3 párrafos) + Cierre
-    Longitud: 1000-2000 caracteres
+    Genera redacción periodística usando OpenRouter (acceso gratuito a múltiples IAs)
+    Modelos gratuitos disponibles: mistral, llama, qwen, etc.
     """
     
     print(f"\n   📝 Procesando noticia...")
-    print(f"   📰 Original: {titulo_en[:60]}...")
+    print(f"   📰 Original: {titulo[:60]}...")
     
-    # PASO 1: Traducir contenido
-    titulo_traducido = traducir_google(titulo_en)
-    desc_traducida = traducir_google(desc_en)
+    if not OPENROUTER_API_KEY:
+        print("   ⚠️ Sin API key de IA, usando plantilla...")
+        return plantilla_periodistica_profesional(titulo, descripcion, fuente)
     
-    titulo_traducido = limpiar_ingles(titulo_traducido)
-    desc_traducida = limpiar_ingles(desc_traducida)
-    
-    # PASO 2: Generar redacción profesional con OpenAI
-    if OPENAI_API_KEY:
-        try:
-            print(f"   🤖 Generando redacción periodística...")
-            
-            prompt = f"""Eres un redactor de agencia de noticias (estilo EFE, Reuters, AP). 
+    try:
+        print(f"   🤖 Generando con IA gratuita (OpenRouter)...")
+        
+        prompt = f"""Eres un redactor de agencia de noticias (estilo EFE, Reuters, AP). 
 Escribe una NOTICIA COMPLETA EN ESPAÑOL con estructura periodística profesional.
 
 INFORMACIÓN BASE:
-Título original traducido: {titulo_traducido}
-Descripción traducida: {desc_traducida}
+Título: {titulo}
+Descripción: {descripcion}
 Fuente: {fuente}
 
 ESTRUCTURA REQUERIDA:
 
 1. **TITULAR** (máximo 80 caracteres):
    - Informativo, preciso, atractivo
-   - Estilo: "Estadounidenses dudan de ataques contra Irán, según encuesta"
+   - Estilo: "Gobierno anuncia nuevas medidas económicas ante la inflación"
 
 2. **LEAD** (primera línea, máximo 140 caracteres):
    - El dato más importante de la noticia
@@ -308,7 +128,7 @@ ESTRUCTURA REQUERIDA:
    - Termina con: "(Agencias) / Fuente: {fuente}"
 
 REGLAS ESTRICTAS:
-- TODO en ESPAÑOL, cero palabras en inglés
+- TODO en ESPAÑOL nativo, sin traducciones
 - Lenguaje periodístico NEUTRO e INFORMATIVO
 - Longitud total: 1000-2000 caracteres
 - Oraciones claras y directas
@@ -331,68 +151,85 @@ CUERPO:
 
 FIN"""
 
-            response = requests.post(
-                'https://api.openai.com/v1/chat/completions',
-                headers={
-                    'Authorization': f'Bearer {OPENAI_API_KEY}',
-                    'Content-Type': 'application/json'
-                },
-                json={
-                    'model': 'gpt-4o-mini',
-                    'messages': [{'role': 'user', 'content': prompt}],
-                    'temperature': 0.2,
-                    'max_tokens': 1200
-                },
-                timeout=45
-            )
-            
-            if response.status_code == 200:
-                resultado = response.json()['choices'][0]['message']['content']
+        # OpenRouter permite usar múltiples modelos gratuitos
+        # Modelos gratuitos recomendados: "mistralai/mistral-7b-instruct", 
+        # "meta-llama/llama-3-8b-instruct", "qwen/qwen-2-7b-instruct"
+        
+        modelos_gratuitos = [
+            "mistralai/mistral-7b-instruct:free",
+            "meta-llama/llama-3.1-8b-instruct:free",
+            "qwen/qwen-2-7b-instruct:free",
+            "google/gemma-2-9b-it:free"
+        ]
+        
+        for modelo in modelos_gratuitos:
+            try:
+                print(f"   🔄 Intentando con modelo: {modelo.split('/')[0]}...")
                 
-                # Extraer partes
-                titular = titulo_traducido
-                lead = ""
-                cuerpo = ""
+                response = requests.post(
+                    'https://openrouter.ai/api/v1/chat/completions',
+                    headers={
+                        'Authorization': f'Bearer {OPENROUTER_API_KEY}',
+                        'HTTP-Referer': 'https://verdadhoy.com',  # Tu dominio
+                        'X-Title': 'Verdad Hoy Bot',
+                        'Content-Type': 'application/json'
+                    },
+                    json={
+                        'model': modelo,
+                        'messages': [{'role': 'user', 'content': prompt}],
+                        'temperature': 0.3,
+                        'max_tokens': 1500
+                    },
+                    timeout=60
+                )
                 
-                if 'TITULAR:' in resultado:
-                    try:
-                        titular = resultado.split('TITULAR:')[1].split('LEAD:')[0].strip()
-                        titular = titular.strip('"\'').strip()
-                    except:
-                        pass
-                
-                if 'LEAD:' in resultado:
-                    try:
-                        lead = resultado.split('LEAD:')[1].split('CUERPO:')[0].strip()
-                    except:
-                        pass
-                
-                if 'CUERPO:' in resultado:
-                    try:
-                        cuerpo = resultado.split('CUERPO:')[1].split('FIN')[0].strip()
-                    except:
-                        pass
-                
-                # Limpiar
-                titular = limpiar_ingles(titular)
-                lead = limpiar_ingles(lead)
-                cuerpo = limpiar_ingles(cuerpo)
-                
-                # Construir texto final
-                texto_final = f"{lead}\n\n{cuerpo}"
-                
-                # Verificar longitud y español
-                if len(texto_final) >= 800 and es_espanol(texto_final):
-                    print(f"   ✅ Redacción OK: {len(texto_final)} caracteres")
-                    return {'titular': titular[:100], 'texto': texto_final[:1900]}
-                else:
-                    print(f"   ⚠️ Texto corto o con inglés, usando plantilla...")
-                    
-        except Exception as e:
-            print(f"   ⚠️ Error OpenAI: {e}")
-    
-    # PASO 3: Plantilla periodística profesional
-    return plantilla_periodistica_profesional(titulo_traducido, desc_traducida, fuente)
+                if response.status_code == 200:
+                    resultado = response.json()
+                    if 'choices' in resultado and len(resultado['choices']) > 0:
+                        contenido = resultado['choices'][0]['message']['content']
+                        
+                        # Extraer partes
+                        titular = titulo
+                        lead = ""
+                        cuerpo = ""
+                        
+                        if 'TITULAR:' in contenido:
+                            try:
+                                titular = contenido.split('TITULAR:')[1].split('LEAD:')[0].strip()
+                                titular = titular.strip('"\'').strip()
+                            except:
+                                pass
+                        
+                        if 'LEAD:' in contenido:
+                            try:
+                                lead = contenido.split('LEAD:')[1].split('CUERPO:')[0].strip()
+                            except:
+                                pass
+                        
+                        if 'CUERPO:' in contenido:
+                            try:
+                                cuerpo = contenido.split('CUERPO:')[1].split('FIN')[0].strip()
+                            except:
+                                pass
+                        
+                        # Construir texto final
+                        texto_final = f"{lead}\n\n{cuerpo}"
+                        
+                        # Verificar longitud
+                        if len(texto_final) >= 600:
+                            print(f"   ✅ Redacción IA OK: {len(texto_final)} caracteres")
+                            return {'titular': titular[:100], 'texto': texto_final[:1900]}
+                            
+            except Exception as e:
+                print(f"   ⚠️ Error con {modelo}: {e}")
+                continue
+        
+        print("   ⚠️ Todos los modelos fallaron, usando plantilla...")
+        return plantilla_periodistica_profesional(titulo, descripcion, fuente)
+        
+    except Exception as e:
+        print(f"   ⚠️ Error general IA: {e}")
+        return plantilla_periodistica_profesional(titulo, descripcion, fuente)
 
 def plantilla_periodistica_profesional(titulo, descripcion, fuente):
     """Plantilla periodística profesional 100% español, 1000-2000 caracteres"""
@@ -401,7 +238,7 @@ def plantilla_periodistica_profesional(titulo, descripcion, fuente):
     # Limpiar descripción
     desc_limpia = re.sub(r'<[^>]+>', '', str(descripcion))
     if len(desc_limpia) < 20:
-        desc_limpia = "Se ha producido un acontecimiento de relevancia internacional que ha generado amplia repercusión en los medios de comunicación globales."
+        desc_limpia = "Las autoridades competentes han confirmado un importante acontecimiento de relevancia nacional que se desarrolla en las últimas horas y ha generado amplia repercusión mediática."
     
     # Extraer palabras clave para el lead
     palabras_clave = desc_limpia[:200] if len(desc_limpia) > 100 else desc_limpia
@@ -409,22 +246,22 @@ def plantilla_periodistica_profesional(titulo, descripcion, fuente):
     # Construir redacción periodística estructurada
     
     # LEAD (dato importante, máx 140 caracteres)
-    lead = f"{palabras_clave[:140]}." if len(palabras_clave) > 80 else f"Las autoridades competentes han confirmado un importante acontecimiento de relevancia internacional que se desarrolla en las últimas horas."
+    lead = f"{palabras_clave[:140]}." if len(palabras_clave) > 80 else f"Las autoridades competentes han confirmado un importante acontecimiento de relevancia nacional que se desarrolla en las últimas horas."
     
     # Párrafo 2: Contexto (quiénes, antecedentes)
-    p2 = f"El hecho ha sido reportado por diversas fuentes periodísticas de alcance internacional, destacando su trascendencia en el contexto actual. "
-    p2 += f"Las autoridades correspondientes han emitido comunicados oficiales sobre el tema, mientras diversos actores del escenario global mantienen atenta vigilancia sobre los desarrollos. "
-    p2 += f"La información ha sido verificada por corresponsales en la región."
+    p2 = f"El hecho ha sido reportado por diversas fuentes periodísticas de alcance nacional, destacando su trascendencia en el contexto actual. "
+    p2 += f"Las autoridades correspondientes han emitido comunicados oficiales sobre el tema, mientras diversos actores del escenario político y social mantienen atenta vigilancia sobre los desarrollos. "
+    p2 += f"La información ha sido verificada por corresponsales en la zona."
     
     # Párrafo 3: Desarrollo (datos, cifras, declaraciones)
-    p3 = f"Analistas políticos y especialistas en relaciones internacionales señalan que este tipo de eventos requiere un seguimiento constante por parte de la comunidad global. "
+    p3 = f"Analistas políticos y especialistas en la materia señalan que este tipo de eventos requiere un seguimiento constante por parte de la ciudadanía. "
     p3 += f"La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación. "
-    p3 += f"Diversos medios de comunicación han destacado la importancia de los hechos reportados y sus posibles implicaciones a corto plazo."
+    p3 += f"Diversos medios de comunicación han destacado la importancia de los hechos reportados y sus posibles implicaciones a corto plazo en el ámbito nacional."
     
     # Párrafo 4: Análisis (implicaciones, consecuencias)
-    p4 = f"Las implicaciones de este acontecimiento podrían extenderse a diversos sectores de la sociedad y afectar las dinámicas internacionales en el mediano plazo. "
+    p4 = f"Las implicaciones de este acontecimiento podrían extenderse a diversos sectores de la sociedad y afectar las dinámicas políticas y económicas en el mediano plazo. "
     p4 += f"Expertos consultados destacan la necesidad de mantener una postura informada y objetiva ante los desarrollos que se presenten en las próximas horas. "
-    p4 += f"La situación continúa siendo objeto de análisis por parte de observadores internacionales."
+    p4 += f"La situación continúa siendo objeto de análisis por parte de observadores especializados."
     
     # Párrafo 5: Cierre (próximos pasos, fuente)
     p5 = f"Se esperan declaraciones oficiales adicionales y posibles actualizaciones conforme avancen las investigaciones correspondientes. "
@@ -434,9 +271,6 @@ def plantilla_periodistica_profesional(titulo, descripcion, fuente):
     # Unir todo
     texto = f"{lead}\n\n{p2}\n\n{p3}\n\n{p4}\n\n{p5}"
     
-    # Limpiar y verificar longitud
-    texto = limpiar_ingles(texto)
-    
     # Asegurar mínimo 1000 caracteres
     while len(texto) < 1000:
         texto += f" Los detalles adicionales serán proporcionados oportunamente según avancen las investigaciones oficiales."
@@ -445,40 +279,52 @@ def plantilla_periodistica_profesional(titulo, descripcion, fuente):
     texto = texto[:1950]
     
     # Crear titular profesional
-    titular = limpiar_ingles(str(titulo))[:90]
-    if len(titular) < 15 or not es_espanol(titular):
-        # Crear titular genérico profesional
-        titular = "Nuevo acontecimiento internacional genera atención global"
+    titular = str(titulo)[:90]
+    if len(titular) < 15:
+        titular = "Nuevo acontecimiento nacional genera atención mediática"
     
     print(f"   ✅ Plantilla periodística: {len(texto)} caracteres")
     return {'titular': titular, 'texto': texto}
 
-def buscar_noticias():
-    print("\n🔍 Buscando noticias...")
+def buscar_noticias_espanol():
+    """
+    Busca noticias en ESPAÑOL de actualidad
+    Fuentes: NewsAPI (es), GNews (es), RSS feeds hispanos
+    """
+    print("\n🔍 Buscando noticias en ESPAÑOL...")
     
     noticias = []
     
-    # NewsAPI
+    # 1. NewsAPI - Noticias en español
     if NEWS_API_KEY:
         try:
+            # Buscar noticias en español
             response = requests.get(
                 "https://newsapi.org/v2/top-headlines",
-                params={'language': 'en', 'pageSize': 20, 'apiKey': NEWS_API_KEY},
+                params={
+                    'language': 'es',  # ESPAÑOL
+                    'pageSize': 20, 
+                    'apiKey': NEWS_API_KEY
+                },
                 timeout=15
             )
             data = response.json()
             if data.get('status') == 'ok':
                 noticias.extend(data.get('articles', []))
-                print(f"   📡 NewsAPI: {len(data.get('articles', []))}")
+                print(f"   📡 NewsAPI (ES): {len(data.get('articles', []))} noticias")
         except Exception as e:
             print(f"   ⚠️ NewsAPI: {e}")
     
-    # GNews
+    # 2. GNews - Noticias en español
     if GNEWS_API_KEY and len(noticias) < 5:
         try:
             response = requests.get(
                 "https://gnews.io/api/v4/top-headlines",
-                params={'lang': 'en', 'max': 20, 'apikey': GNEWS_API_KEY},
+                params={
+                    'lang': 'es',  # ESPAÑOL
+                    'max': 20, 
+                    'apikey': GNEWS_API_KEY
+                },
                 timeout=15
             )
             data = response.json()
@@ -491,24 +337,43 @@ def buscar_noticias():
                         'urlToImage': a.get('image'),
                         'source': {'name': a.get('source', {}).get('name', 'GNews')}
                     })
-                print(f"   📡 GNews: {len(data['articles'])}")
+                print(f"   📡 GNews (ES): {len(data['articles'])} noticias")
         except Exception as e:
             print(f"   ⚠️ GNews: {e}")
     
-    # RSS
+    # 3. RSS Feeds - Medios hispanos IMPORTANTES
     if len(noticias) < 3:
-        rss_feeds = [
-            'http://feeds.bbci.co.uk/news/world/rss.xml',
-            'https://www.reuters.com/rssFeed/worldNews',
-            'https://rss.cnn.com/rss/edition_world.rss'
+        rss_feeds_espanol = [
+            # España
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
+            'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml',
+            'https://www.abc.es/rss/feeds/abc_ultima.xml',
+            # Latinoamérica
+            'https://www.clarin.com/rss/lo-ultimo/',
+            'https://www.lanacion.com.ar/arc/outboundfeeds/rss/?outputType=xml',
+            'https://www.eluniversal.com.mx/rss.xml',
+            'https://www.emol.com/rss/index.xml',  # Chile
+            'https://www.elespectador.com/rss.xml',  # Colombia
+            # Agencias
+            'https://www.efe.com/efe/espana/1/rss',
+            'https://www.europapress.es/rss/rss.aspx',
         ]
-        for feed_url in random.sample(rss_feeds, min(2, len(rss_feeds))):
+        
+        # Seleccionar 3 feeds aleatorios para variedad
+        feeds_seleccionados = random.sample(rss_feeds_espanol, min(3, len(rss_feeds_espanol)))
+        
+        for feed_url in feeds_seleccionados:
             try:
+                print(f"   📡 RSS: {feed_url.split('/')[2]}...")
                 feed = feedparser.parse(feed_url)
+                
                 for entry in feed.entries[:5]:
+                    # Buscar imagen en el feed
                     img = ''
                     if hasattr(entry, 'media_content') and entry.media_content:
                         img = entry.media_content[0].get('url', '')
+                    elif hasattr(entry, 'enclosures') and entry.enclosures:
+                        img = entry.enclosures[0].get('href', '')
                     elif 'summary' in entry:
                         m = re.search(r'src="(https?://[^"]+\.(?:jpg|jpeg|png))"', entry.summary, re.I)
                         if m:
@@ -516,27 +381,29 @@ def buscar_noticias():
                     
                     noticias.append({
                         'title': entry.get('title'),
-                        'description': entry.get('summary', entry.get('description', ''))[:400],
+                        'description': entry.get('summary', entry.get('description', ''))[:500],
                         'url': entry.get('link'),
                         'urlToImage': img,
-                        'source': {'name': feed.feed.get('title', 'RSS')}
+                        'source': {'name': feed.feed.get('title', 'Medios Hispanos')}
                     })
-                print(f"   📡 RSS: {feed_url.split('/')[2]}")
-            except:
-                pass
+                    
+            except Exception as e:
+                print(f"   ⚠️ Error RSS {feed_url}: {e}")
+                continue
     
     print(f"\n📊 Total encontradas: {len(noticias)}")
     
-    # Filtrar
+    # Filtrar noticias válidas y no publicadas
     nuevas = []
     for art in noticias:
         if not art.get('title') or len(art['title']) < 10:
             continue
-        if "[Removed]" in art['title']:
+        if "[Removed]" in art['title'] or "Suscríbete" in art['title']:
             continue
         if not art.get('url'):
             continue
         
+        # Verificar si ya fue publicada
         if ya_publicada(art['url'], art['title']):
             continue
         
@@ -544,9 +411,10 @@ def buscar_noticias():
         print(f"   ✅ Nueva: {art['title'][:50]}...")
     
     print(f"📊 Nuevas válidas: {len(nuevas)}")
-    return nuevas[:3]
+    return nuevas[:3]  # Máximo 3 noticias
 
 def descargar_imagen(url):
+    """Descarga y optimiza imagen para Facebook"""
     if not url or not str(url).startswith('http'):
         return None
     try:
@@ -559,32 +427,19 @@ def descargar_imagen(url):
             img.thumbnail((1200, 1200))
             path = f'/tmp/noticia_{hashlib.md5(str(url).encode()).hexdigest()[:8]}.jpg'
             img.save(path, 'JPEG', quality=85)
-            print(f"   ✅ Imagen OK")
+            print(f"   ✅ Imagen OK: {os.path.getsize(path)//1024}KB")
             return path
     except Exception as e:
         print(f"   ⚠️ Error imagen: {e}")
     return None
 
-def publicar(titulo, texto, img_path):
-    """Publica en Facebook"""
+def publicar_facebook(titulo, texto, img_path):
+    """Publica en Facebook con formato periodístico profesional"""
     
     print(f"\n   🔍 Verificación final...")
     
-    # Limpiar
-    titulo = limpiar_ingles(titulo)
-    texto = limpiar_ingles(texto)
-    
-    # Verificar español
-    if not es_espanol(titulo):
-        print(f"   ⚠️ Corrigiendo titular...")
-        titulo = "Nuevo acontecimiento internacional reportado"
-    
-    if not es_espanol(texto):
-        print(f"   ⚠️ Corrigiendo texto...")
-        texto = "Se reporta un importante acontecimiento de relevancia internacional. Las autoridades competentes han confirmado la información. Se esperan actualizaciones adicionales."
-    
-    # Hashtags
-    hashtags = "#Noticias #Actualidad #Internacional #Hoy #Mundo"
+    # Hashtags en español relevantes
+    hashtags = "#Noticias #Actualidad #España #Latinoamérica #Hoy #Mundo #Periodismo"
     
     mensaje = f"""📰 {titulo}
 
@@ -592,29 +447,16 @@ def publicar(titulo, texto, img_path):
 
 {hashtags}
 
-— Verdad Hoy: Noticias Internacionales"""
-    
-    # Limpieza final agresiva
-    mensaje = limpiar_ingles(mensaje)
+— Verdad Hoy: Noticias en Español"""
     
     print(f"\n   📝 MENSAJE ({len(mensaje)} chars):")
     print(f"   {'='*50}")
-    for linea in mensaje.split('\n')[:6]:
-        preview = linea[:60] + "..." if len(linea) > 60 else linea
+    for linea in mensaje.split('\n')[:8]:
+        preview = linea[:70] + "..." if len(linea) > 70 else linea
         print(f"   {preview}")
     print(f"   {'='*50}")
     
-    # Verificación final
-    palabras_en = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'with', 'said', 'told', 'officials']
-    encontradas = [p for p in palabras_en if f' {p} ' in f' {mensaje.lower()} ']
-    if encontradas:
-        print(f"   🧹 Limpiando: {encontradas}")
-        for palabra in encontradas:
-            mensaje = re.sub(rf'\b{palabra}\b', '', mensaje, flags=re.IGNORECASE)
-        mensaje = re.sub(r'\s+', ' ', mensaje).strip()
-        print(f"   ✅ Limpieza aplicada")
-    
-    # Publicar
+    # Publicar en Facebook
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
         print(f"   📤 Publicando en Facebook...")
@@ -629,29 +471,34 @@ def publicar(titulo, texto, img_path):
             result = response.json()
             
             if response.status_code == 200 and 'id' in result:
-                print(f"   ✅ PUBLICADO: {result['id']}")
+                print(f"   ✅ PUBLICADO EXITOSAMENTE")
+                print(f"   🆔 Post ID: {result['id']}")
                 return True
             else:
                 error = result.get('error', {}).get('message', str(result))
                 print(f"   ❌ Facebook error: {error}")
                 if '100' in str(error):
-                    print(f"   💡 Verifica FB_PAGE_ID y FB_ACCESS_TOKEN")
+                    print(f"   💡 Verifica FB_PAGE_ID y permisos del token")
+                elif '200' in str(error):
+                    print(f"   💡 Token expirado o sin permisos de publicación")
                 
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"   ❌ Error de conexión: {e}")
     
     return False
 
 def main():
-    # Verificar configuración
+    # Verificar configuración esencial
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("\n❌ ERROR: Faltan credenciales de Facebook")
+        print("   Configura: FB_PAGE_ID y FB_ACCESS_TOKEN")
         return False
     
-    noticias = buscar_noticias()
+    # Buscar noticias en español
+    noticias = buscar_noticias_espanol()
     
     if not noticias:
-        print("\n⚠️ No hay noticias nuevas")
+        print("\n⚠️ No hay noticias nuevas en español")
         return False
     
     print(f"\n🎯 Procesando {len(noticias)} noticia(s)")
@@ -661,30 +508,37 @@ def main():
         print(f"📰 NOTICIA {i}/{len(noticias)}")
         print(f"{'='*60}")
         
+        # Descargar imagen
         img_path = descargar_imagen(noticia.get('urlToImage'))
         if not img_path:
-            print("   ⏭️ Sin imagen")
+            print("   ⏭️ Sin imagen válida, saltando...")
             continue
         
-        resultado = generar_redaccion_periodistica(
+        # Generar redacción periodística con IA gratuita
+        resultado = generar_con_ia_gratuita(
             noticia['title'],
             noticia.get('description', ''),
-            noticia.get('source', {}).get('name', 'Medios Internacionales')
+            noticia.get('source', {}).get('name', 'Agencias')
         )
         
-        if publicar(resultado['titular'], resultado['texto'], img_path):
+        # Publicar en Facebook
+        if publicar_facebook(resultado['titular'], resultado['texto'], img_path):
             guardar_historial(noticia['url'], noticia['title'])
+            
+            # Limpiar imagen temporal
             if os.path.exists(img_path):
                 os.remove(img_path)
+            
             print(f"\n{'='*60}")
-            print("✅ ÉXITO")
+            print("✅ ÉXITO: Noticia publicada")
             print(f"{'='*60}")
             return True
         
+        # Limpiar si falló
         if os.path.exists(img_path):
             os.remove(img_path)
     
-    print("\n❌ No se pudo publicar")
+    print("\n❌ No se pudo publicar ninguna noticia")
     return False
 
 if __name__ == "__main__":

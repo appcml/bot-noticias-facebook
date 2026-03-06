@@ -540,7 +540,7 @@ def publicar_completo(titulo, texto, img_path, categoria):
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Hashtags según categoría
+    # Hashtags según categoría - CORREGIDO: comillas completas
     hashtags_cat = {
         'politica': '#Política #Gobierno #Actualidad',
         'economia': '#Economía #Finanzas #Negocios',
@@ -548,7 +548,7 @@ def publicar_completo(titulo, texto, img_path, categoria):
         'seguridad': '#Seguridad #Justicia #Policiales',
         'tecnologia': '#Tecnología #Innovación #IA',
         'salud': '#Salud #Medicina #Bienestar',
-        'medio_ambiente': #MedioAmbiente #Clima #Sostenibilidad',
+        'medio_ambiente': '#MedioAmbiente #Clima #Sostenibilidad',
         'ciencia': '#Ciencia #Investigación #Descubrimiento',
         'deportes': '#Deportes #Fútbol #Competición',
         'tendencias': '#Viral #Tendencias #RedesSociales'
@@ -569,9 +569,7 @@ def publicar_completo(titulo, texto, img_path, categoria):
 
 — Verdad Hoy: Noticias al minuto"""
     
-    # Verificación final de longitud (Facebook permite ~63206 caracteres, pero imagen+texto es menos)
-    # Para posts con imagen, el límite práctico es menor, así que mantenemos under 2000
-    
+    # Verificación final de longitud
     print(f"\n   📝 MENSAJE ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
     for linea in mensaje.split('\n')[:6]:

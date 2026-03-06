@@ -180,24 +180,41 @@ def detectar_categoria(titulo, descripcion):
         return max(puntuaciones, key=puntuaciones.get)
     return 'general'
 
+def eliminar_urls(texto):
+    """Elimina todas las URLs del texto"""
+    if not texto:
+        return texto
+    # Patrón para detectar URLs
+    url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+    texto_sin_urls = re.sub(url_pattern, '', texto)
+    # Limpiar espacios dobles que quedan
+    texto_sin_urls = re.sub(r'\s+', ' ', texto_sin_urls).strip()
+    return texto_sin_urls
+
 def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     """
     Genera redacción periodística COMPLETA sin cortes.
-    Estructura: Titular + Lead (2-3 oraciones) + Cuerpo (3 párrafos) + Cierre
+    Estructura: Titular + Lead (2-3 oraciones completas) + Cuerpo (3 párrafos completos) + Cierre
     """
     
     print(f"\n   📝 Procesando: {titulo[:50]}...")
     print(f"   🏷️ Categoría: {categoria}")
     
-    # Limpiar descripción base
-    desc_limpia = re.sub(r'<[^>]+>', '', str(descripcion)).strip()
-    if len(desc_limpia) < 20:
-        desc_limpia = titulo
+    # Limpiar descripción base y eliminar URLs
+    desc_limpia = eliminar_urls(descripcion)
+    desc_limpia = re.sub(r'<[^>]+>', '', str(desc_limpia)).strip()
+    
+    # Asegurar que la descripción tenga suficiente contenido
+    if len(desc_limpia) < 30:
+        desc_limpia = f"Se reporta un importante acontecimiento de relevancia internacional relacionado con {categoria}. Las autoridades competentes han confirmado la información."
     
     # Si tenemos IA, usarla
     if OPENROUTER_API_KEY:
         resultado = generar_con_ia(titulo, desc_limpia, fuente, categoria)
         if resultado and len(resultado['texto']) > 800:
+            # Eliminar URLs del resultado
+            resultado['texto'] = eliminar_urls(resultado['texto'])
+            resultado['titular'] = eliminar_urls(resultado['titular'])
             return resultado
     
     # Plantilla mejorada sin cortes
@@ -215,34 +232,35 @@ Fuente: {fuente}
 Categoría: {categoria}
 
 INSTRUCCIONES ESTRICTAS:
-1. TITULAR: Máximo 90 caracteres, informativo, atractivo, estilo EFE
-2. LEAD: 2-3 oraciones completas (máximo 200 caracteres), incluye: qué pasó, quién, cuándo, dónde
-3. CUERPO: Exactamente 3 párrafos completos:
+1. TITULAR: Máximo 90 caracteres, informativo, atractivo, estilo EFE. NO incluir URLs.
+2. LEAD: Exactamente 2-3 oraciones COMPLETAS (mínimo 150, máximo 250 caracteres), incluye: qué pasó, quién, cuándo, dónde. Terminar con punto.
+3. CUERPO: Exactamente 3 párrafos COMPLETOS, cada uno con 3-4 oraciones terminadas en punto:
    - Párrafo 1: Contexto y antecedentes (quiénes están involucrados)
    - Párrafo 2: Desarrollo actual (datos, cifras, declaraciones específicas)
    - Párrafo 3: Análisis e implicaciones (qué significa, consecuencias futuras)
-4. CIERRE: 1 línea con próximos pasos + "(Agencias) / Fuente: {fuente}"
+4. CIERRE: 1 oración completa con próximos pasos + "(Agencias) / Fuente: {fuente}"
+5. IMPORTANTE: NO incluir links, URLs, ni referencias a sitios web. Solo texto informativo.
 
 REGLAS:
-- ESPAÑOL NATIVO, no traducciones
-- Oraciones COMPLETAS, no cortar palabras
-- Longitud total: 1200-1800 caracteres
-- Estilo periodístico NEUTRO
-- Números y datos específicos si están en la descripción
+- ESPAÑOL NATIVO, no traducciones literales
+- Oraciones COMPLETAS terminadas en punto
+- NUNCA cortar una oración a la mitad
+- Longitud total: 1400-1900 caracteres
+- Estilo periodístico NEUTRO e informativo
 
 FORMATO OBLIGATORIO:
-TITULAR: [titular completo]
+TITULAR: [titular completo sin URLs]
 
-LEAD: [lead completo de 2-3 oraciones]
+LEAD: [lead de 2-3 oraciones completas terminadas en punto]
 
 CUERPO:
-[Párrafo 1 completo - contexto]
+[Párrafo 1 de 3-4 oraciones completas.]
 
-[Párrafo 2 completo - desarrollo]
+[Párrafo 2 de 3-4 oraciones completas.]
 
-[Párrafo 3 completo - análisis]
+[Párrafo 3 de 3-4 oraciones completas.]
 
-CIERRE: [cierre con fuente]
+CIERRE: [cierre de 1 oración completa con fuente]
 
 FIN"""
 
@@ -266,7 +284,7 @@ FIN"""
                         'model': modelo,
                         'messages': [{'role': 'user', 'content': prompt}],
                         'temperature': 0.3,
-                        'max_tokens': 1500
+                        'max_tokens': 1800
                     },
                     timeout=60
                 )
@@ -282,14 +300,25 @@ FIN"""
                         cuerpo = extraer_campo(content, 'CUERPO:', 'CIERRE:')
                         cierre = extraer_campo(content, 'CIERRE:', 'FIN')
                         
+                        # Asegurar que no haya URLs
+                        titular = eliminar_urls(titular)
+                        lead = eliminar_urls(lead)
+                        cuerpo = eliminar_urls(cuerpo)
+                        cierre = eliminar_urls(cierre)
+                        
                         if not cierre:
-                            cierre = f"Se esperan actualizaciones. (Agencias) / Fuente: {fuente}."
+                            cierre = f"Se esperan actualizaciones oficiales. (Agencias) / Fuente: {fuente}."
+                        
+                        # Verificar que las oraciones estén completas (terminen en punto)
+                        lead = asegurar_oraciones_completas(lead)
+                        cuerpo = asegurar_oraciones_completas(cuerpo)
+                        cierre = asegurar_oraciones_completas(cierre)
                         
                         # Construir texto completo
                         texto_completo = f"{lead}\n\n{cuerpo}\n\n{cierre}"
                         
-                        # Verificar que no esté cortado
-                        if len(texto_completo) > 600 and not texto_completo.endswith(('en ', 'de ', 'la ', 'el ', 'un ', 'una ')):
+                        # Verificar longitud y que no esté cortado
+                        if len(texto_completo) > 1000:
                             print(f"   ✅ IA generó: {len(texto_completo)} caracteres")
                             return {
                                 'titular': titular.strip()[:100],
@@ -305,62 +334,96 @@ FIN"""
     
     return None
 
+def asegurar_oraciones_completas(texto):
+    """Asegura que el texto termine con una oración completa"""
+    if not texto:
+        return texto
+    
+    texto = texto.strip()
+    
+    # Si termina con palabra incompleta (sin punto), buscar el último punto
+    if not texto.endswith(('.', '!', '?')):
+        # Buscar el último punto seguido de espacio o final
+        last_period = max(texto.rfind('. '), texto.rfind('.'), texto.rfind('!'), texto.rfind('?'))
+        if last_period > 50:  # Asegurar que no sea muy corto
+            texto = texto[:last_period+1]
+        else:
+            texto += "."
+    
+    # Eliminar espacios antes de puntuación
+    texto = re.sub(r'\s+([.,;:!?])', r'\1', texto)
+    
+    return texto.strip()
+
 def extraer_campo(texto, inicio, fin):
-    """Extrae campo entre dos marcadores"""
+    """Extrae campo entre dos marcadores de forma segura"""
     try:
         if inicio in texto:
             parte = texto.split(inicio)[1]
             if fin in parte:
-                return parte.split(fin)[0].strip()
-            return parte.strip()[:500]
+                resultado = parte.split(fin)[0].strip()
+                return resultado
+            # Si no encuentra el fin, tomar hasta 800 caracteres o el primer punto seguido de espacio
+            parte_limitada = parte[:800]
+            # Buscar último punto completo
+            ultimo_punto = parte_limitada.rfind('. ')
+            if ultimo_punto > 100:
+                return parte_limitada[:ultimo_punto+1]
+            return parte_limitada
     except:
         pass
     return ""
 
 def plantilla_mejorada(titulo, descripcion, fuente, categoria):
-    """Plantilla periodística robusta sin cortes"""
+    """Plantilla periodística robusta sin cortes y sin URLs"""
     print(f"   📝 Usando plantilla mejorada...")
     
-    # Crear lead completo (2-3 oraciones)
+    # Eliminar URLs de la descripción
+    descripcion = eliminar_urls(descripcion)
+    
+    # Crear lead completo (2-3 oraciones completas)
     oraciones_desc = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 20]
     
     if len(oraciones_desc) >= 2:
         lead = f"{oraciones_desc[0]}. {oraciones_desc[1]}."
     elif len(oraciones_desc) == 1:
-        lead = f"{oraciones_desc[0]}. Las autoridades competentes confirmaron la información en las últimas horas."
+        lead = f"{oraciones_desc[0]}. Las autoridades competentes confirmaron la información en las últimas horas y continúan evaluando la situación."
     else:
-        lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes confirmaron la información en las últimas horas y se esperan actualizaciones."
+        lead = f"Se reporta un importante acontecimiento relacionado con {categoria} que ha generado atención mediática. Las autoridades competentes han confirmado la información en las últimas horas y se esperan actualizaciones oficiales."
     
-    # Limitar lead a 200 caracteres pero sin cortar palabras
-    if len(lead) > 200:
-        lead = lead[:197].rsplit(' ', 1)[0] + "."
+    # Asegurar que el lead termine en punto y no esté cortado
+    lead = asegurar_oraciones_completas(lead)
+    
+    # Limitar lead pero sin cortar palabras (máximo 280 caracteres)
+    if len(lead) > 280:
+        lead = lead[:277].rsplit(' ', 1)[0] + "."
     
     # Párrafos completos según categoría
     templates_categoria = {
         'politica': {
-            'p1': "El hecho político ha generado amplia repercusión en los círculos de poder y entre la ciudadanía. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas ante la opinión pública.",
-            'p2': "Analistas políticos consultados señalan que este tipo de eventos requiere un seguimiento constante por parte de la sociedad. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones.",
-            'p3': "Las implicaciones de este acontecimiento político podrían extenderse a diversos sectores de la administración pública. Expertos destacan la necesidad de mantener una postura informada ante los desarrollos que se presenten en las próximas horas."
+            'p1': "El hecho político ha generado amplia repercusión en los círculos de poder y entre la ciudadanía. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas ante la opinión pública. Los analistas esperan definiciones claras en las próximas horas.",
+            'p2': "Analistas políticos consultados señalan que este tipo de eventos requiere un seguimiento constante por parte de la sociedad. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones para el escenario nacional.",
+            'p3': "Las implicaciones de este acontecimiento político podrían extenderse a diversos sectores de la administración pública. Expertos destacan la necesidad de mantener una postura informada ante los desarrollos que se presenten en los próximos días."
         },
         'economia': {
-            'p1': "El indicador económico ha captado la atención de analistas financieros y del sector empresarial. Las entidades bancarias y reguladoras monitorean de cerca la evolución de los datos para determinar posibles ajustes en sus proyecciones.",
+            'p1': "El indicador económico ha captado la atención de analistas financieros y del sector empresarial. Las entidades bancarias y reguladoras monitorean de cerca la evolución de los datos para determinar posibles ajustes en sus proyecciones trimestrales.",
             'p2': "Especialistas en economía señalan que este comportamiento del mercado requiere análisis detallado. La información disponible sugiere tendencias que podrían afectar a consumidores e inversionistas en el corto y mediano plazo.",
-            'p3': "Las proyecciones económicas indican posibles ajustes en las políticas monetarias y fiscales. Los sectores productivos mantienen expectativa sobre las medidas que podrían implementarse para estabilizar los indicadores."
+            'p3': "Las proyecciones económicas indican posibles ajustes en las políticas monetarias y fiscales. Los sectores productivos mantienen expectativa sobre las medidas que podrían implementarse para estabilizar los indicadores financieros."
         },
         'mundo': {
-            'p1': "El evento internacional ha generado reacciones en diversos países y organismos multilaterales. Las cancillerías involucradas mantienen comunicación constante para evaluar la situación y coordinar posibles respuestas diplomáticas.",
+            'p1': "El evento internacional ha generado reacciones en diversos países y organismos multilaterales. Las cancillerías involucradas mantienen comunicación constante para evaluar la situación y coordinar posibles respuestas diplomáticas ante la comunidad global.",
             'p2': "Observadores internacionales destacan la trascendencia de los hechos reportados en el contexto geopolítico actual. La comunidad global sigue con atención los desarrollos mientras se analizan las posibles consecuencias regionales.",
             'p3': "Las implicaciones de esta situación internacional podrían afectar las relaciones bilaterales y multilaterales. Se esperan declaraciones oficiales adicionales de los actores involucrados en las próximas horas."
         },
         'deportes': {
-            'p1': "El acontecimiento deportivo ha generado gran expectativa entre aficionados y especialistas. Los protagonistas del hecho deportivo han sido centro de atención en medios especializados y redes sociales.",
-            'p2': "Analistas deportivos señalan la importancia de este resultado para las competiciones en curso. Las estadísticas reflejan un momento clave en la temporada que podría definir posiciones en las tablas de clasificación.",
-            'p3': "Las repercusiones de este evento deportivo se extienden a las estrategias de los equipos para próximos encuentros. Los entrenadores y jugadores preparan ajustes mientras la afición espera nuevos desafíos."
+            'p1': "El acontecimiento deportivo ha generado gran expectativa entre aficionados y especialistas del sector. Los protagonistas del hecho deportivo han sido centro de atención en medios especializados y plataformas de redes sociales durante las últimas horas.",
+            'p2': "Analistas deportivos señalan la importancia de este resultado para las competiciones en curso. Las estadísticas reflejan un momento clave en la temporada que podría definir posiciones en las tablas de clasificación general.",
+            'p3': "Las repercusiones de este evento deportivo se extienden a las estrategias de los equipos para próximos encuentros. Los entrenadores y jugadores preparan ajustes mientras la afición espera nuevos desafíos en la competición."
         },
         'tecnologia': {
-            'p1': "El avance tecnológico reportado ha captado la atención de la industria digital y usuarios especializados. Las empresas del sector analizan las implicaciones de esta innovación para sus modelos de negocio.",
+            'p1': "El avance tecnológico reportado ha captado la atención de la industria digital y usuarios especializados. Las empresas del sector analizan las implicaciones de esta innovación para sus modelos de negocio actuales y futuros.",
             'p2': "Expertos en tecnología señalan que este desarrollo representa un paso significativo en la evolución digital. La adopción de estas nuevas herramientas podría transformar prácticas establecidas en diversos sectores productivos.",
-            'p3': "Las proyecciones indican que esta tecnología se integrará progresivamente en el mercado. Los reguladores evalúan marcos normativos para garantizar el uso responsable de estas capacidades."
+            'p3': "Las proyecciones indican que esta tecnología se integrará progresivamente en el mercado global. Los reguladores evalúan marcos normativos para garantizar el uso responsable de estas capacidades tecnológicas."
         }
     }
     
@@ -369,35 +432,72 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
         temps = templates_categoria[categoria]
     else:
         temps = {
-            'p1': "El acontecimiento ha sido confirmado por fuentes oficiales y genera atención mediática. Las autoridades competentes emitieron comunicados sobre el tema mientras diversos sectores mantienen vigilancia sobre los desarrollos.",
-            'p2': "Analistas señalan la trascendencia de los hechos reportados. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones.",
-            'p3': "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis."
+            'p1': "El acontecimiento ha sido confirmado por fuentes oficiales y genera atención mediática en el ámbito internacional. Las autoridades competentes emitieron comunicados sobre el tema mientras diversos sectores mantienen vigilancia sobre los desarrollos.",
+            'p2': "Analistas especializados señalan la trascendencia de los hechos reportados en el contexto actual. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones.",
+            'p3': "Las implicaciones de este acontecimiento podrían extenderse a diversos ámbitos de la sociedad en el mediano plazo. Expertos consultados destacan la necesidad de seguimiento constante mientras la situación continúa siendo objeto de análisis."
         }
     
     # Construir texto completo
-    cierre = f"Se esperan actualizaciones oficiales. (Agencias) / Fuente: {fuente}."
+    cierre = f"Se esperan actualizaciones oficiales conforme avancen las investigaciones correspondientes. (Agencias) / Fuente: {fuente}."
     
-    texto = f"{lead}\n\n{temps['p1']}\n\n{temps['p2']}\n\n{temps['p3']}\n\n{cierre}"
+    # Asegurar que cada párrafo esté completo
+    p1_completo = asegurar_oraciones_completas(temps['p1'])
+    p2_completo = asegurar_oraciones_completas(temps['p2'])
+    p3_completo = asegurar_oraciones_completas(temps['p3'])
+    
+    texto = f"{lead}\n\n{p1_completo}\n\n{p2_completo}\n\n{p3_completo}\n\n{cierre}"
     
     # Asegurar longitud mínima sin cortar
-    while len(texto) < 1000:
-        texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente. {cierre}")
+    while len(texto) < 1200:
+        texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente según avancen las investigaciones. {cierre}")
+        if len(texto) >= 1200:
+            break
     
-    print(f"   ✅ Plantilla: {len(texto)} caracteres")
+    # Limitar a máximo 1950 pero sin cortar oración
+    if len(texto) > 1950:
+        texto_cortado = texto[:1947]
+        # Buscar último punto completo
+        ultimo_punto = texto_cortado.rfind('. ')
+        if ultimo_punto > 1000:
+            texto = texto_cortado[:ultimo_punto+1] + f"\n\n{cierre}"
+        else:
+            texto = texto[:1950]
+    
+    # Crear titular profesional sin URLs
+    titular = eliminar_urls(str(titulo))[:95]
+    if len(titular) < 15 or not es_espanol(titular):
+        titular = f"Nuevo acontecimiento en {categoria} genera atención internacional"
+    
+    print(f"   ✅ Plantilla periodística: {len(texto)} caracteres")
     return {
-        'titular': titulo[:95],
-        'texto': texto[:1950]
+        'titular': titular,
+        'texto': texto
     }
+
+def es_espanol(texto):
+    """Detecta si el texto está en español"""
+    if not texto:
+        return False
+    
+    texto_lower = texto.lower()
+    palabras_es = ['el', 'la', 'de', 'que', 'y', 'en', 'un', 'es', 'se', 'por', 'con', 
+                   'su', 'para', 'los', 'las', 'del', 'al', 'lo', 'más', 'este', 'esta',
+                   'pero', 'sus', 'una', 'como', 'son', 'entre', 'sobre', 'han', 'sido']
+    palabras_en = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'with', 'said']
+    
+    count_es = sum(1 for p in palabras_es if f' {p} ' in f' {texto_lower} ')
+    count_en = sum(1 for p in palabras_en if f' {p} ' in f' {texto_lower} ')
+    
+    return count_es > count_en
 
 def buscar_noticias_categorizadas():
     """Busca noticias priorizando las 10 categorías"""
     print("\n🔍 Buscando noticias por categorías...")
     noticias = []
     
-    # 1. NewsAPI en español con palabras clave de categorías
+    # 1. NewsAPI en español
     if NEWS_API_KEY:
         try:
-            # Buscar con términos de alta relevancia
             terminos_busqueda = [
                 'presidente OR gobierno OR elecciones',
                 'economía OR inflación OR crisis',
@@ -456,20 +556,18 @@ def buscar_noticias_categorizadas():
         except Exception as e:
             print(f"   ⚠️ GNews: {e}")
     
-    # 3. RSS por categorías (rotativas)
+    # 3. RSS por categorías
     todas_feeds = []
     for cat, datos in CATEGORIAS.items():
         for feed in datos['feeds']:
             todas_feeds.append((cat, feed))
     
-    # Seleccionar 4 feeds aleatorios de diferentes categorías
     feeds_seleccionados = random.sample(todas_feeds, min(4, len(todas_feeds)))
     
     for categoria_feed, feed_url in feeds_seleccionados:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:3]:
-                # Buscar imagen
                 img = ''
                 if hasattr(entry, 'media_content') and entry.media_content:
                     img = entry.media_content[0].get('url', '')
@@ -502,14 +600,12 @@ def buscar_noticias_categorizadas():
         if ya_publicada(art['url'], art['title']):
             continue
         
-        # Priorizar ciertas categorías
         cat = art.get('categoria_detectada', 'general')
         art['prioridad'] = 2 if cat in ['politica', 'economia', 'mundo', 'deportes'] else 1
         
         nuevas.append(art)
         print(f"   ✅ [{cat}] {art['title'][:45]}...")
     
-    # Ordenar por prioridad
     nuevas.sort(key=lambda x: x.get('prioridad', 0), reverse=True)
     
     print(f"📊 Nuevas válidas: {len(nuevas)}")
@@ -534,13 +630,17 @@ def descargar_imagen(url):
     return None
 
 def publicar_completo(titulo, texto, img_path, categoria):
-    """Publica en Facebook asegurando que no se corte el texto"""
+    """Publica en Facebook asegurando que no se corte el texto y sin URLs"""
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Hashtags según categoría - CORREGIDO: comillas completas
+    # Eliminar cualquier URL residual
+    titulo = eliminar_urls(titulo)
+    texto = eliminar_urls(texto)
+    
+    # Hashtags según categoría
     hashtags_cat = {
         'politica': '#Política #Gobierno #Actualidad',
         'economia': '#Economía #Finanzas #Negocios',
@@ -558,8 +658,11 @@ def publicar_completo(titulo, texto, img_path, categoria):
     
     # Asegurar que el texto no esté cortado al final
     texto_limpio = texto.strip()
-    if texto_limpio.endswith(('en', 'de', 'la', 'el', 'un', 'una', 'a', 'con', 'por')):
-        texto_limpio += "."
+    texto_limpio = asegurar_oraciones_completas(texto_limpio)
+    
+    # Verificar que no haya URLs ocultas
+    texto_limpio = eliminar_urls(texto_limpio)
+    titulo = eliminar_urls(titulo)
     
     mensaje = f"""📰 {titulo}
 
@@ -572,7 +675,7 @@ def publicar_completo(titulo, texto, img_path, categoria):
     # Verificación final de longitud
     print(f"\n   📝 MENSAJE ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
-    for linea in mensaje.split('\n')[:6]:
+    for linea in mensaje.split('\n')[:8]:
         preview = linea[:65] + "..." if len(linea) > 65 else linea
         print(f"   {preview}")
     print(f"   {'='*50}")

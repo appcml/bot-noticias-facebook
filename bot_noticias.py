@@ -150,7 +150,7 @@ CATEGORIAS = {
 }
 
 print("="*60)
-print("🚀 BOT DE NOTICIAS - Verdad Hoy (CORREGIDO)")
+print("🚀 BOT DE NOTICIAS - Verdad Hoy (SIN LINKS)")
 print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
 print("="*60)
 
@@ -253,6 +253,31 @@ def limpiar_texto_corte(texto):
     
     return texto + "."
 
+def eliminar_links(texto):
+    """
+    Elimina TODOS los links/URLs del texto para evitar que Facebook limite el alcance.
+    Incluye: http/https, dominios sin protocolo, menciones de www, etc.
+    """
+    if not texto:
+        return texto
+    
+    # Patrón para URLs completas (http/https/ftp)
+    texto = re.sub(r'https?://\S+|ftp://\S+', '', texto, flags=re.IGNORECASE)
+    
+    # Patrón para dominios tipo www.ejemplo.com
+    texto = re.sub(r'www\.\S+', '', texto, flags=re.IGNORECASE)
+    
+    # Patrón para dominios tipo ejemplo.com (solo si tiene TLD común)
+    texto = re.sub(r'\b[a-zA-Z0-9-]+\.(com|es|org|net|info|biz|co|gov|edu|mil|int|eu|cat|gal|eus)\b', '', texto, flags=re.IGNORECASE)
+    
+    # Limpiar espacios dobles que quedan
+    texto = re.sub(r'\s+', ' ', texto)
+    
+    # Limpiar espacios antes de puntuación
+    texto = re.sub(r'\s+([.,;:!?])', r'\1', texto)
+    
+    return texto.strip()
+
 def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     """
     Genera redacción periodística COMPLETA usando IA gratuita.
@@ -260,8 +285,10 @@ def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     print(f"\n   📝 Procesando: {titulo[:50]}...")
     print(f"   🏷️ Categoría: {categoria}")
     
-    # Limpiar descripción base
+    # Limpiar descripción base y ELIMINAR LINKS
     desc_limpia = re.sub(r'<[^>]+>', '', str(descripcion)).strip()
+    desc_limpia = eliminar_links(desc_limpia)  # <-- NUEVO: Eliminar links de la descripción
+    
     if len(desc_limpia) < 20:
         desc_limpia = titulo
     
@@ -281,7 +308,7 @@ def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
 def generar_con_ia(titulo, descripcion, fuente, categoria):
     """Genera usando OpenRouter con modelos gratuitos actualizados 2024"""
     try:
-        # Prompt optimizado para noticias completas
+        # Prompt optimizado para noticias completas - SIN INSTRUCCIONES DE INCLUIR LINKS
         prompt = f"""Eres un redactor senior de agencia EFE. Escribe una NOTICIA COMPLETA en español neutro.
 
 DATOS DE ENTRADA:
@@ -296,6 +323,7 @@ REGLAS OBLIGATORIAS:
 3. Longitud TOTAL: 400-2500 caracteres (muy importante: NO CORTAR)
 4. Usa datos específicos de la descripción si existen
 5. Estilo periodístico objetivo y formal
+6. IMPORTANTE: NO incluyas URLs, links, ni referencias a sitios web en el texto
 
 FORMATO EXACTO:
 TITULAR: [Máximo 150 caracteres, atractivo, estilo EFE]
@@ -303,11 +331,13 @@ TITULAR: [Máximo 150 caracteres, atractivo, estilo EFE]
 LEAD: [2-4 oraciones completas con: qué pasó, quién, cuándo, dónde. Máximo 400 caracteres, sin cortes]
 
 DESARROLLO:
+
 CIERRE: [Próximos pasos esperados. Fuente: {fuente}]
 
 IMPORTANTE: 
 - NO termines con palabras cortadas como "de", "la", "el", "un"
 - Oraciones completas siempre
+- NO incluyas links ni URLs en el texto
 - Si necesitas acortar, termina la oración completa antes del límite"""
 
         # Modelos gratuitos actualizados (marzo 2024)
@@ -365,6 +395,12 @@ IMPORTANTE:
                         lead = limpiar_texto_corte(lead)
                         cuerpo = limpiar_texto_corte(cuerpo)
                         cierre = limpiar_texto_corte(cierre)
+                        
+                        # ELIMINAR CUALQUIER LINK QUE HAYA QUEDADO
+                        titular = eliminar_links(titular)
+                        lead = eliminar_links(lead)
+                        cuerpo = eliminar_links(cuerpo)
+                        cierre = eliminar_links(cierre)
                         
                         # Construir texto final
                         texto_completo = f"{lead}\n\n{cuerpo}\n\n{cierre}"
@@ -514,6 +550,9 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
     # Asegurar longitud mínima
     while len(texto) < 1000:
         texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente. {cierre}")
+    
+    # ELIMINAR CUALQUIER LINK QUE PUDIERA HABER QUEDADO
+    texto = eliminar_links(texto)
     
     print(f"   ✅ Plantilla: {len(texto)} caracteres")
     return {
@@ -665,7 +704,7 @@ def descargar_imagen(url):
     return None
 
 def publicar_completo(titulo, texto, img_path, categoria):
-    """Publica en Facebook con manejo anti-corte"""
+    """Publica en Facebook con manejo anti-corte y SIN LINKS"""
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
@@ -686,8 +725,9 @@ def publicar_completo(titulo, texto, img_path, categoria):
     
     hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad')
     
-    # Limpiar texto final
+    # Limpiar texto final y ELIMINAR LINKS
     texto_limpio = limpiar_texto_corte(texto)
+    texto_limpio = eliminar_links(texto_limpio)  # <-- NUEVO: Eliminar links antes de publicar
     
     # Verificar longitud total (Facebook permite ~2000 caracteres)
     mensaje_base = f"""📰 {titulo}
@@ -702,6 +742,8 @@ def publicar_completo(titulo, texto, img_path, categoria):
     if len(mensaje_base) > 2500:
         max_texto = 2500 - len(titulo) - len(hashtags) - 50
         texto_limpio = texto_limpio[:max_texto].rsplit(' ', 1)[0] + "."
+        # Asegurar que no queden links después de cortar
+        texto_limpio = eliminar_links(texto_limpio)
     
     mensaje = f"""📰 {titulo}
 
@@ -710,6 +752,9 @@ def publicar_completo(titulo, texto, img_path, categoria):
 {hashtags}
 
 — Verdad Hoy: Noticias al minuto"""
+    
+    # VERIFICACIÓN FINAL: Asegurar que no hay links en el mensaje
+    mensaje = eliminar_links(mensaje)
     
     print(f"\n   📝 MENSAJE FINAL ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
@@ -798,6 +843,3 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         exit(1)
-
-
-

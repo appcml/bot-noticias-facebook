@@ -1,4 +1,3 @@
-import requests
 import random
 import re
 import hashlib
@@ -32,8 +31,8 @@ CATEGORIAS = {
             'cumbre política', 'política exterior', 'política interna'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/espana/portada',
-            'https://www.abc.es/rss/feeds/abc_Espana.xml',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/espana/portada ',
+            'https://www.abc.es/rss/feeds/abc_Espana.xml ',
         ]
     },
     'economia': {
@@ -47,8 +46,8 @@ CATEGORIAS = {
             'deuda pública', 'subsidio', 'inversión extranjera'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/economia/portada',
-            'https://e00-elmundo.uecdn.es/elmundo/rss/economia.xml',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/economia/portada ',
+            'https://e00-elmundo.uecdn.es/elmundo/rss/economia.xml ',
         ]
     },
     'internacional': {
@@ -60,8 +59,8 @@ CATEGORIAS = {
             'alianza internacional', 'negociaciones', 'tensión diplomática', 'relaciones bilaterales'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada',
-            'https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada ',
+            'https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml ',
         ]
     },
     'guerra_defensa': {
@@ -72,8 +71,8 @@ CATEGORIAS = {
             'invasión', 'frente de batalla', 'alto al fuego', 'acuerdo de paz'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada',
-            'https://www.20minutos.es/rss/internacional/',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada ',
+            'https://www.20minutos.es/rss/internacional/ ',
         ]
     },
     'seguridad': {
@@ -85,8 +84,8 @@ CATEGORIAS = {
             'carabineros', 'policía', 'seguridad ciudadana'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/sociedad/portada',
-            'https://www.20minutos.es/rss/nacional/',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/sociedad/portada ',
+            'https://www.20minutos.es/rss/nacional/ ',
         ]
     },
     'tecnologia': {
@@ -99,8 +98,8 @@ CATEGORIAS = {
             'blockchain', 'criptografía', 'tecnología emergente'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/tecnologia/portada',
-            'https://www.xataka.com/feedburner.xml',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/tecnologia/portada ',
+            'https://www.xataka.com/feedburner.xml ',
         ]
     },
     'ciencia': {
@@ -111,7 +110,7 @@ CATEGORIAS = {
             'satélite', 'espacio', 'observatorio'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada ',
         ]
     },
     'salud': {
@@ -122,7 +121,7 @@ CATEGORIAS = {
             'salud mental', 'bienestar', 'sistema de salud'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada ',
         ]
     },
     'medio_ambiente': {
@@ -134,7 +133,7 @@ CATEGORIAS = {
             'energía eólica', 'sostenibilidad'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/clima-medio-ambiente/portada',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/clima-medio-ambiente/portada ',
         ]
     },
     'general': {
@@ -143,8 +142,8 @@ CATEGORIAS = {
             'histórico', 'importante', 'relevante', 'destacado'
         ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
-            'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada ',
+            'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml ',
         ]
     }
 }
@@ -322,7 +321,7 @@ IMPORTANTE:
         
         headers = {
             'Authorization': f'Bearer {OPENROUTER_API_KEY}',
-            'HTTP-Referer': 'https://github.com',
+            'HTTP-Referer': 'https://github.com ',
             'X-Title': 'Bot Noticias Verdad Hoy',
             'Content-Type': 'application/json'
         }
@@ -332,7 +331,7 @@ IMPORTANTE:
                 print(f"   🔄 Probando modelo: {modelo.split('/')[-1]}")
                 
                 response = requests.post(
-                    'https://openrouter.ai/api/v1/chat/completions',
+                    'https://openrouter.ai/api/v1/chat/completions ',
                     headers=headers,
                     json={
                         'model': modelo,
@@ -543,7 +542,7 @@ def buscar_noticias_categorizadas():
             for termino in random.sample(terminos_busqueda, min(3, len(terminos_busqueda))):
                 try:
                     resp = requests.get(
-                        "https://newsapi.org/v2/everything",
+                        "https://newsapi.org/v2/everything ",
                         params={
                             'q': termino,
                             'language': 'es',
@@ -570,7 +569,7 @@ def buscar_noticias_categorizadas():
     if GNEWS_API_KEY and len(noticias) < 5:
         try:
             resp = requests.get(
-                "https://gnews.io/api/v4/top-headlines",
+                "https://gnews.io/api/v4/top-headlines ",
                 params={'lang': 'es', 'max': 20, 'apikey': GNEWS_API_KEY},
                 timeout=15
             )
@@ -719,7 +718,7 @@ def publicar_completo(titulo, texto, img_path, categoria):
     print(f"   {'='*50}")
     
     try:
-        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
+        url = f"https://graph.facebook.com/v18.0/ {FB_PAGE_ID}/photos"
         print(f"   📤 Publicando en Facebook...")
         
         with open(img_path, 'rb') as f:
@@ -798,5 +797,3 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         exit(1)
-
-

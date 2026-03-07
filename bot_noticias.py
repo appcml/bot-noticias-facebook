@@ -292,8 +292,8 @@ DATOS DE ENTRADA:
 
 REGLAS OBLIGATORIAS:
 1. Escribe en ESPAÑOL NATIVO (no traduzcas literalmente)
-2. Estructura: Lead (2-3 oraciones) + 3 párrafos de desarrollo + Cierre
-3. Longitud TOTAL: 1400-1800 caracteres (muy importante: NO CORTAR)
+2. Estructura: Lead (2-4 oraciones) + 3 párrafos de desarrollo + Cierre
+3. Longitud TOTAL: 400-2500 caracteres (muy importante: NO CORTAR)
 4. Usa datos específicos de la descripción si existen
 5. Estilo periodístico objetivo y formal
 
@@ -338,7 +338,7 @@ IMPORTANTE:
                         'model': modelo,
                         'messages': [{'role': 'user', 'content': prompt}],
                         'temperature': 0.4,
-                        'max_tokens': 2000,  # Aumentado para evitar cortes
+                        'max_tokens': 5000,  # Aumentado para evitar cortes
                         'top_p': 0.9
                     },
                     timeout=90  # Aumentado timeout
@@ -354,7 +354,7 @@ IMPORTANTE:
                         titular = extraer_campo(content, 'TITULAR:', 'LEAD:') or titulo[:90]
                         lead = extraer_campo(content, 'LEAD:', 'DESARROLLO:')
                         
-                        # Extraer cuerpo completo (3 párrafos)
+                        # Extraer cuerpo completo (4 párrafos)
                         cuerpo_match = re.search(r'DESARROLLO:(.*?)(?:CIERRE:|$)', content, re.DOTALL)
                         cuerpo = cuerpo_match.group(1).strip() if cuerpo_match else ""
                         
@@ -383,7 +383,7 @@ IMPORTANTE:
                         
                         return {
                             'titular': titular[:95],
-                            'texto': texto_completo[:1900]  # Dejar margen para hashtags
+                            'texto': texto_completo[:2500]  # Dejar margen para hashtags
                         }
                     else:
                         print(f"   ⚠️ Respuesta sin choices: {data.keys()}")
@@ -518,7 +518,7 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
     print(f"   ✅ Plantilla: {len(texto)} caracteres")
     return {
         'titular': titulo[:95],
-        'texto': texto[:1900]
+        'texto': texto[:2500]
     }
 
 def buscar_noticias_categorizadas():
@@ -699,8 +699,8 @@ def publicar_completo(titulo, texto, img_path, categoria):
 — Verdad Hoy: Noticias al minuto"""
     
     # Si es muy largo, acortar inteligentemente
-    if len(mensaje_base) > 2000:
-        max_texto = 2000 - len(titulo) - len(hashtags) - 50
+    if len(mensaje_base) > 2500:
+        max_texto = 2500 - len(titulo) - len(hashtags) - 50
         texto_limpio = texto_limpio[:max_texto].rsplit(' ', 1)[0] + "."
     
     mensaje = f"""📰 {titulo}
@@ -798,4 +798,5 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         exit(1)
+
 

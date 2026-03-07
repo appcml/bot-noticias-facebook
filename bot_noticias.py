@@ -300,15 +300,9 @@ REGLAS OBLIGATORIAS:
 FORMATO EXACTO:
 TITULAR: [Máximo 90 caracteres, atractivo, estilo EFE]
 
-LEAD: [2-3 oraciones completas con: qué pasó, quién, cuándo, dónde. Máximo 200 caracteres]
+LEAD: [2-4 oraciones completas con: qué pasó, quién, cuándo, dónde. Máximo 400 caracteres]
 
 DESARROLLO:
-[Párrafo 1: Contexto y antecedentes - 300-400 caracteres]
-
-[Párrafo 2: Detalles actuales y datos específicos - 300-400 caracteres]
-
-[Párrafo 3: Análisis e implicaciones futuras - 300-400 caracteres]
-
 CIERRE: [Próximos pasos esperados. Fuente: {fuente}]
 
 IMPORTANTE: 
@@ -804,3 +798,4 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         exit(1)
+

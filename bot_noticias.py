@@ -18,91 +18,133 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
-# CATEGORÍAS Y PALABRAS CLAVE PRIORITARIAS
+# CATEGORÍAS Y PALABRAS CLAVE PRIORITARIAS (ACTUALIZADO)
 CATEGORIAS = {
     'politica': {
-        'keywords': ['presidente', 'gobierno', 'ministro', 'congreso', 'senado', 'elecciones', 
-                    'reforma', 'ley', 'constitución', 'corrupción', 'destitución', 'parlamento',
-                    'oposición', 'debate político', 'coalición', 'protesta', 'referéndum'],
+        'keywords': [
+            'presidente', 'gobierno', 'ministro', 'ministerio', 'congreso', 'senado', 
+            'diputados', 'parlamento', 'elecciones', 'votación', 'candidato', 
+            'partido político', 'oposición', 'reforma', 'ley', 'decreto', 'constitución',
+            'gabinete', 'crisis política', 'escándalo político', 'corrupción', 
+            'destitución', 'renuncia', 'debate político', 'coalición', 'alianza política',
+            'protesta política', 'manifestación', 'reforma constitucional', 'referéndum',
+            'plebiscito', 'agenda política', 'liderazgo político', 'relaciones diplomáticas',
+            'cumbre política', 'política exterior', 'política interna'
+        ],
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/espana/portada',
             'https://www.abc.es/rss/feeds/abc_Espana.xml',
         ]
     },
     'economia': {
-        'keywords': ['inflación', 'economía', 'crisis económica', 'mercado financiero', 'bolsa',
-                    'inversión', 'banco', 'impuestos', 'empleo', 'desempleo', 'dólar', 'precio',
-                    'recesión', 'crecimiento económico', 'deuda pública', 'subsidio'],
+        'keywords': [
+            'economía', 'inflación', 'recesión', 'crecimiento económico', 'crisis económica',
+            'mercado', 'mercado financiero', 'bolsa', 'acciones', 'inversión', 'inversionistas',
+            'empresa', 'negocio', 'industria', 'emprendimiento', 'startup', 'exportaciones',
+            'importaciones', 'comercio', 'comercio internacional', 'banco', 'banca', 'finanzas',
+            'impuestos', 'reforma tributaria', 'salario', 'empleo', 'desempleo', 'precio',
+            'costo de vida', 'dólar', 'tipo de cambio', 'moneda', 'presupuesto', 'gasto público',
+            'deuda pública', 'subsidio', 'inversión extranjera'
+        ],
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/economia/portada',
             'https://e00-elmundo.uecdn.es/elmundo/rss/economia.xml',
         ]
     },
-    'mundo': {
-        'keywords': ['conflicto internacional', 'crisis internacional', 'diplomacia', 'sanciones',
-                    'tratado', 'migración', 'refugiados', 'geopolítica', 'guerra', 'tensión',
-                    'ataque', 'bombardeo', 'misil', 'ejército', 'operación militar', 'invasión'],
+    'internacional': {
+        'keywords': [
+            'conflicto internacional', 'crisis internacional', 'tensión internacional',
+            'relaciones exteriores', 'diplomacia', 'sanciones internacionales', 'tratado',
+            'acuerdo internacional', 'cumbre internacional', 'organismos internacionales',
+            'migración', 'refugiados', 'crisis humanitaria', 'frontera', 'geopolítica',
+            'alianza internacional', 'negociaciones', 'tensión diplomática', 'relaciones bilaterales'
+        ],
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada',
             'https://e00-elmundo.uecdn.es/elmundo/rss/internacional.xml',
         ]
     },
+    'guerra_defensa': {
+        'keywords': [
+            'guerra', 'conflicto armado', 'ataque', 'bombardeo', 'misil', 'defensa',
+            'ejército', 'fuerzas armadas', 'militar', 'operación militar', 'batalla',
+            'tensión militar', 'seguridad internacional', 'armamento', 'estrategia militar',
+            'invasión', 'frente de batalla', 'alto al fuego', 'acuerdo de paz'
+        ],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada',
+            'https://www.20minutos.es/rss/internacional/',
+        ]
+    },
     'seguridad': {
-        'keywords': ['crimen', 'delito', 'robo', 'homicidio', 'detenido', 'narcotráfico', 
-                    'banda criminal', 'justicia', 'tribunal', 'juicio', 'condena', 'fiscalía',
-                    'operativo policial', 'seguridad ciudadana', 'investigación'],
+        'keywords': [
+            'crimen', 'delito', 'robo', 'asalto', 'homicidio', 'asesinato', 'detenido',
+            'captura', 'investigación policial', 'operativo policial', 'allanamiento',
+            'narcotráfico', 'tráfico de drogas', 'banda criminal', 'mafias', 'justicia',
+            'tribunal', 'juicio', 'sentencia', 'condena', 'acusado', 'fiscalía',
+            'carabineros', 'policía', 'seguridad ciudadana'
+        ],
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/sociedad/portada',
+            'https://www.20minutos.es/rss/nacional/',
         ]
     },
     'tecnologia': {
-        'keywords': ['inteligencia artificial', 'IA', 'tecnología', 'ciberseguridad', 'hackeo',
-                    'redes sociales', 'smartphone', 'innovación', 'startup', 'aplicación',
-                    'robótica', 'internet', 'plataforma digital', 'big data'],
+        'keywords': [
+            'tecnología', 'innovación', 'inteligencia artificial', 'IA', 'robótica',
+            'automatización', 'software', 'hardware', 'internet', 'plataforma digital',
+            'redes sociales', 'ciberseguridad', 'hackeo', 'datos', 'big data',
+            'startup tecnológica', 'empresa tecnológica', 'aplicación móvil', 'app',
+            'smartphone', 'computadora', 'dispositivo', 'realidad virtual', 'realidad aumentada',
+            'blockchain', 'criptografía', 'tecnología emergente'
+        ],
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/tecnologia/portada',
             'https://www.xataka.com/feedburner.xml',
         ]
     },
+    'ciencia': {
+        'keywords': [
+            'descubrimiento', 'científicos', 'investigación', 'estudio científico', 'experimento',
+            'universidad', 'laboratorio', 'biología', 'genética', 'física', 'química',
+            'astronomía', 'cosmos', 'universo', 'planeta', 'misión espacial', 'telescopio',
+            'satélite', 'espacio', 'observatorio'
+        ],
+        'feeds': [
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada',
+        ]
+    },
     'salud': {
-        'keywords': ['pandemia', 'vacuna', 'enfermedad', 'hospital', 'salud', 'medicina',
-                    'tratamiento', 'virus', 'epidemia', 'salud mental', 'investigación médica',
-                    'sistema de salud', 'nutrición'],
+        'keywords': [
+            'salud', 'medicina', 'hospital', 'clínica', 'pacientes', 'enfermedad', 'virus',
+            'bacteria', 'epidemia', 'pandemia', 'vacuna', 'tratamiento', 'terapia', 'diagnóstico',
+            'investigación médica', 'salud pública', 'nutrición', 'alimentación saludable',
+            'salud mental', 'bienestar', 'sistema de salud'
+        ],
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada',
         ]
     },
     'medio_ambiente': {
-        'keywords': ['cambio climático', 'calentamiento global', 'sequía', 'inundación',
-                    'incendio forestal', 'contaminación', 'energía renovable', 'sostenibilidad',
-                    'biodiversidad', 'crisis climática', 'fenómeno climático'],
+        'keywords': [
+            'medio ambiente', 'cambio climático', 'crisis climática', 'temperatura global',
+            'calentamiento global', 'sequía', 'inundación', 'incendio forestal', 'tormenta',
+            'huracán', 'fenómeno climático', 'contaminación', 'polución', 'ecosistema',
+            'biodiversidad', 'conservación', 'energía renovable', 'energía solar',
+            'energía eólica', 'sostenibilidad'
+        ],
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/clima-medio-ambiente/portada',
         ]
     },
-    'ciencia': {
-        'keywords': ['descubrimiento', 'científicos', 'investigación', 'espacio', 'astronomía',
-                    'misión espacial', 'planeta', 'universo', 'genética', 'física', 'biología'],
+    'general': {
+        'keywords': [
+            'actualidad', 'noticias', 'última hora', 'urgente', 'confirmado', 'revelan',
+            'histórico', 'importante', 'relevante', 'destacado'
+        ],
         'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada',
-        ]
-    },
-    'deportes': {
-        'keywords': ['fútbol', 'liga', 'campeonato', 'mundial', 'copa', 'partido', 'resultado',
-                    'jugador', 'equipo', 'entrenador', 'fichaje', 'victoria', 'derrota',
-                    'competición', 'olimpiadas', 'deportes'],
-        'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/deportes/portada',
-            'https://www.clarin.com/rss/deportes/',
-            'https://e00-elmundo.uecdn.es/elmundo/rss/deportes.xml',
-        ]
-    },
-    'tendencias': {
-        'keywords': ['viral', 'tendencia', 'video viral', 'redes sociales', 'fenómeno viral',
-                    'reto viral', 'curiosidad', 'sorprendente', 'impactante', 'polémica',
-                    'última hora', 'urgente', 'confirmado', 'revelan', 'histórico'],
-        'feeds': [
-            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/gente/portada',
+            'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
+            'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml',
         ]
     }
 }
@@ -335,7 +377,7 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
     if len(lead) > 200:
         lead = lead[:197].rsplit(' ', 1)[0] + "."
     
-    # Párrafos completos según categoría
+    # Párrafos completos según categoría (ACTUALIZADO CON NUEVAS CATEGORÍAS)
     templates_categoria = {
         'politica': {
             'p1': "El hecho político ha generado amplia repercusión en los círculos de poder y entre la ciudadanía. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas ante la opinión pública.",
@@ -347,20 +389,40 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
             'p2': "Especialistas en economía señalan que este comportamiento del mercado requiere análisis detallado. La información disponible sugiere tendencias que podrían afectar a consumidores e inversionistas en el corto y mediano plazo.",
             'p3': "Las proyecciones económicas indican posibles ajustes en las políticas monetarias y fiscales. Los sectores productivos mantienen expectativa sobre las medidas que podrían implementarse para estabilizar los indicadores."
         },
-        'mundo': {
+        'internacional': {
             'p1': "El evento internacional ha generado reacciones en diversos países y organismos multilaterales. Las cancillerías involucradas mantienen comunicación constante para evaluar la situación y coordinar posibles respuestas diplomáticas.",
             'p2': "Observadores internacionales destacan la trascendencia de los hechos reportados en el contexto geopolítico actual. La comunidad global sigue con atención los desarrollos mientras se analizan las posibles consecuencias regionales.",
             'p3': "Las implicaciones de esta situación internacional podrían afectar las relaciones bilaterales y multilaterales. Se esperan declaraciones oficiales adicionales de los actores involucrados en las próximas horas."
         },
-        'deportes': {
-            'p1': "El acontecimiento deportivo ha generado gran expectativa entre aficionados y especialistas. Los protagonistas del hecho deportivo han sido centro de atención en medios especializados y redes sociales.",
-            'p2': "Analistas deportivos señalan la importancia de este resultado para las competiciones en curso. Las estadísticas reflejan un momento clave en la temporada que podría definir posiciones en las tablas de clasificación.",
-            'p3': "Las repercusiones de este evento deportivo se extienden a las estrategias de los equipos para próximos encuentros. Los entrenadores y jugadores preparan ajustes mientras la afición espera nuevos desafíos."
+        'guerra_defensa': {
+            'p1': "La situación militar ha escalado tensiones en la región afectada, movilizando fuerzas de defensa y generando alertas en organismos de seguridad. Los estados mayores evalúan constantemente la evolución del conflicto armado reportado.",
+            'p2': "Analistas militares señalan que esta operación podría marcar un punto de inflexión en la estrategia de defensa. La comunidad internacional observa con preocupación el desarrollo de los enfrentamientos y sus implicaciones para la seguridad regional.",
+            'p3': "Las autoridades de defensa mantienen comunicación constante con aliados estratégicos. Se esperan nuevos movimientos militares mientras persisten los esfuerzos diplomáticos para alcanzar un alto al fuego sostenible."
+        },
+        'seguridad': {
+            'p1': "El hecho delictivo ha movilizado a las fuerzas del orden y generado preocupación en la comunidad afectada. Los equipos de investigación trabajan en la recopilación de evidencias y testimonios para esclarecer los hechos.",
+            'p2': "Fuentes policiales confirmaron que el operativo se desarrolló según los protocolos establecidos. La fiscalía evalúa la evidencia recolectada para determinar las responsabilidades penales correspondientes.",
+            'p3': "Las autoridades reforzaron la seguridad en la zona mientras continúan las investigaciones. Se esperan nuevas detenciones y avances judiciales conforme avance el proceso legal iniciado."
         },
         'tecnologia': {
             'p1': "El avance tecnológico reportado ha captado la atención de la industria digital y usuarios especializados. Las empresas del sector analizan las implicaciones de esta innovación para sus modelos de negocio.",
             'p2': "Expertos en tecnología señalan que este desarrollo representa un paso significativo en la evolución digital. La adopción de estas nuevas herramientas podría transformar prácticas establecidas en diversos sectores productivos.",
             'p3': "Las proyecciones indican que esta tecnología se integrará progresivamente en el mercado. Los reguladores evalúan marcos normativos para garantizar el uso responsable de estas capacidades."
+        },
+        'ciencia': {
+            'p1': "El hallazgo científico ha generado expectativa en la comunidad académica internacional. Los investigadores del laboratorio publicaron sus resultados en revistas especializadas tras meses de trabajo experimental.",
+            'p2': "Científicos independientes revisan la metodología empleada para validar los hallazgos presentados. La comunidad científica destaca la importancia de este descubrimiento para el avance del conocimiento en la disciplina.",
+            'p3': "Las instituciones educativas planean incorporar estos hallazgos en sus programas académicos. Se esperan nuevas investigaciones que profundicen en las implicaciones prácticas de este descubrimiento."
+        },
+        'salud': {
+            'p1': "La alerta sanitaria ha movilizado a las autoridades de salud y centros médicos especializados. Los equipos médicos trabajan en la atención de pacientes y la implementación de protocolos de prevención establecidos.",
+            'p2': "Especialistas en salud pública analizan la evolución de los casos reportados. Los hospitales mantienen preparados sus sistemas de respuesta ante posibles incrementos en la demanda asistencial.",
+            'p3': "Las autoridades sanitarias emitieron recomendaciones preventivas para la población. Se esperan nuevos informes epidemiológicos que determinen la efectividad de las medidas implementadas."
+        },
+        'medio_ambiente': {
+            'p1': "El evento climático ha afectado significativamente la región reportada, movilizando servicios de emergencia. Los expertos ambientales evalúan el impacto en los ecosistemas locales y la biodiversidad.",
+            'p2': "Observatorios meteorológicos registraron datos históricos relacionados con este fenómeno. Las organizaciones ecologistas llaman a la acción ante la frecuencia creciente de eventos extremos vinculados al cambio climático.",
+            'p3': "Las autoridades ambientales coordinan esfuerzos de mitigación y adaptación. Se esperan nuevas políticas de sostenibilidad mientras la comunidad internacional refuerza compromisos de reducción de emisiones."
         }
     }
     
@@ -397,16 +459,19 @@ def buscar_noticias_categorizadas():
     # 1. NewsAPI en español con palabras clave de categorías
     if NEWS_API_KEY:
         try:
-            # Buscar con términos de alta relevancia
+            # Buscar con términos de alta relevancia (ACTUALIZADO)
             terminos_busqueda = [
-                'presidente OR gobierno OR elecciones',
-                'economía OR inflación OR crisis',
-                'guerra OR conflicto OR ataque',
-                'tecnología OR inteligencia artificial',
-                'deportes OR fútbol OR campeonato'
+                'presidente OR gobierno OR elecciones OR congreso',
+                'economía OR inflación OR crisis OR mercado financiero',
+                'guerra OR conflicto armado OR ataque OR defensa',
+                'inteligencia artificial OR tecnología OR ciberseguridad',
+                'crimen OR narcotráfico OR justicia OR tribunal',
+                'cambio climático OR medio ambiente OR sostenibilidad',
+                'pandemia OR vacuna OR salud pública',
+                'descubrimiento científico OR espacio OR investigación'
             ]
             
-            for termino in random.sample(terminos_busqueda, min(2, len(terminos_busqueda))):
+            for termino in random.sample(terminos_busqueda, min(3, len(terminos_busqueda))):
                 try:
                     resp = requests.get(
                         "https://newsapi.org/v2/everything",
@@ -502,9 +567,9 @@ def buscar_noticias_categorizadas():
         if ya_publicada(art['url'], art['title']):
             continue
         
-        # Priorizar ciertas categorías
+        # Priorizar ciertas categorías (ACTUALIZADO)
         cat = art.get('categoria_detectada', 'general')
-        art['prioridad'] = 2 if cat in ['politica', 'economia', 'mundo', 'deportes'] else 1
+        art['prioridad'] = 3 if cat in ['politica', 'economia', 'internacional', 'guerra_defensa'] else 2 if cat in ['seguridad', 'tecnologia'] else 1
         
         nuevas.append(art)
         print(f"   ✅ [{cat}] {art['title'][:45]}...")
@@ -540,21 +605,21 @@ def publicar_completo(titulo, texto, img_path, categoria):
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Hashtags según categoría - CORREGIDO: comillas completas
+    # Hashtags según categoría (ACTUALIZADO)
     hashtags_cat = {
-        'politica': '#Política #Gobierno #Actualidad',
-        'economia': '#Economía #Finanzas #Negocios',
-        'mundo': '#Internacional #Mundo #Geopolítica',
-        'seguridad': '#Seguridad #Justicia #Policiales',
-        'tecnologia': '#Tecnología #Innovación #IA',
-        'salud': '#Salud #Medicina #Bienestar',
-        'medio_ambiente': '#MedioAmbiente #Clima #Sostenibilidad',
-        'ciencia': '#Ciencia #Investigación #Descubrimiento',
-        'deportes': '#Deportes #Fútbol #Competición',
-        'tendencias': '#Viral #Tendencias #RedesSociales'
+        'politica': '#Política #Gobierno #Congreso #ActualidadPolítica',
+        'economia': '#Economía #Finanzas #Negocios #Mercados',
+        'internacional': '#Internacional #Mundo #Diplomacia #Geopolítica',
+        'guerra_defensa': '#Defensa #SeguridadNacional #Militar #Conflicto',
+        'seguridad': '#Seguridad #Justicia #Policiales #OrdenPúblico',
+        'tecnologia': '#Tecnología #Innovación #IA #Digital',
+        'ciencia': '#Ciencia #Investigación #Descubrimiento #Saberes',
+        'salud': '#Salud #Medicina #Bienestar #Sanidad',
+        'medio_ambiente': '#MedioAmbiente #Clima #Sostenibilidad #Naturaleza',
+        'general': '#Noticias #Actualidad #Hoy #Información'
     }
     
-    hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad #Hoy')
+    hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad')
     
     # Asegurar que el texto no esté cortado al final
     texto_limpio = texto.strip()

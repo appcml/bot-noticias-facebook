@@ -298,9 +298,9 @@ REGLAS OBLIGATORIAS:
 5. Estilo periodístico objetivo y formal
 
 FORMATO EXACTO:
-TITULAR: [Máximo 90 caracteres, atractivo, estilo EFE]
+TITULAR: [Máximo 150 caracteres, atractivo, estilo EFE]
 
-LEAD: [2-4 oraciones completas con: qué pasó, quién, cuándo, dónde. Máximo 400 caracteres]
+LEAD: [2-4 oraciones completas con: qué pasó, quién, cuándo, dónde. Máximo 400 caracteres, sin cortes]
 
 DESARROLLO:
 CIERRE: [Próximos pasos esperados. Fuente: {fuente}]
@@ -351,7 +351,7 @@ IMPORTANTE:
                         content = data['choices'][0]['message']['content']
                         
                         # Extraer secciones
-                        titular = extraer_campo(content, 'TITULAR:', 'LEAD:') or titulo[:90]
+                        titular = extraer_campo(content, 'TITULAR:', 'LEAD:') or titulo[:150]
                         lead = extraer_campo(content, 'LEAD:', 'DESARROLLO:')
                         
                         # Extraer cuerpo completo (4 párrafos)
@@ -798,5 +798,6 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         exit(1)
+
 
 

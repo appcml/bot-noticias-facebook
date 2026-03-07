@@ -5,7 +5,7 @@ import hashlib
 import os
 import json
 import feedparser
-from datetime import datetime
+from datetime import datetime, timedelta
 from PIL import Image
 from io import BytesIO
 
@@ -18,154 +18,137 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
+# Países para hashtags
+PAISES_HASHTAG = {
+    'united states': '#EEUU', 'usa': '#EEUU', 'estados unidos': '#EEUU',
+    'spain': '#España', 'españa': '#España',
+    'mexico': '#México', 'méxico': '#México',
+    'argentina': '#Argentina',
+    'colombia': '#Colombia',
+    'chile': '#Chile',
+    'peru': '#Perú', 'perú': '#Perú',
+    'venezuela': '#Venezuela',
+    'brazil': '#Brasil', 'brasil': '#Brasil',
+    'france': '#Francia', 'francia': '#Francia',
+    'germany': '#Alemania', 'alemania': '#Alemania',
+    'italy': '#Italia', 'italia': '#Italia',
+    'uk': '#ReinoUnido', 'united kingdom': '#ReinoUnido',
+    'china': '#China',
+    'russia': '#Rusia', 'rusia': '#Rusia',
+    'ukraine': '#Ucrania', 'ucrania': '#Ucrania',
+    'israel': '#Israel',
+    'iran': '#Irán', 'irán': '#Irán',
+    'japan': '#Japón', 'japón': '#Japón',
+    'india': '#India',
+    'canada': '#Canadá',
+    'australia': '#Australia',
+    'south korea': '#CoreaDelSur',
+    'north korea': '#CoreaDelNorte',
+    'syria': '#Siria',
+    'lebanon': '#Líbano', 'líbano': '#Líbano',
+    'turkey': '#Turquía', 'turquía': '#Turquía',
+    'poland': '#Polonia',
+    'ukraine': '#Ucrania'
+}
+
 print("="*60)
 print("🚀 BOT DE NOTICIAS - Verdad Hoy")
 print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
 print("="*60)
 
 # CARGAR HISTORIAL
-historial = {'urls': [], 'titulos': [], 'ultima_publicacion': None}
+historial = {'urls': [], 'titulos': [], 'fechas': {}}
 
 if os.path.exists(HISTORIAL_FILE):
     try:
         with open(HISTORIAL_FILE, 'r', encoding='utf-8') as f:
             historial = json.load(f)
-        print(f"📚 Historial: {len(historial['urls'])} noticias")
+        print(f"📚 Historial: {len(historial['urls'])} noticias guardadas")
     except Exception as e:
-        print(f"⚠️ Error historial: {e}")
+        print(f"⚠️ Error cargando historial: {e}")
 
 def guardar_historial(url, titulo):
+    """Guarda la noticia en el historial"""
     historial['urls'].append(url)
     historial['titulos'].append(titulo[:100])
-    historial['ultima_publicacion'] = datetime.now().isoformat()
-    historial['urls'] = historial['urls'][-500:]
-    historial['titulos'] = historial['titulos'][-500:]
+    historial['fechas'][url] = datetime.now().isoformat()
+    
+    # Mantener solo últimas 200
+    historial['urls'] = historial['urls'][-200:]
+    historial['titulos'] = historial['titulos'][-200:]
     
     try:
         with open(HISTORIAL_FILE, 'w', encoding='utf-8') as f:
             json.dump(historial, f, ensure_ascii=False, indent=2)
+        print(f"💾 Guardada en historial")
     except Exception as e:
         print(f"❌ Error guardando: {e}")
 
 def get_url_id(url):
+    """Genera ID único para URL"""
     url_limpia = str(url).lower().strip().rstrip('/')
-    return hashlib.md5(url_limpia.encode()).hexdigest()[:16]
+    return hashlib.md5(url_limpia.encode()).hexdigest()[:12]
 
 def ya_publicada(url, titulo):
+    """Verifica si la noticia ya fue publicada"""
     url_id = get_url_id(url)
-    if url_id in [get_url_id(u) for u in historial['urls']]:
+    urls_existentes = [get_url_id(u) for u in historial['urls']]
+    
+    if url_id in urls_existentes:
+        print(f"   ⛔ Ya publicada (URL)")
         return True
+    
+    # Verificar título similar
+    titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:30]
+    for t in historial['titulos']:
+        t_simple = re.sub(r'[^\w]', '', t.lower())[:30]
+        if titulo_simple and t_simple:
+            coincidencia = sum(1 for a, b in zip(titulo_simple, t_simple) if a == b)
+            if len(titulo_simple) > 10 and coincidencia / len(titulo_simple) > 0.8:
+                print(f"   ⛔ Título muy similar")
+                return True
+    
     return False
 
+def detectar_pais(titulo, descripcion):
+    """Detecta el país de la noticia para el hashtag"""
+    texto = f"{titulo} {descripcion}".lower()
+    
+    for pais, hashtag in PAISES_HASHTAG.items():
+        if pais in texto:
+            return hashtag
+    
+    # Detectar por contexto
+    if any(x in texto for x in ['washington', 'white house', 'pentagon', 'congress']):
+        return '#EEUU'
+    if any(x in texto for x in ['madrid', 'barcelona', 'sánchez', 'sanchez']):
+        return '#España'
+    if any(x in texto for x in ['london', 'uk parliament', 'downing street']):
+        return '#ReinoUnido'
+    
+    return '#Internacional'
+
 def limpiar_texto(texto):
-    """Limpia el texto de URLs y HTML"""
+    """Limpia texto de URLs y caracteres raros"""
     if not texto:
         return ""
     texto = re.sub(r'http[s]?://\S+', '', texto)
     texto = re.sub(r'<[^>]+>', '', texto)
+    texto = re.sub(r'[^\w\s.,;:!?áéíóúÁÉÍÓÚñÑüÜ\-]', ' ', texto)
     texto = re.sub(r'\s+', ' ', texto).strip()
     return texto
 
-def generar_articulo_periodistico(titulo, descripcion, fuente):
-    """
-    Genera un artículo periodístico con formato profesional.
-    Estructura: Titular + Lead + 3 párrafos + Cierre
-    Longitud: 500-1500 caracteres
-    """
+def traducir_a_espanol(texto):
+    """Traduce texto a español usando IA"""
+    if not OPENROUTER_API_KEY:
+        return texto
     
-    print(f"\n   📝 Procesando: {titulo[:50]}...")
-    
-    # Limpiar entrada
-    titulo_limpio = limpiar_texto(titulo)
-    desc_limpia = limpiar_texto(descripcion)
-    
-    # Extraer información clave
-    info = extraer_datos_clave(titulo_limpio, desc_limpia)
-    
-    # Generar con IA o manual
-    if OPENROUTER_API_KEY:
-        resultado = generar_con_ia_formato(titulo_limpio, desc_limpia, fuente, info)
-        if resultado:
-            return resultado
-    
-    return generar_manual_formato(titulo_limpio, desc_limpia, fuente, info)
-
-def extraer_datos_clave(titulo, descripcion):
-    """Extrae quién, qué, cuándo, dónde"""
-    texto = f"{titulo} {descripcion}"
-    
-    # Detectar sujeto (organización/persona)
-    sujetos = []
-    palabras = texto.split()
-    for i, palabra in enumerate(palabras):
-        if palabra[0].isupper() and len(palabra) > 3:
-            if i > 0 and palabras[i-1][0].isupper():
-                sujetos.append(f"{palabras[i-1]} {palabra}")
-            else:
-                sujetos.append(palabra)
-    
-    actor = sujetos[0] if sujetos else "Las autoridades"
-    
-    # Detectar acción
-    acciones = ['anuncian', 'confirman', 'reportan', 'acuerdan', 'destacan', 
-                'indican', 'revelan', 'advierten', 'denuncian', 'anuncia', 
-                'confirma', 'reporta', 'acuerda']
-    accion = next((a for a in acciones if a in texto.lower()), "informan")
-    
-    # Detectar tema
-    temas_clave = ['acuerdo', 'crisis', 'conflicto', 'reforma', 'inversión',
-                   'elecciones', 'sanciones', 'tratado', 'investigación']
-    tema = next((t for t in temas_clave if t in texto.lower()), "desarrollo importante")
-    
-    return {'actor': actor, 'accion': accion, 'tema': tema}
-
-def generar_con_ia_formato(titulo, descripcion, fuente, info):
-    """Genera artículo con IA con formato específico"""
     try:
-        prompt = f"""Eres un redactor de agencia EFE. Escribe un ARTÍCULO PERIODÍSTICO en español.
+        prompt = f"""Traduce este texto al español de forma natural y periodística:
 
-DATOS:
-Actor: {info['actor']}
-Acción: {info['accion']}
-Tema: {info['tema']}
-Fuente: {fuente}
+{texto[:800]}
 
-ESTRUCTURA OBLIGATORIA (5 bloques separados por líneas en blanco):
-
-┌─ TITULAR (máx 80 caracteres, informativo)
-
-┌─ LEAD (2-3 oraciones, máx 140 caracteres, el dato más importante)
-
-┌─ PÁRRAFO 1 (2-3 oraciones, contexto/antecedentes)
-
-┌─ PÁRRAFO 2 (2-3 oraciones, datos específicos/reacciones)
-
-┌─ PÁRRAFO 3 (2-3 oraciones, análisis/implicaciones)
-
-┌─ CIERRE (1 oración, fuente)
-
-REGLAS ESTRICTAS:
-- Cada bloque debe ser UN PÁRRAFO separado
-- Usa doble salto de línea entre párrafos
-- Cada oración termina en PUNTO
-- Longitud total: 500-1500 caracteres
-- Sin repeticiones de frases
-- Lenguaje periodístico neutro
-
-FORMATO DE SALIDA:
-TITULAR: [titular]
-
-LEAD: [lead]
-
-P1: [párrafo 1]
-
-P2: [párrafo 2]
-
-P3: [párrafo 3]
-
-CIERRE: [cierre]
-
-FIN"""
+Traducción profesional:"""
 
         response = requests.post(
             'https://openrouter.ai/api/v1/chat/completions',
@@ -178,155 +161,236 @@ FIN"""
             json={
                 'model': 'mistralai/mistral-7b-instruct:free',
                 'messages': [{'role': 'user', 'content': prompt}],
-                'temperature': 0.2,
-                'max_tokens': 1200
+                'temperature': 0.3,
+                'max_tokens': 800
             },
-            timeout=60
+            timeout=45
         )
         
         if response.status_code == 200:
             data = response.json()
             if 'choices' in data:
-                content = data['choices'][0]['message']['content']
-                
-                # Extraer secciones
-                titular = extraer_bloque(content, 'TITULAR:', 'LEAD:')
-                lead = extraer_bloque(content, 'LEAD:', 'P1:')
-                p1 = extraer_bloque(content, 'P1:', 'P2:')
-                p2 = extraer_bloque(content, 'P2:', 'P3:')
-                p3 = extraer_bloque(content, 'P3:', 'CIERRE:')
-                cierre = extraer_bloque(content, 'CIERRE:', 'FIN')
-                
-                # Limpiar
-                titular = limpiar_bloque(titular) or titulo[:80]
-                lead = limpiar_bloque(lead)
-                p1 = limpiar_bloque(p1)
-                p2 = limpiar_bloque(p2)
-                p3 = limpiar_bloque(p3)
-                cierre = limpiar_bloque(cierre) or f"Fuente: {fuente}."
-                
-                # Construir con saltos de línea dobles
-                partes = [p for p in [lead, p1, p2, p3, cierre] if p and len(p) > 20]
-                
-                if len(partes) >= 4:
-                    texto_final = '\n\n'.join(partes)
+                traduccion = data['choices'][0]['message']['content'].strip()
+                if len(traduccion) > 50:
+                    return traduccion
                     
-                    if 500 <= len(texto_final) <= 1500:
-                        print(f"   ✅ IA: {len(texto_final)} caracteres, {len(partes)} párrafos")
-                        return {'titular': titular[:100], 'texto': texto_final}
-                        
     except Exception as e:
-        print(f"   ⚠️ Error IA: {e}")
+        print(f"   ⚠️ Error traducción: {e}")
     
-    return None
+    return texto
 
-def extraer_bloque(texto, inicio, fin):
-    """Extrae un bloque de texto entre marcadores"""
+def redactar_noticia_profesional(titulo_original, descripcion_original, fuente):
+    """
+    Redacta noticia con estilo periodístico profesional.
+    Usa IA para crear texto completamente nuevo en español.
+    """
+    
+    print(f"\n   📝 Redactando noticia profesional...")
+    print(f"   📰 Original: {titulo_original[:60]}")
+    
+    # Traducir contenido a español primero
+    titulo_es = traducir_a_espanol(titulo_original)
+    descripcion_es = traducir_a_espanol(descripcion_original)
+    
+    # Detectar país para hashtag
+    pais_hashtag = detectar_pais(titulo_original, descripcion_original)
+    
+    if OPENROUTER_API_KEY:
+        # PROMPT PROFESIONAL PARA LA IA
+        prompt = f"""Actúa como periodista profesional de un medio digital serio.
+
+DATOS DE LA NOTICIA:
+Título: {titulo_es}
+Descripción: {descripcion_es}
+Fuente: {fuente}
+
+INSTRUCCIONES ESTRICTAS:
+
+1. Escribe una NOTICIA COMPLETAMENTE NUEVA en español.
+2. NO copies el texto original.
+3. Redacta con estilo periodístico profesional.
+4. Tono: neutral, informativo, claro y ordenado.
+5. Longitud: entre 500 y 900 caracteres totales.
+
+ESTRUCTURA OBLIGATORIA:
+
+TÍTULO (máx 80 caracteres, llamativo e informativo)
+
+PÁRRAFO ÚNICO (4-6 oraciones que expliquen los hechos principales):
+- Primera oración: el dato más importante (quién, qué, cuándo)
+- Oraciones siguientes: contexto, detalles y reacciones
+- Última oración: implicación o próximo paso
+
+HASHTAGS (exactamente 5 hashtags al final):
+- 4 hashtags temáticos (#politica #economia #mundo #deportes #tecnologia #salud etc.)
+- 1 hashtag del país: {pais_hashtag}
+
+REGLAS:
+- Español nativo, no traducción literal
+- Oraciones completas con punto final
+- Sin párrafos separados, solo UN párrafo de texto
+- Sin frases genéricas como "se esperan actualizaciones"
+- Sin repetir información
+
+FORMATO DE SALIDA EXACTO:
+
+TITULO: [título aquí]
+
+TEXTO: [párrafo único aquí]
+
+HASHTAGS: [5 hashtags separados por espacio]
+
+FIN"""
+
+        try:
+            response = requests.post(
+                'https://openrouter.ai/api/v1/chat/completions',
+                headers={
+                    'Authorization': f'Bearer {OPENROUTER_API_KEY}',
+                    'HTTP-Referer': 'https://github.com',
+                    'X-Title': 'Bot Noticias',
+                    'Content-Type': 'application/json'
+                },
+                json={
+                    'model': 'mistralai/mistral-7b-instruct:free',
+                    'messages': [{'role': 'user', 'content': prompt}],
+                    'temperature': 0.4,
+                    'max_tokens': 1000
+                },
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if 'choices' in data and len(data['choices']) > 0:
+                    content = data['choices'][0]['message']['content']
+                    
+                    # Extraer partes
+                    titulo = extraer_seccion(content, 'TITULO:', 'TEXTO:')
+                    texto = extraer_seccion(content, 'TEXTO:', 'HASHTAGS:')
+                    hashtags = extraer_seccion(content, 'HASHTAGS:', 'FIN')
+                    
+                    # Limpiar
+                    titulo = limpiar_texto(titulo)
+                    texto = limpiar_texto(texto)
+                    hashtags = limpiar_texto(hashtags)
+                    
+                    # Verificar calidad
+                    if (titulo and texto and hashtags and 
+                        500 <= len(texto) <= 900 and 
+                        len(titulo) < 100):
+                        
+                        print(f"   ✅ IA redactó: {len(texto)} caracteres")
+                        return {
+                            'titulo': titulo,
+                            'texto': texto,
+                            'hashtags': hashtags,
+                            'pais': pais_hashtag
+                        }
+                        
+        except Exception as e:
+            print(f"   ⚠️ Error IA: {e}")
+    
+    # Fallback: generar manualmente
+    return redactar_manual(titulo_es, descripcion_es, fuente, pais_hashtag)
+
+def extraer_seccion(texto, inicio, fin):
+    """Extrae una sección del texto"""
     try:
         if inicio in texto:
             parte = texto.split(inicio)[1]
             if fin in parte:
                 return parte.split(fin)[0].strip()
-            return parte.strip()[:400]
+            return parte.strip()[:500]
     except:
         pass
     return ""
 
-def limpiar_bloque(texto):
-    """Limpia un bloque de texto"""
-    if not texto:
-        return ""
-    # Eliminar prefijos como "P1:", "P2:", etc.
-    texto = re.sub(r'^(P\d+|TITULAR|LEAD|CIERRE):\s*', '', texto, flags=re.IGNORECASE)
-    texto = texto.strip()
-    # Asegurar punto final
-    if texto and not texto.endswith(('.', '!', '?')):
-        texto += "."
-    return texto
-
-def generar_manual_formato(titulo, descripcion, fuente, info):
-    """Genera artículo manual con formato profesional"""
-    print(f"   📝 Generando formato manual...")
+def redactar_manual(titulo, descripcion, fuente, pais_hashtag):
+    """Genera noticia manualmente si la IA falla"""
+    print(f"   📝 Redacción manual...")
     
-    # TITULAR
-    titular = titulo[:80] if len(titulo) > 20 else f"{info['actor']} {info['accion']} {info['tema']}"
+    # Crear título
+    titulo_final = titulo[:80] if len(titulo) > 20 else "Nuevo acontecimiento internacional"
     
-    # LEAD (2-3 oraciones)
-    oraciones = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 15]
+    # Crear párrafo único
+    oraciones = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 20]
+    
     if len(oraciones) >= 2:
-        lead = f"{oraciones[0]}. {oraciones[1]}."
+        parrafo = f"{oraciones[0]}. {oraciones[1]}."
     elif oraciones:
-        lead = f"{oraciones[0]}. Las autoridades confirmaron la información oficialmente."
+        parrafo = f"{oraciones[0]}. Las autoridades competentes confirmaron la información oficialmente."
     else:
-        lead = f"{info['actor']} {info['accion']} un importante {info['tema']}. El hecho fue confirmado por fuentes oficiales en las últimas horas."
+        parrafo = f"Se reporta un importante acontecimiento de relevancia internacional. Las autoridades competentes han confirmado la información en las últimas horas."
     
-    # Limitar lead
-    if len(lead) > 140:
-        lead = lead[:137].rsplit(' ', 1)[0] + "."
-    
-    # Párrafos de desarrollo (2-3 oraciones cada uno)
-    p1 = f"El acontecimiento se produce en un contexto de desarrollos recientes en la materia. Las partes involucradas habían mostrado posiciones previas sobre este tema específico."
-    
-    p2 = f"Los detalles específicos del {info['tema']} se conocerán en los próximos días. Los involucrados preparan los pasos siguientes según lo establecido en el comunicado oficial."
-    
-    p3 = f"Los observadores destacan la trascendencia de este acontecimiento en el contexto actual. Las consecuencias a mediano plazo dependerán de los desarrollos siguientes."
-    
-    # CIERRE
-    cierre = f"Las autoridades competentes continuarán informando sobre los avances. Fuente: {fuente}."
-    
-    # Ajustar longitud si es necesario
-    partes = [lead, p1, p2, p3, cierre]
-    texto = '\n\n'.join(partes)
-    
-    # Si es muy corto, expandir
-    while len(texto) < 500:
-        p_extra = f"Los expertos consultados destacan la relevancia de este {info['tema']} en el escenario actual."
-        partes.insert(3, p_extra)
-        texto = '\n\n'.join(partes)
-        if len(texto) >= 500:
+    # Expandir si es muy corto
+    while len(parrafo) < 500:
+        parrafo += " Los expertos consultados destacan la trascendencia de este hecho en el contexto actual."
+        if len(parrafo) >= 500:
             break
     
-    # Si es muy largo, recortar inteligentemente
-    if len(texto) > 1500:
-        texto_cortado = texto[:1497]
-        ultimo_punto = texto_cortado.rfind('.')
-        if ultimo_punto > 1000:
-            texto = texto_cortado[:ultimo_punto+1] + f"\n\n{cierre}"
-        else:
-            texto = texto[:1500]
+    # Cortar si es muy largo
+    if len(parrafo) > 900:
+        parrafo = parrafo[:897].rsplit(' ', 1)[0] + "."
     
-    print(f"   ✅ Manual: {len(texto)} caracteres")
-    return {'titular': titular[:100], 'texto': texto}
+    # Hashtags por defecto
+    hashtags = f"#Noticias #Actualidad #Mundo {pais_hashtag} #Hoy"
+    
+    print(f"   ✅ Manual: {len(parrafo)} caracteres")
+    return {
+        'titulo': titulo_final,
+        'texto': parrafo,
+        'hashtags': hashtags,
+        'pais': pais_hashtag
+    }
 
-def buscar_noticias():
-    """Busca noticias de fuentes variadas"""
-    print("\n🔍 Buscando noticias...")
+def buscar_noticias_recientes():
+    """Busca noticias de las últimas 24 horas"""
+    print("\n🔍 Buscando noticias recientes...")
     noticias = []
+    
+    fecha_limite = datetime.now() - timedelta(hours=24)
     
     # NewsAPI
     if NEWS_API_KEY:
         try:
-            resp = requests.get(
+            response = requests.get(
                 "https://newsapi.org/v2/top-headlines",
-                params={'language': 'en', 'pageSize': 15, 'apiKey': NEWS_API_KEY},
+                params={
+                    'language': 'en',
+                    'pageSize': 20,
+                    'apiKey': NEWS_API_KEY
+                },
                 timeout=15
             )
-            data = resp.json()
+            data = response.json()
             if data.get('status') == 'ok':
-                noticias.extend(data.get('articles', []))
-                print(f"   📡 NewsAPI: {len(data.get('articles', []))}")
+                for art in data.get('articles', []):
+                    # Verificar fecha
+                    fecha_str = art.get('publishedAt', '')
+                    try:
+                        fecha_art = datetime.fromisoformat(fecha_str.replace('Z', '+00:00'))
+                        if fecha_art >= fecha_limite:
+                            noticias.append(art)
+                    except:
+                        noticias.append(art)  # Si no puede parsear, incluir igual
+                print(f"   📡 NewsAPI: {len(noticias)} noticias")
         except Exception as e:
             print(f"   ⚠️ NewsAPI: {e}")
     
     # GNews
-    if GNEWS_API_KEY and len(noticias) < 5:
+    if GNEWS_API_KEY and len(noticias) < 10:
         try:
-            resp = requests.get(
+            response = requests.get(
                 "https://gnews.io/api/v4/top-headlines",
-                params={'lang': 'en', 'max': 15, 'apikey': GNEWS_API_KEY},
+                params={
+                    'lang': 'en',
+                    'max': 15,
+                    'apikey': GNEWS_API_KEY
+                },
                 timeout=15
             )
-            data = resp.json()
+            data = response.json()
             if 'articles' in data:
                 for a in data['articles']:
                     noticias.append({
@@ -334,13 +398,14 @@ def buscar_noticias():
                         'description': a.get('description'),
                         'url': a.get('url'),
                         'urlToImage': a.get('image'),
-                        'source': {'name': a.get('source', {}).get('name', 'GNews')}
+                        'source': {'name': a.get('source', {}).get('name', 'GNews')},
+                        'publishedAt': datetime.now().isoformat()
                     })
-                print(f"   📡 GNews: {len(data['articles'])}")
+                print(f"   📡 GNews: {len(data['articles'])} noticias")
         except Exception as e:
             print(f"   ⚠️ GNews: {e}")
     
-    # RSS
+    # RSS feeds
     rss_feeds = [
         'http://feeds.bbci.co.uk/news/world/rss.xml',
         'https://www.reuters.com/rssFeed/worldNews'
@@ -349,7 +414,8 @@ def buscar_noticias():
     for feed_url in random.sample(rss_feeds, min(2, len(rss_feeds))):
         try:
             feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:3]:
+            for entry in feed.entries[:5]:
+                # Buscar imagen
                 img = ''
                 if hasattr(entry, 'media_content') and entry.media_content:
                     img = entry.media_content[0].get('url', '')
@@ -363,101 +429,116 @@ def buscar_noticias():
                     'description': entry.get('summary', entry.get('description', ''))[:400],
                     'url': entry.get('link'),
                     'urlToImage': img,
-                    'source': {'name': feed.feed.get('title', 'RSS')}
+                    'source': {'name': feed.feed.get('title', 'RSS')},
+                    'publishedAt': datetime.now().isoformat()
                 })
             print(f"   📡 RSS: {feed_url.split('/')[2]}")
         except:
             pass
     
-    print(f"\n📊 Total: {len(noticias)}")
+    print(f"\n📊 Total encontradas: {len(noticias)}")
     
-    # Filtrar
+    # Filtrar nuevas y válidas
     nuevas = []
     for art in noticias:
-        if not art.get('title') or len(art['title']) < 10:
+        if not art.get('title') or len(art['title']) < 15:
             continue
         if "[Removed]" in art['title']:
             continue
+        if not art.get('url'):
+            continue
+        
         if ya_publicada(art['url'], art['title']):
             continue
+        
         nuevas.append(art)
-        print(f"   ✅ {art['title'][:50]}...")
+        print(f"   ✅ Nueva: {art['title'][:50]}...")
     
-    print(f"📊 Nuevas: {len(nuevas)}")
+    print(f"📊 Nuevas válidas: {len(nuevas)}")
     return nuevas[:3]
 
 def descargar_imagen(url):
+    """Descarga imagen de la noticia"""
     if not url or not str(url).startswith('http'):
         return None
     try:
         print(f"   🖼️ Descargando imagen...")
-        resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
-        if resp.status_code == 200:
-            img = Image.open(BytesIO(resp.content))
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
+        if response.status_code == 200:
+            img = Image.open(BytesIO(response.content))
             if img.mode in ('RGBA', 'P'):
                 img = img.convert('RGB')
             img.thumbnail((1200, 1200))
             path = f'/tmp/noticia_{hashlib.md5(str(url).encode()).hexdigest()[:8]}.jpg'
             img.save(path, 'JPEG', quality=85)
+            print(f"   ✅ Imagen descargada")
             return path
     except Exception as e:
         print(f"   ⚠️ Error imagen: {e}")
     return None
 
-def publicar(titulo, texto, img_path):
-    """Publica en Facebook con formato limpio"""
+def publicar_en_facebook(titulo, texto, hashtags, img_path):
+    """Publica en Facebook con formato profesional"""
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
-        print("❌ Faltan credenciales Facebook")
+        print("❌ Faltan credenciales de Facebook")
         return False
     
-    # Limpiar
-    titulo = limpiar_texto(titulo)
-    
-    # Preservar saltos de línea dobles en el texto
-    # Facebook respeta \n\n como separación de párrafos
-    
+    # Construir mensaje final
     mensaje = f"""📰 {titulo}
 
 {texto}
 
-#Noticias #Actualidad
+{hashtags}
 
 — Verdad Hoy: Noticias al minuto"""
     
-    # Preview visual con separación de párrafos
+    # Verificar longitud
+    if len(mensaje) > 2200:
+        texto_cortado = texto[:1800]
+        mensaje = f"""📰 {titulo}
+
+{texto_cortado}
+
+{hashtags}
+
+— Verdad Hoy: Noticias al minuto"""
+    
+    # Preview
     print(f"\n   📝 VISTA PREVIA ({len(mensaje)} caracteres):")
-    print(f"   {'═'*50}")
-    
+    print(f"   {'═'*55}")
     lineas = mensaje.split('\n')
-    for linea in lineas[:15]:
-        if linea.strip() == '':
-            print(f"   ☐ (espacio entre párrafos)")
+    for i, linea in enumerate(lineas[:10]):
+        if i == 0:
+            print(f"   🎯 {linea[:50]}")
+        elif linea.strip() == '':
+            print(f"   ")
         else:
-            preview = linea[:60] + "..." if len(linea) > 60 else linea
+            preview = linea[:52] + "..." if len(linea) > 52 else linea
             print(f"   {preview}")
+    print(f"   {'═'*55}")
     
-    print(f"   {'═'*50}")
-    
+    # Publicar
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
-        print(f"   📤 Publicando...")
+        print(f"   📤 Publicando en Facebook...")
         
         with open(img_path, 'rb') as f:
-            resp = requests.post(
+            response = requests.post(
                 url,
                 files={'file': f},
                 data={'message': mensaje, 'access_token': FB_ACCESS_TOKEN},
                 timeout=60
             )
-            result = resp.json()
+            result = response.json()
             
-            if resp.status_code == 200 and 'id' in result:
-                print(f"   ✅ PUBLICADO: {result['id']}")
+            if response.status_code == 200 and 'id' in result:
+                print(f"   ✅ PUBLICADO EXITOSAMENTE")
+                print(f"   🆔 ID: {result['id']}")
                 return True
             else:
                 error = result.get('error', {}).get('message', str(result))
-                print(f"   ❌ Error: {error}")
+                print(f"   ❌ Error Facebook: {error}")
                 
     except Exception as e:
         print(f"   ❌ Error: {e}")
@@ -465,54 +546,78 @@ def publicar(titulo, texto, img_path):
     return False
 
 def main():
+    """Función principal del bot"""
+    
+    # Verificar configuración
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
-        print("❌ Faltan credenciales de Facebook")
+        print("❌ ERROR: Faltan credenciales de Facebook")
+        print("   Configura FB_PAGE_ID y FB_ACCESS_TOKEN")
         return False
     
-    noticias = buscar_noticias()
+    if not OPENROUTER_API_KEY and not (NEWS_API_KEY or GNEWS_API_KEY):
+        print("❌ ERROR: Se necesita al menos una API de noticias o OpenRouter")
+        return False
+    
+    # Buscar noticias
+    noticias = buscar_noticias_recientes()
     
     if not noticias:
-        print("⚠️ No hay noticias nuevas")
+        print("\n⚠️ No se encontraron noticias nuevas")
         return False
     
-    print(f"\n🎯 Procesando {len(noticias)} noticia(s)")
+    print(f"\n🎯 Intentando publicar {len(noticias)} noticia(s)")
     
     for i, noticia in enumerate(noticias, 1):
         print(f"\n{'='*60}")
-        print(f"📰 NOTICIA {i}/{len(noticias)}")
+        print(f"📰 PROCESANDO NOTICIA {i}/{len(noticias)}")
         print(f"{'='*60}")
         
+        # Descargar imagen
         img_path = descargar_imagen(noticia.get('urlToImage'))
         if not img_path:
-            print("   ⏭️ Sin imagen")
+            print("   ⏭️ Sin imagen disponible, saltando...")
             continue
         
-        resultado = generar_articulo_periodistico(
+        # Redactar noticia profesional
+        resultado = redactar_noticia_profesional(
             noticia['title'],
             noticia.get('description', ''),
             noticia.get('source', {}).get('name', 'Agencias')
         )
         
-        if publicar(resultado['titular'], resultado['texto'], img_path):
+        # Publicar
+        exito = publicar_en_facebook(
+            resultado['titulo'],
+            resultado['texto'],
+            resultado['hashtags'],
+            img_path
+        )
+        
+        if exito:
+            # Guardar en historial
             guardar_historial(noticia['url'], noticia['title'])
+            
+            # Limpiar imagen
             if os.path.exists(img_path):
                 os.remove(img_path)
+            
             print(f"\n{'='*60}")
-            print("✅ ÉXITO")
+            print("✅ PUBLICACIÓN COMPLETADA")
             print(f"{'='*60}")
             return True
         
+        # Limpiar si falló
         if os.path.exists(img_path):
             os.remove(img_path)
     
-    print("\n❌ No se pudo publicar")
+    print("\n❌ No se pudo publicar ninguna noticia")
     return False
 
 if __name__ == "__main__":
     try:
         exit(0 if main() else 1)
     except Exception as e:
-        print(f"\n💥 Error crítico: {e}")
+        print(f"\n💥 ERROR CRÍTICO: {e}")
         import traceback
         traceback.print_exc()
         exit(1)

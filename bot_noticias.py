@@ -1,7 +1,3 @@
-contexto
-# Código corregido del bot de noticias - SIN instrucciones internas y SIN links
-
-codigo_corregido = '''
 import requests
 import random
 import re
@@ -143,12 +139,29 @@ CATEGORIAS = {
     },
     'general': {
         'keywords': [
-            'actualidad', 'noticias', 'última hora', 'urgente', 'confirmado', 'revelan',
-            'histórico', 'importante', 'relevante', 'destacado'
+            'urgente','última hora','impactante','histórico','crisis','tensión','alarma',
+            'confirman','revelan','denuncian','investigan','escándalo','sorpresa',
+            'decisión clave','alerta mundial','cambio histórico','sacude al país',
+            'causa polémica','genera debate','desata críticas','anuncio oficial',
+            'medida urgente','noticia global','noticia internacional','noticia urgente'
         ],
         'feeds': [
             'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
             'https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml',
+            'https://rss.cnn.com/rss/edition.rss',
+            'https://feeds.bbci.co.uk/news/world/rss.xml',
+            'https://www.france24.com/es/rss',
+            'https://www.dw.com/es/actualidad/s-30684/rss',
+            'https://www.eltiempo.com/rss/mundo.xml',
+            'https://www.clarin.com/rss/mundo/',
+            'https://www.latercera.com/feed/',
+            'https://www.infobae.com/feeds/rss/',
+            'https://www.20minutos.es/rss/',
+            'https://www.elconfidencial.com/rss/',
+            'https://www.rtve.es/api/rss/noticias/',
+            'https://www.eldiario.es/rss/',
+            'https://feeds.skynews.com/feeds/rss/world.xml',
+            'https://www.reutersagency.com/feed/?best-topics=world'
         ]
     }
 }
@@ -199,9 +212,9 @@ def ya_publicada(url, titulo):
     if url_id in [get_url_id(u) for u in historial['urls']]:
         return True
     
-    titulo_simple = re.sub(r'[^\\w]', '', titulo.lower())[:40]
+    titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
     for t in historial['titulos']:
-        t_simple = re.sub(r'[^\\w]', '', t.lower())[:40]
+        t_simple = re.sub(r'[^\w]', '', t.lower())[:40]
         if titulo_simple and t_simple:
             coincidencia = sum(1 for a, b in zip(titulo_simple, t_simple) if a == b)
             if coincidencia / max(len(titulo_simple), len(t_simple)) > 0.7:
@@ -225,48 +238,68 @@ def detectar_categoria(titulo, descripcion):
     return 'general'
 
 def limpiar_texto_final(texto):
-    """Limpia el texto de instrucciones internas y corchetes"""
+    """
+    Limpieza AGRESIVA de instrucciones internas, corchetes y etiquetas
+    """
     if not texto:
         return texto
     
-    # Eliminar líneas que contienen instrucciones entre corchetes
-    lineas = texto.split('\\n')
+    # Eliminar TODO contenido entre corchetes (incluyendo el contenido interno)
+    texto = re.sub(r'\[.*?\]', '', texto, flags=re.DOTALL)
+    
+    # Eliminar líneas que contienen instrucciones de párrafo
+    lineas = texto.split('\n')
     lineas_limpias = []
     
     for linea in lineas:
-        linea = linea.strip()
-        # Saltar líneas vacías o que son solo instrucciones
-        if not linea:
+        linea_strip = linea.strip()
+        
+        # Saltar líneas vacías
+        if not linea_strip:
             continue
-        if re.match(r'^\\[.*?\\]$', linea):  # [Algo entre corchetes]
+        
+        # Saltar si es instrucción de párrafo (varios patrones)
+        if re.match(r'^\[?Párrafo\s*\d+', linea_strip, re.IGNORECASE):
             continue
-        if 'Párrafo' in linea and ':' in linea and len(linea) < 50:  # Instrucciones de párrafo
+        if 'caracteres' in linea_strip.lower() and len(linea_strip) < 100:
             continue
-        if linea.startswith('[') and linea.endswith(']'):
+        if re.match(r'^\[?(Contexto|Detalles|Análisis|Desarrollo)', linea_strip, re.IGNORECASE):
             continue
+        
         lineas_limpias.append(linea)
     
-    texto_limpio = '\\n\\n'.join(lineas_limpias)
+    texto = '\n'.join(lineas_limpias)
     
-    # Eliminar corchetes sueltos que puedan quedar
-    texto_limpio = re.sub(r'\\[.*?\\]', '', texto_limpio)
+    # Eliminar palabras tipo "Párrafo 1" sueltas
+    texto = re.sub(r'Párrafo\s*\d+:?', '', texto, flags=re.IGNORECASE)
+    
+    # Eliminar instrucciones comunes de IA
+    texto = re.sub(r'Lead:?', '', texto, flags=re.IGNORECASE)
+    texto = re.sub(r'Titular:?', '', texto, flags=re.IGNORECASE)
+    texto = re.sub(r'Desarrollo:?', '', texto, flags=re.IGNORECASE)
+    texto = re.sub(r'Introducción:?', '', texto, flags=re.IGNORECASE)
+    texto = re.sub(r'Cuerpo:?', '', texto, flags=re.IGNORECASE)
+    texto = re.sub(r'CIERRE:?', '', texto, flags=re.IGNORECASE)
+    
+    # Eliminar cualquier corchete residual
+    texto = texto.replace('[', '').replace(']', '')
     
     # Limpiar espacios múltiples
-    texto_limpio = re.sub(r'\\s+', ' ', texto_limpio)
+    texto = re.sub(r'\s+', ' ', texto)
     
     # Asegurar que no termine cortado
-    texto_limpio = texto_limpio.strip()
-    if texto_limpio.endswith(('en', 'de', 'la', 'el', 'un', 'una', 'a', 'con', 'por', 'para')):
-        # Buscar último punto completo
-        ultimo_punto = max(texto_limpio.rfind('.'), texto_limpio.rfind('!'), texto_limpio.rfind('?'))
-        if ultimo_punto > len(texto_limpio) * 0.7:  # Si hay un punto después del 70% del texto
-            texto_limpio = texto_limpio[:ultimo_punto+1]
+    texto = texto.strip()
+    if texto.endswith(('en', 'de', 'la', 'el', 'un', 'una', 'a', 'con', 'por', 'para')):
+        # Buscar último punto
+        ultimo_punto = max(texto.rfind('.'), texto.rfind('!'), texto.rfind('?'))
+        if ultimo_punto > len(texto) * 0.7:
+            texto = texto[:ultimo_punto+1]
     
-    return texto_limpio.strip()
+    return texto.strip()
 
 def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     """Genera redacción periodística COMPLETA usando IA gratuita."""
-    print(f"\\n   📝 Procesando: {titulo[:50]}...")
+    print(f"\n   📝 Procesando: {titulo[:50]}...")
     print(f"   🏷️ Categoría: {categoria}")
     
     desc_limpia = re.sub(r'<[^>]+>', '', str(descripcion)).strip()
@@ -276,15 +309,19 @@ def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     if OPENROUTER_API_KEY:
         print("   🤖 Generando con IA...")
         resultado = generar_con_ia(titulo, desc_limpia, fuente, categoria)
-        if resultado and len(resultado['texto']) > 500:
+        if resultado and len(resultado['texto']) > 400:
+            # Limpieza final exhaustiva
+            resultado['texto'] = limpiar_texto_final(resultado['texto'])
+            resultado['titular'] = limpiar_texto_final(resultado['titular'])
             return resultado
         print("   ⚠️ IA falló, usando plantilla...")
     
     return plantilla_mejorada(titulo, desc_limpia, fuente, categoria)
 
 def generar_con_ia(titulo, descripcion, fuente, categoria):
-    """Genera usando OpenRouter - SIN INSTRUCCIONES EN SALIDA"""
+    """Genera usando OpenRouter - PROMPT SIN CORCHETES NI INSTRUCCIONES INTERNAS"""
     try:
+        # PROMPT LIMPIO - Sin ninguna estructura que la IA pueda copiar
         prompt = f"""Eres un periodista profesional de una agencia internacional de noticias.
 
 Escribe una noticia completa en español neutro.
@@ -297,48 +334,29 @@ Categoría: {categoria}
 
 INSTRUCCIONES:
 
-• Escribe un titular atractivo (máximo 90 caracteres)
+Escribe un titular atractivo (máximo 90 caracteres)
 
-• Luego escribe un breve lead de 2 o 3 oraciones explicando lo más importante.
+Luego escribe un breve lead de 2 o 3 oraciones explicando lo más importante.
 
-• Después desarrolla la noticia en tres párrafos adicionales explicando contexto, detalles y consecuencias.
+Después desarrolla la noticia en tres párrafos adicionales explicando contexto, detalles y consecuencias.
 
-• Termina con una frase corta indicando la fuente de la información.
+Termina con una frase corta indicando la fuente de la información.
 
 REGLAS IMPORTANTES:
 
 NO escribas instrucciones.
-NO escribas etiquetas como "Párrafo 1".
-NO uses corchetes [ ].
+NO escribas etiquetas como Párrafo 1.
+NO uses corchetes.
 NO expliques la estructura.
 
 Solo escribe la noticia completa como lo haría un periodista real.
 
-Longitud total: entre 1200 y 1600 caracteres.
-"""
-4. Usa datos específicos de la descripción si existen
-5. Estilo periodístico objetivo
-
-FORMATO DE SALIDA (solo texto, sin etiquetas ni corchetes):
-
-Primero escribe un TITULAR corto y atractivo (máx 90 caracteres).
-
-Luego escribe el LEAD: 2-3 oraciones con lo esencial (qué, quién, cuándo, dónde).
-
-Después escribe 3 párrafos de desarrollo:
-- Primer párrafo: contexto y antecedentes
-- Segundo párrafo: detalles actuales y datos específicos  
-- Tercer párrafo: análisis e implicaciones
-
-Finalmente un cierre corto con la fuente.
-
-IMPORTANTE: NO uses corchetes [ ] en el texto. NO escribas "Párrafo 1:" ni nada similar. Solo el texto de la noticia."""
+Longitud total: entre 1200 y 1600 caracteres."""
 
         modelos = [
-            "google/gemma-2-9b-it:free",
             "meta-llama/llama-3.1-8b-instruct:free",
-            "mistralai/mistral-7b-instruct:free",
-            "openrouter/free"
+            "google/gemma-2-9b-it:free",
+            "mistralai/mistral-7b-instruct:free"
         ]
         
         headers = {
@@ -370,20 +388,36 @@ IMPORTANTE: NO uses corchetes [ ] en el texto. NO escribas "Párrafo 1:" ni nada
                     if 'choices' in data and len(data['choices']) > 0:
                         content = data['choices'][0]['message']['content']
                         
-                        # Extraer titular (primera línea no vacía)
-                        lineas = [l.strip() for l in content.split('\\n') if l.strip()]
-                        titular = lineas[0] if lineas else titulo[:90]
+                        # Limpieza inmediata al recibir
+                        content = limpiar_texto_final(content)
                         
-                        # El resto es el cuerpo
-                        cuerpo = '\\n\\n'.join(lineas[1:]) if len(lineas) > 1 else content
+                        # Extraer componentes
+                        lineas = [l.strip() for l in content.split('\n') if l.strip()]
                         
-                        # Limpiar instrucciones residuales
+                        # Encontrar titular (primera línea válida)
+                        titular = ""
+                        cuerpo_lineas = []
+                        
+                        for i, linea in enumerate(lineas):
+                            linea_limpia = re.sub(r'^(TITULAR|LEAD|CUERPO|CIERRE|DESARROLLO)\s*[:\\-]?\s*', '', linea, flags=re.I).strip()
+                            
+                            if not titular and len(linea_limpia) > 10 and len(linea_limpia) < 100:
+                                titular = linea_limpia
+                            else:
+                                cuerpo_lineas.append(linea_limpia)
+                        
+                        if not titular:
+                            titular = titulo[:90]
+                        
+                        cuerpo = '\n\n'.join(cuerpo_lineas)
+                        
+                        # Asegurar fuente al final
+                        if fuente.lower() not in cuerpo.lower()[-150:]:
+                            cuerpo += f"\n\nFuente: {fuente}."
+                        
+                        # Limpieza final exhaustiva
                         cuerpo = limpiar_texto_final(cuerpo)
                         titular = limpiar_texto_final(titular)
-                        
-                        # Si no hay fuente al final, agregarla
-                        if fuente.lower() not in cuerpo.lower()[-200:]:
-                            cuerpo += f"\\n\\nFuente: {fuente}."
                         
                         if len(cuerpo) > 400:
                             print(f"   ✅ Éxito: {len(cuerpo)} caracteres")
@@ -402,7 +436,7 @@ IMPORTANTE: NO uses corchetes [ ] en el texto. NO escribas "Párrafo 1:" ni nada
     return None
 
 def plantilla_mejorada(titulo, descripcion, fuente, categoria):
-    """Plantilla periodística limpia SIN instrucciones internas"""
+    """Plantilla SIN INSTRUCCIONES NI CORCHETES - Texto natural puro"""
     print(f"   📝 Usando plantilla...")
     
     # Crear lead natural
@@ -411,14 +445,14 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
     if len(oraciones) >= 2:
         lead = f"{oraciones[0]}. {oraciones[1]}."
     elif len(oraciones) == 1:
-        lead = f"{oraciones[0]}. Las autoridades confirmaron la información en las últimas horas."
+        lead = f"{oraciones[0]}. Las autoridades confirmaron la información."
     else:
         lead = f"Se reporta un importante acontecimiento. Las autoridades confirmaron la información."
     
     if len(lead) > 200:
         lead = lead[:197].rsplit(' ', 1)[0] + "."
     
-    # Textos naturales por categoría (SIN corchetes ni instrucciones)
+    # Textos naturales SIN corchetes ni instrucciones
     desarrollos = {
         'politica': """El hecho ha generado amplia repercusión en los círculos de poder y entre la ciudadanía. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas ante la opinión pública.
 
@@ -481,9 +515,12 @@ Analistas señalan la trascendencia de los hechos reportados. La cobertura infor
 
 Las consecuencias podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis detallado.""")
     
-    cierre = f". Fuente: {fuente}."
+    cierre = f"Se esperan actualizaciones oficiales. Fuente: {fuente}."
     
-    texto_final = f"{lead}\\n\\n{desarrollo}\\n\\n{cierre}"
+    texto_final = f"{lead}\n\n{desarrollo}\n\n{cierre}"
+    
+    # Limpieza final
+    texto_final = limpiar_texto_final(texto_final)
     
     print(f"   ✅ Plantilla: {len(texto_final)} caracteres")
     return {
@@ -492,20 +529,23 @@ Las consecuencias podrían extenderse a diversos ámbitos de la sociedad. Expert
     }
 
 def buscar_noticias_categorizadas():
-    """Busca noticias sin incluir links en el contenido"""
-    print("\\n🔍 Buscando noticias...")
+    """Busca noticias con términos virales"""
+    print("\n🔍 Buscando noticias...")
     noticias = []
     
     if NEWS_API_KEY:
         try:
             terminos = [
-                'presidente gobierno elecciones',
-                'economía inflación crisis',
-                'guerra conflicto militar',
-                'inteligencia artificial tecnología'
+                'última hora crisis política',
+                'economía inflación crisis mundial',
+                'conflicto internacional guerra',
+                'tecnología inteligencia artificial',
+                'decisión del gobierno',
+                'crisis internacional',
+                'anuncio oficial gobierno'
             ]
             
-            for termino in random.sample(terminos, min(2, len(terminos))):
+            for termino in random.sample(terminos, min(3, len(terminos))):
                 try:
                     resp = requests.get(
                         "https://newsapi.org/v2/everything",
@@ -557,7 +597,7 @@ def buscar_noticias_categorizadas():
         for feed in datos['feeds']:
             todas_feeds.append((cat, feed))
     
-    feeds_sel = random.sample(todas_feeds, min(3, len(todas_feeds)))
+    feeds_sel = random.sample(todas_feeds, min(4, len(todas_feeds)))
     
     for cat_feed, feed_url in feeds_sel:
         try:
@@ -567,7 +607,7 @@ def buscar_noticias_categorizadas():
                 if hasattr(entry, 'media_content') and entry.media_content:
                     img = entry.media_content[0].get('url', '')
                 elif 'summary' in entry:
-                    m = re.search(r'src="(https?://[^"]+\\.(?:jpg|jpeg|png))"', entry.summary, re.I)
+                    m = re.search(r'src="(https?://[^"]+\.(?:jpg|jpeg|png))"', entry.summary, re.I)
                     if m:
                         img = m.group(1)
                 
@@ -638,9 +678,12 @@ def publicar_completo(titulo, texto, img_path, categoria):
     
     hashtag = hashtags.get(categoria, '#Noticias')
     
-    # Limpiar cualquier URL residual del texto
-    texto_limpio = re.sub(r'https?://\\S+', '', texto)
-    texto_limpio = limpiar_texto_final(texto_limpio)
+    # Limpieza agresiva del texto
+    texto_limpio = limpiar_texto_final(texto)
+    # Eliminar URLs
+    texto_limpio = re.sub(r'https?://\S+', '', texto_limpio)
+    # Limpieza final
+    texto_limpio = re.sub(r'\s+', ' ', texto_limpio).strip()
     
     mensaje = f"""📰 {titulo}
 
@@ -648,11 +691,11 @@ def publicar_completo(titulo, texto, img_path, categoria):
 
 {hashtag}
 
-— Verdad Hoy"""
+— Verdad Hoy: Noticias al Minuto"""
     
     # Verificar longitud
     if len(mensaje) > 2000:
-        disponible = 2000 - len(titulo) - len(hashtag) - 30
+        disponible = 2000 - len(titulo) - len(hashtag) - 40
         texto_limpio = texto_limpio[:disponible].rsplit(' ', 1)[0] + "."
         mensaje = f"""📰 {titulo}
 
@@ -660,11 +703,11 @@ def publicar_completo(titulo, texto, img_path, categoria):
 
 {hashtag}
 
-— Verdad Hoy"""
+— Verdad Hoy: Noticias al Minuto"""
     
-    print(f"\\n   📝 MENSAJE ({len(mensaje)} chars):")
+    print(f"\n   📝 MENSAJE ({len(mensaje)} chars):")
     print(f"   {'='*50}")
-    for linea in mensaje.split('\\n')[:6]:
+    for linea in mensaje.split('\n')[:6]:
         print(f"   {linea[:60]}{'...' if len(linea) > 60 else ''}")
     print(f"   {'='*50}")
     
@@ -703,10 +746,10 @@ def main():
         print("⚠️ No hay noticias nuevas")
         return False
     
-    print(f"\\n🎯 Procesando {len(noticias)} noticia(s)...")
+    print(f"\n🎯 Procesando {len(noticias)} noticia(s)...")
     
     for i, noticia in enumerate(noticias, 1):
-        print(f"\\n{'='*60}")
+        print(f"\n{'='*60}")
         print(f"📰 NOTICIA {i}/{len(noticias)}")
         print(f"{'='*60}")
         
@@ -728,7 +771,7 @@ def main():
             guardar_historial(noticia['url'], noticia['title'], categoria)
             if os.path.exists(img_path):
                 os.remove(img_path)
-            print(f"\\n{'='*60}")
+            print(f"\n{'='*60}")
             print("✅ ÉXITO")
             print(f"{'='*60}")
             return True
@@ -736,18 +779,14 @@ def main():
         if os.path.exists(img_path):
             os.remove(img_path)
     
-    print("\\n❌ No se pudo publicar")
+    print("\n❌ No se pudo publicar")
     return False
 
 if __name__ == "__main__":
     try:
         exit(0 if main() else 1)
     except Exception as e:
-        print(f"\\n💥 Error crítico: {e}")
+        print(f"\n💥 Error crítico: {e}")
         import traceback
         traceback.print_exc()
         exit(1)
-'''
-
-print("Código corregido generado exitosamente")
-print(f"Longitud: {len(codigo_corregido)} caracteres")

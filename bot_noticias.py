@@ -18,7 +18,7 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
-# CATEGORÍAS Y PALABRAS CLAVE (ACTUALIZADO)
+# CATEGORÍAS Y PALABRAS CLAVE
 CATEGORIAS = {
     'politica': {
         'keywords': [
@@ -150,7 +150,7 @@ CATEGORIAS = {
 }
 
 print("="*60)
-print("🚀 BOT DE NOTICIAS - Verdad Hoy (SIN LINKS)")
+print("🚀 BOT DE NOTICIAS - Verdad Hoy (FORMATO CORREGIDO)")
 print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
 print("="*60)
 
@@ -256,7 +256,6 @@ def limpiar_texto_corte(texto):
 def eliminar_links(texto):
     """
     Elimina TODOS los links/URLs del texto para evitar que Facebook limite el alcance.
-    Incluye: http/https, dominios sin protocolo, menciones de www, etc.
     """
     if not texto:
         return texto
@@ -278,16 +277,90 @@ def eliminar_links(texto):
     
     return texto.strip()
 
+def limpiar_formato_markdown(texto):
+    """
+    Elimina caracteres de markdown y formatea el texto para Facebook.
+    Convierte el texto a formato limpio tipo segunda imagen.
+    """
+    if not texto:
+        return texto
+    
+    # Eliminar asteriscos de markdown (**texto** -> texto)
+    texto = re.sub(r'\*\*(.*?)\*\*', r'\1', texto)
+    texto = re.sub(r'\*(.*?)\*', r'\1', texto)
+    
+    # Eliminar otros caracteres de markdown comunes
+    texto = re.sub(r'__(.*?)__', r'\1', texto)  # negrita con guiones bajos
+    texto = re.sub(r'_(.*?)_', r'\1', texto)    # cursiva con guiones bajos
+    texto = re.sub(r'`(.*?)`', r'\1', texto)    # código inline
+    texto = re.sub(r'#{1,6}\s*', '', texto)     # headers markdown
+    
+    # Eliminar corchetes de links markdown [texto](url) -> texto
+    texto = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', texto)
+    texto = re.sub(r'\[([^\]]+)\]', r'\1', texto)
+    
+    # Eliminar caracteres de escape innecesarios
+    texto = texto.replace('\\*', '*')
+    texto = texto.replace('\\_', '_')
+    
+    # Normalizar saltos de línea (máximo 2 consecutivos)
+    texto = re.sub(r'\n{3,}', '\n\n', texto)
+    
+    # Limpiar espacios al inicio y final de cada línea
+    lineas = [linea.strip() for linea in texto.split('\n')]
+    texto = '\n'.join(lineas)
+    
+    return texto.strip()
+
+def formatear_parrafos(texto):
+    """
+    Asegura que el texto tenga párrafos bien formateados tipo segunda imagen.
+    Cada párrafo separado por línea en blanco, sin markdown.
+    """
+    if not texto:
+        return texto
+    
+    # Limpiar formato primero
+    texto = limpiar_formato_markdown(texto)
+    
+    # Dividir en oraciones y reconstruir párrafos lógicos
+    oraciones = re.split(r'(?<=[.!?])\s+', texto)
+    
+    parrafos = []
+    parrafo_actual = []
+    
+    for oracion in oraciones:
+        oracion = oracion.strip()
+        if not oracion:
+            continue
+            
+        # Si la oración es muy corta (menos de 50 chars), añadir al párrafo actual
+        # Si el párrafo actual ya tiene 3-4 oraciones o supera 300 chars, cerrar párrafo
+        if len(' '.join(parrafo_actual)) > 300 or len(parrafo_actual) >= 3:
+            if parrafo_actual:
+                parrafos.append(' '.join(parrafo_actual))
+                parrafo_actual = []
+        
+        parrafo_actual.append(oracion)
+    
+    # Añadir último párrafo si existe
+    if parrafo_actual:
+        parrafos.append(' '.join(parrafo_actual))
+    
+    # Unir párrafos con doble salto de línea
+    return '\n\n'.join(parrafos)
+
 def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     """
-    Genera redacción periodística COMPLETA usando IA gratuita.
+    Genera redacción periodística COMPLETA con formato limpio tipo segunda imagen.
     """
     print(f"\n   📝 Procesando: {titulo[:50]}...")
     print(f"   🏷️ Categoría: {categoria}")
     
     # Limpiar descripción base y ELIMINAR LINKS
     desc_limpia = re.sub(r'<[^>]+>', '', str(descripcion)).strip()
-    desc_limpia = eliminar_links(desc_limpia)  # <-- NUEVO: Eliminar links de la descripción
+    desc_limpia = eliminar_links(desc_limpia)
+    desc_limpia = limpiar_formato_markdown(desc_limpia)  # Limpiar markdown de entrada
     
     if len(desc_limpia) < 20:
         desc_limpia = titulo
@@ -306,9 +379,9 @@ def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     return plantilla_mejorada(titulo, desc_limpia, fuente, categoria)
 
 def generar_con_ia(titulo, descripcion, fuente, categoria):
-    """Genera usando OpenRouter con modelos gratuitos actualizados 2024"""
+    """Genera usando OpenRouter con formato limpio tipo segunda imagen"""
     try:
-        # Prompt optimizado para noticias completas - SIN INSTRUCCIONES DE INCLUIR LINKS
+        # Prompt optimizado para formato limpio sin markdown
         prompt = f"""Eres un redactor senior de agencia EFE. Escribe una NOTICIA COMPLETA en español neutro.
 
 DATOS DE ENTRADA:
@@ -323,31 +396,34 @@ REGLAS OBLIGATORIAS:
 3. Longitud TOTAL: 400-2500 caracteres (muy importante: NO CORTAR)
 4. Usa datos específicos de la descripción si existen
 5. Estilo periodístico objetivo y formal
-6. IMPORTANTE: NO incluyas URLs, links, ni referencias a sitios web en el texto
+6. IMPORTANTE: NO uses asteriscos (**), guiones bajos (_), ni ningún formato markdown
+7. NO incluyas URLs, links, ni referencias a sitios web
+8. Escribe texto plano, limpio, profesional tipo agencia de noticias
 
-FORMATO EXACTO:
+FORMATO EXACTO (texto plano, sin markdown):
 TITULAR: [Máximo 150 caracteres, atractivo, estilo EFE]
 
 LEAD: [2-4 oraciones completas con: qué pasó, quién, cuándo, dónde. Máximo 400 caracteres, sin cortes]
 
 DESARROLLO:
+[3 párrafos con información detallada, análisis y contexto]
 
 CIERRE: [Próximos pasos esperados. Fuente: {fuente}]
 
 IMPORTANTE: 
+- Texto plano únicamente, sin negritas, sin cursivas, sin markdown
 - NO termines con palabras cortadas como "de", "la", "el", "un"
 - Oraciones completas siempre
-- NO incluyas links ni URLs en el texto
-- Si necesitas acortar, termina la oración completa antes del límite"""
+- Párrafos separados por líneas en blanco"""
 
-        # Modelos gratuitos actualizados (marzo 2024)
+        # Modelos gratuitos actualizados
         modelos_gratuitos = [
-            "google/gemma-2-9b-it:free",           # Google - Muy bueno para español
-            "meta-llama/llama-3.1-8b-instruct:free", # Meta - Rápido y confiable
-            "mistralai/mistral-7b-instruct:free",   # Mistral - Buen estilo periodístico
-            "nousresearch/hermes-3-llama-3.1-70b",  # Alternativo
-            "microsoft/phi-3-mini-128k-instruct:free", # Microsoft
-            "openrouter/free",                      # Auto-selección de modelo gratuito
+            "google/gemma-2-9b-it:free",
+            "meta-llama/llama-3.1-8b-instruct:free",
+            "mistralai/mistral-7b-instruct:free",
+            "nousresearch/hermes-3-llama-3.1-70b",
+            "microsoft/phi-3-mini-128k-instruct:free",
+            "openrouter/free",
         ]
         
         headers = {
@@ -368,10 +444,10 @@ IMPORTANTE:
                         'model': modelo,
                         'messages': [{'role': 'user', 'content': prompt}],
                         'temperature': 0.4,
-                        'max_tokens': 5000,  # Aumentado para evitar cortes
+                        'max_tokens': 5000,
                         'top_p': 0.9
                     },
-                    timeout=90  # Aumentado timeout
+                    timeout=90
                 )
                 
                 if response.status_code == 200:
@@ -384,23 +460,32 @@ IMPORTANTE:
                         titular = extraer_campo(content, 'TITULAR:', 'LEAD:') or titulo[:150]
                         lead = extraer_campo(content, 'LEAD:', 'DESARROLLO:')
                         
-                        # Extraer cuerpo completo (4 párrafos)
+                        # Extraer cuerpo completo
                         cuerpo_match = re.search(r'DESARROLLO:(.*?)(?:CIERRE:|$)', content, re.DOTALL)
                         cuerpo = cuerpo_match.group(1).strip() if cuerpo_match else ""
                         
                         cierre = extraer_campo(content, 'CIERRE:', None) or f"Se esperan actualizaciones. Fuente: {fuente}."
                         
-                        # Limpiar y validar
+                        # LIMPIAR FORMATO MARKDOWN Y LINKS
+                        titular = limpiar_formato_markdown(titular)
+                        lead = limpiar_formato_markdown(lead)
+                        cuerpo = limpiar_formato_markdown(cuerpo)
+                        cierre = limpiar_formato_markdown(cierre)
+                        
+                        # Eliminar links
+                        titular = eliminar_links(titular)
+                        lead = eliminar_links(lead)
+                        cuerpo = eliminar_links(cuerpo)
+                        cierre = eliminar_links(cierre)
+                        
+                        # Limpiar cortes
                         titular = limpiar_texto_corte(titular)
                         lead = limpiar_texto_corte(lead)
                         cuerpo = limpiar_texto_corte(cuerpo)
                         cierre = limpiar_texto_corte(cierre)
                         
-                        # ELIMINAR CUALQUIER LINK QUE HAYA QUEDADO
-                        titular = eliminar_links(titular)
-                        lead = eliminar_links(lead)
-                        cuerpo = eliminar_links(cuerpo)
-                        cierre = eliminar_links(cierre)
+                        # Formatear párrafos tipo segunda imagen
+                        cuerpo = formatear_parrafos(cuerpo)
                         
                         # Construir texto final
                         texto_completo = f"{lead}\n\n{cuerpo}\n\n{cierre}"
@@ -419,7 +504,7 @@ IMPORTANTE:
                         
                         return {
                             'titular': titular[:95],
-                            'texto': texto_completo[:2500]  # Dejar margen para hashtags
+                            'texto': texto_completo[:2500]
                         }
                     else:
                         print(f"   ⚠️ Respuesta sin choices: {data.keys()}")
@@ -469,7 +554,7 @@ def extraer_campo(texto, inicio, fin):
         return ""
 
 def plantilla_mejorada(titulo, descripcion, fuente, categoria):
-    """Plantilla periodística robusta como respaldo"""
+    """Plantilla periodística robusta con formato limpio tipo segunda imagen"""
     print(f"   📝 Usando plantilla mejorada...")
     
     # Crear lead completo
@@ -487,7 +572,7 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
     if len(lead) > 200:
         lead = lead[:197].rsplit(' ', 1)[0] + "."
     
-    # Templates por categoría
+    # Templates por categoría (texto plano, sin markdown)
     templates = {
         'politica': {
             'p1': "El hecho político ha generado amplia repercusión en los círculos de poder y entre la ciudadanía. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas ante la opinión pública.",
@@ -542,7 +627,7 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
         'p3': "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis."
     })
     
-    # Construir texto
+    # Construir texto con párrafos separados por líneas en blanco (formato segunda imagen)
     cierre = f"Se esperan actualizaciones oficiales. (Agencias) / Fuente: {fuente}."
     
     texto = f"{lead}\n\n{temps['p1']}\n\n{temps['p2']}\n\n{temps['p3']}\n\n{cierre}"
@@ -551,7 +636,8 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
     while len(texto) < 1000:
         texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente. {cierre}")
     
-    # ELIMINAR CUALQUIER LINK QUE PUDIERA HABER QUEDADO
+    # Aplicar formato limpio
+    texto = limpiar_formato_markdown(texto)
     texto = eliminar_links(texto)
     
     print(f"   ✅ Plantilla: {len(texto)} caracteres")
@@ -704,7 +790,7 @@ def descargar_imagen(url):
     return None
 
 def publicar_completo(titulo, texto, img_path, categoria):
-    """Publica en Facebook con manejo anti-corte y SIN LINKS"""
+    """Publica en Facebook con formato limpio tipo segunda imagen"""
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
@@ -725,9 +811,10 @@ def publicar_completo(titulo, texto, img_path, categoria):
     
     hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad')
     
-    # Limpiar texto final y ELIMINAR LINKS
-    texto_limpio = limpiar_texto_corte(texto)
-    texto_limpio = eliminar_links(texto_limpio)  # <-- NUEVO: Eliminar links antes de publicar
+    # LIMPIAR FORMATO Y LINKS
+    texto_limpio = limpiar_formato_markdown(texto)
+    texto_limpio = eliminar_links(texto_limpio)
+    texto_limpio = limpiar_texto_corte(texto_limpio)
     
     # Verificar longitud total (Facebook permite ~2000 caracteres)
     mensaje_base = f"""📰 {titulo}
@@ -742,7 +829,8 @@ def publicar_completo(titulo, texto, img_path, categoria):
     if len(mensaje_base) > 2500:
         max_texto = 2500 - len(titulo) - len(hashtags) - 50
         texto_limpio = texto_limpio[:max_texto].rsplit(' ', 1)[0] + "."
-        # Asegurar que no queden links después de cortar
+        # Asegurar que no queden links ni markdown después de cortar
+        texto_limpio = limpiar_formato_markdown(texto_limpio)
         texto_limpio = eliminar_links(texto_limpio)
     
     mensaje = f"""📰 {titulo}
@@ -753,12 +841,13 @@ def publicar_completo(titulo, texto, img_path, categoria):
 
 — Verdad Hoy: Noticias al minuto"""
     
-    # VERIFICACIÓN FINAL: Asegurar que no hay links en el mensaje
+    # VERIFICACIÓN FINAL: Asegurar que no hay links ni markdown
+    mensaje = limpiar_formato_markdown(mensaje)
     mensaje = eliminar_links(mensaje)
     
     print(f"\n   📝 MENSAJE FINAL ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
-    for linea in mensaje.split('\n')[:8]:
+    for linea in mensaje.split('\n')[:10]:
         preview = linea[:65] + "..." if len(linea) > 65 else linea
         print(f"   {preview}")
     print(f"   {'='*50}")

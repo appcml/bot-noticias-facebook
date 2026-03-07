@@ -306,14 +306,6 @@ Primero escribe un TITULAR corto y atractivo (máx 90 caracteres).
 
 Luego escribe el LEAD: 2-3 oraciones con lo esencial (qué, quién, cuándo, dónde).
 
-Después escribe 3 párrafos de desarrollo:
-- Primer párrafo: contexto y antecedentes
-- Segundo párrafo: detalles actuales y datos específicos  
-- Tercer párrafo: análisis e implicaciones
-
-Finalmente un cierre corto con la fuente.
-
-IMPORTANTE: NO uses corchetes [ ] en el texto. NO escribas "Párrafo 1:" ni nada similar. Solo el texto de la noticia."""
 
         modelos = [
             "google/gemma-2-9b-it:free",

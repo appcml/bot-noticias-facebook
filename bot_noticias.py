@@ -285,18 +285,37 @@ def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
 def generar_con_ia(titulo, descripcion, fuente, categoria):
     """Genera usando OpenRouter - SIN INSTRUCCIONES EN SALIDA"""
     try:
-        prompt = f"""Eres un redactor senior de agencia EFE. Escribe una NOTICIA COMPLETA en español neutro.
+        prompt = f"""Eres un periodista profesional de una agencia internacional de noticias.
 
-DATOS:
+Escribe una noticia completa en español neutro.
+
+DATOS DE LA NOTICIA
 Título: {titulo}
 Descripción: {descripcion}
 Fuente: {fuente}
 Categoría: {categoria}
 
+INSTRUCCIONES:
+
+• Escribe un titular atractivo (máximo 90 caracteres)
+
+• Luego escribe un breve lead de 2 o 3 oraciones explicando lo más importante.
+
+• Después desarrolla la noticia en tres párrafos adicionales explicando contexto, detalles y consecuencias.
+
+• Termina con una frase corta indicando la fuente de la información.
+
 REGLAS IMPORTANTES:
-1. Escribe en ESPAÑOL NATIVO
-2. Estructura: Lead (2-3 oraciones) + 3 párrafos de desarrollo + Cierre corto
-3. Longitud TOTAL: 1200-1600 caracteres
+
+NO escribas instrucciones.
+NO escribas etiquetas como "Párrafo 1".
+NO uses corchetes [ ].
+NO expliques la estructura.
+
+Solo escribe la noticia completa como lo haría un periodista real.
+
+Longitud total: entre 1200 y 1600 caracteres.
+"""
 4. Usa datos específicos de la descripción si existen
 5. Estilo periodístico objetivo
 
@@ -306,6 +325,14 @@ Primero escribe un TITULAR corto y atractivo (máx 90 caracteres).
 
 Luego escribe el LEAD: 2-3 oraciones con lo esencial (qué, quién, cuándo, dónde).
 
+Después escribe 3 párrafos de desarrollo:
+- Primer párrafo: contexto y antecedentes
+- Segundo párrafo: detalles actuales y datos específicos  
+- Tercer párrafo: análisis e implicaciones
+
+Finalmente un cierre corto con la fuente.
+
+IMPORTANTE: NO uses corchetes [ ] en el texto. NO escribas "Párrafo 1:" ni nada similar. Solo el texto de la noticia."""
 
         modelos = [
             "google/gemma-2-9b-it:free",

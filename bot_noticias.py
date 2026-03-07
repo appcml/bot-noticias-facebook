@@ -18,7 +18,7 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
-# CATEGORÍAS Y PALABRAS CLAVE PRIORITARIAS (ACTUALIZADO)
+# CATEGORÍAS Y PALABRAS CLAVE (ACTUALIZADO)
 CATEGORIAS = {
     'politica': {
         'keywords': [
@@ -150,7 +150,7 @@ CATEGORIAS = {
 }
 
 print("="*60)
-print("🚀 BOT DE NOTICIAS - Verdad Hoy (CATEGORIZADO)")
+print("🚀 BOT DE NOTICIAS - Verdad Hoy (CORREGIDO)")
 print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
 print("="*60)
 
@@ -222,12 +222,41 @@ def detectar_categoria(titulo, descripcion):
         return max(puntuaciones, key=puntuaciones.get)
     return 'general'
 
+def limpiar_texto_corte(texto):
+    """Evita que el texto termine cortado a mitad de palabra"""
+    if not texto:
+        return texto
+    
+    texto = texto.strip()
+    
+    # Si termina con espacio o está completo, OK
+    if texto.endswith(('.', '!', '?', '"', "'")):
+        return texto
+    
+    # Si termina con preposición o artículo incompleto, quitar última palabra
+    palabras_incompletas = [' de', ' la', ' el', ' un', ' una', ' en', ' con', ' por', ' para', 
+                           ' y', ' o', ' a', ' se', ' que', ' lo', ' las', ' los', ' del', ' al']
+    
+    for palabra in palabras_incompletas:
+        if texto.lower().endswith(palabra):
+            # Cortar hasta antes de esa palabra
+            pos = texto.lower().rfind(palabra)
+            if pos > 50:  # Asegurar que quede texto suficiente
+                return texto[:pos].strip() + "."
+    
+    # Si termina con palabra cortada (sin espacio al final), buscar último espacio
+    if len(texto) > 100 and not texto.endswith('.'):
+        # Buscar último espacio en los últimos 20 caracteres
+        ultimo_espacio = texto[:-20].rfind(' ')
+        if ultimo_espacio > 50:
+            return texto[:ultimo_espacio].strip() + "."
+    
+    return texto + "."
+
 def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     """
-    Genera redacción periodística COMPLETA sin cortes.
-    Estructura: Titular + Lead (2-3 oraciones) + Cuerpo (3 párrafos) + Cierre
+    Genera redacción periodística COMPLETA usando IA gratuita.
     """
-    
     print(f"\n   📝 Procesando: {titulo[:50]}...")
     print(f"   🏷️ Categoría: {categoria}")
     
@@ -236,149 +265,200 @@ def generar_redaccion_completa(titulo, descripcion, fuente, categoria):
     if len(desc_limpia) < 20:
         desc_limpia = titulo
     
-    # Si tenemos IA, usarla
+    # INTENTAR PRIMERO CON IA (OpenRouter gratuito)
     if OPENROUTER_API_KEY:
+        print("   🤖 Intentando generar con IA...")
         resultado = generar_con_ia(titulo, desc_limpia, fuente, categoria)
         if resultado and len(resultado['texto']) > 800:
+            print(f"   ✅ IA generó texto completo: {len(resultado['texto'])} caracteres")
             return resultado
+        else:
+            print("   ⚠️ IA falló o texto muy corto, usando plantilla...")
     
-    # Plantilla mejorada sin cortes
+    # Respaldo con plantilla mejorada
     return plantilla_mejorada(titulo, desc_limpia, fuente, categoria)
 
 def generar_con_ia(titulo, descripcion, fuente, categoria):
-    """Genera usando OpenRouter"""
+    """Genera usando OpenRouter con modelos gratuitos actualizados 2024"""
     try:
-        prompt = f"""Eres un redactor senior de agencia EFE. Escribe una NOTICIA COMPLETA en español.
+        # Prompt optimizado para noticias completas
+        prompt = f"""Eres un redactor senior de agencia EFE. Escribe una NOTICIA COMPLETA en español neutro.
 
-DATOS:
-Título original: {titulo}
-Descripción: {descripcion}
-Fuente: {fuente}
-Categoría: {categoria}
+DATOS DE ENTRADA:
+- Título: {titulo}
+- Descripción: {descripcion}
+- Fuente: {fuente}
+- Categoría: {categoria}
 
-INSTRUCCIONES ESTRICTAS:
-1. TITULAR: Máximo 90 caracteres, informativo, atractivo, estilo EFE
-2. LEAD: 2-3 oraciones completas (máximo 200 caracteres), incluye: qué pasó, quién, cuándo, dónde
-3. CUERPO: Exactamente 3 párrafos completos:
-   - Párrafo 1: Contexto y antecedentes (quiénes están involucrados)
-   - Párrafo 2: Desarrollo actual (datos, cifras, declaraciones específicas)
-   - Párrafo 3: Análisis e implicaciones (qué significa, consecuencias futuras)
-4. CIERRE: 1 línea con próximos pasos + "(Agencias) / Fuente: {fuente}"
+REGLAS OBLIGATORIAS:
+1. Escribe en ESPAÑOL NATIVO (no traduzcas literalmente)
+2. Estructura: Lead (2-3 oraciones) + 3 párrafos de desarrollo + Cierre
+3. Longitud TOTAL: 1400-1800 caracteres (muy importante: NO CORTAR)
+4. Usa datos específicos de la descripción si existen
+5. Estilo periodístico objetivo y formal
 
-REGLAS:
-- ESPAÑOL NATIVO, no traducciones
-- Oraciones COMPLETAS, no cortar palabras
-- Longitud total: 1200-1800 caracteres
-- Estilo periodístico NEUTRO
-- Números y datos específicos si están en la descripción
+FORMATO EXACTO:
+TITULAR: [Máximo 90 caracteres, atractivo, estilo EFE]
 
-FORMATO OBLIGATORIO:
-TITULAR: [titular completo]
+LEAD: [2-3 oraciones completas con: qué pasó, quién, cuándo, dónde. Máximo 200 caracteres]
 
-LEAD: [lead completo de 2-3 oraciones]
+DESARROLLO:
+[Párrafo 1: Contexto y antecedentes - 300-400 caracteres]
 
-CUERPO:
-[Párrafo 1 completo - contexto]
+[Párrafo 2: Detalles actuales y datos específicos - 300-400 caracteres]
 
-[Párrafo 2 completo - desarrollo]
+[Párrafo 3: Análisis e implicaciones futuras - 300-400 caracteres]
 
-[Párrafo 3 completo - análisis]
+CIERRE: [Próximos pasos esperados. Fuente: {fuente}]
 
-CIERRE: [cierre con fuente]
+IMPORTANTE: 
+- NO termines con palabras cortadas como "de", "la", "el", "un"
+- Oraciones completas siempre
+- Si necesitas acortar, termina la oración completa antes del límite"""
 
-FIN"""
-
-        modelos = [
-            "mistralai/mistral-7b-instruct:free",
-            "meta-llama/llama-3.1-8b-instruct:free",
-            "qwen/qwen-2-7b-instruct:free"
+        # Modelos gratuitos actualizados (marzo 2024)
+        modelos_gratuitos = [
+            "google/gemma-2-9b-it:free",           # Google - Muy bueno para español
+            "meta-llama/llama-3.1-8b-instruct:free", # Meta - Rápido y confiable
+            "mistralai/mistral-7b-instruct:free",   # Mistral - Buen estilo periodístico
+            "nousresearch/hermes-3-llama-3.1-70b",  # Alternativo
+            "microsoft/phi-3-mini-128k-instruct:free", # Microsoft
+            "openrouter/free",                      # Auto-selección de modelo gratuito
         ]
         
-        for modelo in modelos:
+        headers = {
+            'Authorization': f'Bearer {OPENROUTER_API_KEY}',
+            'HTTP-Referer': 'https://github.com',
+            'X-Title': 'Bot Noticias Verdad Hoy',
+            'Content-Type': 'application/json'
+        }
+        
+        for modelo in modelos_gratuitos:
             try:
+                print(f"   🔄 Probando modelo: {modelo.split('/')[-1]}")
+                
                 response = requests.post(
                     'https://openrouter.ai/api/v1/chat/completions',
-                    headers={
-                        'Authorization': f'Bearer {OPENROUTER_API_KEY}',
-                        'HTTP-Referer': 'https://github.com',
-                        'X-Title': 'Bot Noticias',
-                        'Content-Type': 'application/json'
-                    },
+                    headers=headers,
                     json={
                         'model': modelo,
                         'messages': [{'role': 'user', 'content': prompt}],
-                        'temperature': 0.3,
-                        'max_tokens': 1500
+                        'temperature': 0.4,
+                        'max_tokens': 2000,  # Aumentado para evitar cortes
+                        'top_p': 0.9
                     },
-                    timeout=60
+                    timeout=90  # Aumentado timeout
                 )
                 
                 if response.status_code == 200:
                     data = response.json()
+                    
                     if 'choices' in data and len(data['choices']) > 0:
                         content = data['choices'][0]['message']['content']
                         
-                        # Extraer con manejo de errores mejorado
+                        # Extraer secciones
                         titular = extraer_campo(content, 'TITULAR:', 'LEAD:') or titulo[:90]
-                        lead = extraer_campo(content, 'LEAD:', 'CUERPO:')
-                        cuerpo = extraer_campo(content, 'CUERPO:', 'CIERRE:')
-                        cierre = extraer_campo(content, 'CIERRE:', 'FIN')
+                        lead = extraer_campo(content, 'LEAD:', 'DESARROLLO:')
                         
-                        if not cierre:
-                            cierre = f"Se esperan actualizaciones. (Agencias) / Fuente: {fuente}."
+                        # Extraer cuerpo completo (3 párrafos)
+                        cuerpo_match = re.search(r'DESARROLLO:(.*?)(?:CIERRE:|$)', content, re.DOTALL)
+                        cuerpo = cuerpo_match.group(1).strip() if cuerpo_match else ""
                         
-                        # Construir texto completo
+                        cierre = extraer_campo(content, 'CIERRE:', None) or f"Se esperan actualizaciones. Fuente: {fuente}."
+                        
+                        # Limpiar y validar
+                        titular = limpiar_texto_corte(titular)
+                        lead = limpiar_texto_corte(lead)
+                        cuerpo = limpiar_texto_corte(cuerpo)
+                        cierre = limpiar_texto_corte(cierre)
+                        
+                        # Construir texto final
                         texto_completo = f"{lead}\n\n{cuerpo}\n\n{cierre}"
                         
-                        # Verificar que no esté cortado
-                        if len(texto_completo) > 600 and not texto_completo.endswith(('en ', 'de ', 'la ', 'el ', 'un ', 'una ')):
-                            print(f"   ✅ IA generó: {len(texto_completo)} caracteres")
-                            return {
-                                'titular': titular.strip()[:100],
-                                'texto': texto_completo[:1950]
-                            }
-                            
+                        # Verificaciones de calidad
+                        if len(texto_completo) < 600:
+                            print(f"   ⚠️ Texto muy corto ({len(texto_completo)} chars), probando siguiente modelo...")
+                            continue
+                        
+                        # Verificar que no termine cortado
+                        if texto_completo.endswith(('en ', 'de ', 'la ', 'el ', 'un ', 'una ', 'a ', 'con ', 'por ', 'para ')):
+                            print(f"   ⚠️ Texto termina cortado, probando siguiente modelo...")
+                            continue
+                        
+                        print(f"   ✅ Éxito con {modelo.split('/')[-1]}: {len(texto_completo)} caracteres")
+                        
+                        return {
+                            'titular': titular[:95],
+                            'texto': texto_completo[:1900]  # Dejar margen para hashtags
+                        }
+                    else:
+                        print(f"   ⚠️ Respuesta sin choices: {data.keys()}")
+                        
+                elif response.status_code == 429:
+                    print(f"   ⏳ Rate limit en {modelo}, esperando...")
+                    import time
+                    time.sleep(2)
+                    continue
+                else:
+                    error_msg = response.json().get('error', {}).get('message', 'Error desconocido')
+                    print(f"   ⚠️ Error {response.status_code}: {error_msg[:50]}")
+                    
+            except requests.exceptions.Timeout:
+                print(f"   ⏱️ Timeout con {modelo}")
+                continue
             except Exception as e:
-                print(f"   ⚠️ Error {modelo}: {e}")
+                print(f"   ⚠️ Error {modelo}: {str(e)[:50]}")
                 continue
                 
     except Exception as e:
-        print(f"   ⚠️ Error IA general: {e}")
+        print(f"   ⚠️ Error general IA: {e}")
     
     return None
 
 def extraer_campo(texto, inicio, fin):
-    """Extrae campo entre dos marcadores"""
+    """Extrae campo entre dos marcadores de forma robusta"""
     try:
-        if inicio in texto:
-            parte = texto.split(inicio)[1]
-            if fin in parte:
-                return parte.split(fin)[0].strip()
-            return parte.strip()[:500]
-    except:
-        pass
-    return ""
+        if not texto or inicio not in texto:
+            return ""
+        
+        # Encontrar inicio
+        idx_inicio = texto.find(inicio) + len(inicio)
+        parte = texto[idx_inicio:]
+        
+        if fin and fin in parte:
+            idx_fin = parte.find(fin)
+            resultado = parte[:idx_fin].strip()
+        else:
+            # Si no hay fin, tomar hasta el final o hasta 1000 chars
+            resultado = parte[:1000].strip()
+        
+        return resultado
+        
+    except Exception as e:
+        print(f"   ⚠️ Error extrayendo campo: {e}")
+        return ""
 
 def plantilla_mejorada(titulo, descripcion, fuente, categoria):
-    """Plantilla periodística robusta sin cortes"""
+    """Plantilla periodística robusta como respaldo"""
     print(f"   📝 Usando plantilla mejorada...")
     
-    # Crear lead completo (2-3 oraciones)
-    oraciones_desc = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 20]
+    # Crear lead completo
+    oraciones_desc = [s.strip() for s in descripcion.split('.') if len(s.strip()) > 15]
     
     if len(oraciones_desc) >= 2:
         lead = f"{oraciones_desc[0]}. {oraciones_desc[1]}."
     elif len(oraciones_desc) == 1:
         lead = f"{oraciones_desc[0]}. Las autoridades competentes confirmaron la información en las últimas horas."
     else:
-        lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes confirmaron la información en las últimas horas y se esperan actualizaciones."
+        lead = f"Se reporta un importante acontecimiento relacionado con {categoria}. Las autoridades competentes confirmaron la información."
     
-    # Limitar lead a 200 caracteres pero sin cortar palabras
+    # Asegurar que lead no esté cortado
+    lead = limpiar_texto_corte(lead)
     if len(lead) > 200:
         lead = lead[:197].rsplit(' ', 1)[0] + "."
     
-    # Párrafos completos según categoría (ACTUALIZADO CON NUEVAS CATEGORÍAS)
-    templates_categoria = {
+    # Templates por categoría
+    templates = {
         'politica': {
             'p1': "El hecho político ha generado amplia repercusión en los círculos de poder y entre la ciudadanía. Las autoridades gubernamentales emitieron comunicados oficiales sobre el tema mientras diversos actores políticos posicionan sus posturas ante la opinión pública.",
             'p2': "Analistas políticos consultados señalan que este tipo de eventos requiere un seguimiento constante por parte de la sociedad. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones.",
@@ -426,49 +506,44 @@ def plantilla_mejorada(titulo, descripcion, fuente, categoria):
         }
     }
     
-    # Usar template de categoría o genérico
-    if categoria in templates_categoria:
-        temps = templates_categoria[categoria]
-    else:
-        temps = {
-            'p1': "El acontecimiento ha sido confirmado por fuentes oficiales y genera atención mediática. Las autoridades competentes emitieron comunicados sobre el tema mientras diversos sectores mantienen vigilancia sobre los desarrollos.",
-            'p2': "Analistas señalan la trascendencia de los hechos reportados. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones.",
-            'p3': "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis."
-        }
+    temps = templates.get(categoria, {
+        'p1': "El acontecimiento ha sido confirmado por fuentes oficiales y genera atención mediática. Las autoridades competentes emitieron comunicados sobre el tema mientras diversos sectores mantienen vigilancia sobre los desarrollos.",
+        'p2': "Analistas señalan la trascendencia de los hechos reportados. La cobertura informativa continúa ampliándose conforme surgen nuevos detalles relevantes sobre la situación y sus posibles implicaciones.",
+        'p3': "Las implicaciones podrían extenderse a diversos ámbitos de la sociedad. Expertos consultados destacan la necesidad de seguimiento mientras la situación continúa siendo objeto de análisis."
+    })
     
-    # Construir texto completo
+    # Construir texto
     cierre = f"Se esperan actualizaciones oficiales. (Agencias) / Fuente: {fuente}."
     
     texto = f"{lead}\n\n{temps['p1']}\n\n{temps['p2']}\n\n{temps['p3']}\n\n{cierre}"
     
-    # Asegurar longitud mínima sin cortar
+    # Asegurar longitud mínima
     while len(texto) < 1000:
         texto = texto.replace(cierre, f"Los detalles adicionales serán proporcionados oportunamente. {cierre}")
     
     print(f"   ✅ Plantilla: {len(texto)} caracteres")
     return {
         'titular': titulo[:95],
-        'texto': texto[:1950]
+        'texto': texto[:1900]
     }
 
 def buscar_noticias_categorizadas():
-    """Busca noticias priorizando las 10 categorías"""
+    """Busca noticias priorizando las categorías"""
     print("\n🔍 Buscando noticias por categorías...")
     noticias = []
     
-    # 1. NewsAPI en español con palabras clave de categorías
+    # 1. NewsAPI en español
     if NEWS_API_KEY:
         try:
-            # Buscar con términos de alta relevancia (ACTUALIZADO)
             terminos_busqueda = [
-                'presidente OR gobierno OR elecciones OR congreso',
-                'economía OR inflación OR crisis OR mercado financiero',
-                'guerra OR conflicto armado OR ataque OR defensa',
-                'inteligencia artificial OR tecnología OR ciberseguridad',
-                'crimen OR narcotráfico OR justicia OR tribunal',
-                'cambio climático OR medio ambiente OR sostenibilidad',
-                'pandemia OR vacuna OR salud pública',
-                'descubrimiento científico OR espacio OR investigación'
+                'presidente gobierno elecciones congreso',
+                'economía inflación crisis mercado',
+                'guerra conflicto ataque defensa militar',
+                'inteligencia artificial tecnología',
+                'crimen narcotráfico justicia tribunal',
+                'cambio climático medio ambiente',
+                'pandemia vacuna salud',
+                'descubrimiento espacio ciencia'
             ]
             
             for termino in random.sample(terminos_busqueda, min(3, len(terminos_busqueda))):
@@ -490,7 +565,7 @@ def buscar_noticias_categorizadas():
                             cat = detectar_categoria(art.get('title', ''), art.get('description', ''))
                             art['categoria_detectada'] = cat
                             noticias.append(art)
-                        print(f"   📡 NewsAPI '{termino[:20]}...': {len(data.get('articles', []))}")
+                        print(f"   📡 NewsAPI '{termino[:20]}...': {len(data.get('articles', []))} artículos")
                 except:
                     continue
                     
@@ -517,24 +592,22 @@ def buscar_noticias_categorizadas():
                         'source': {'name': a.get('source', {}).get('name', 'GNews')},
                         'categoria_detectada': cat
                     })
-                print(f"   📡 GNews: {len(data['articles'])}")
+                print(f"   📡 GNews: {len(data['articles'])} artículos")
         except Exception as e:
             print(f"   ⚠️ GNews: {e}")
     
-    # 3. RSS por categorías (rotativas)
+    # 3. RSS por categorías
     todas_feeds = []
     for cat, datos in CATEGORIAS.items():
         for feed in datos['feeds']:
             todas_feeds.append((cat, feed))
     
-    # Seleccionar 4 feeds aleatorios de diferentes categorías
     feeds_seleccionados = random.sample(todas_feeds, min(4, len(todas_feeds)))
     
     for categoria_feed, feed_url in feeds_seleccionados:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:3]:
-                # Buscar imagen
                 img = ''
                 if hasattr(entry, 'media_content') and entry.media_content:
                     img = entry.media_content[0].get('url', '')
@@ -555,9 +628,9 @@ def buscar_noticias_categorizadas():
         except:
             pass
     
-    print(f"\n📊 Total: {len(noticias)} noticias")
+    print(f"\n📊 Total recolectado: {len(noticias)} noticias")
     
-    # Filtrar y priorizar
+    # Filtrar duplicados y priorizar
     nuevas = []
     for art in noticias:
         if not art.get('title') or len(art['title']) < 10:
@@ -567,14 +640,13 @@ def buscar_noticias_categorizadas():
         if ya_publicada(art['url'], art['title']):
             continue
         
-        # Priorizar ciertas categorías (ACTUALIZADO)
         cat = art.get('categoria_detectada', 'general')
+        # Priorizar noticias importantes
         art['prioridad'] = 3 if cat in ['politica', 'economia', 'internacional', 'guerra_defensa'] else 2 if cat in ['seguridad', 'tecnologia'] else 1
         
         nuevas.append(art)
         print(f"   ✅ [{cat}] {art['title'][:45]}...")
     
-    # Ordenar por prioridad
     nuevas.sort(key=lambda x: x.get('prioridad', 0), reverse=True)
     
     print(f"📊 Nuevas válidas: {len(nuevas)}")
@@ -599,13 +671,12 @@ def descargar_imagen(url):
     return None
 
 def publicar_completo(titulo, texto, img_path, categoria):
-    """Publica en Facebook asegurando que no se corte el texto"""
+    """Publica en Facebook con manejo anti-corte"""
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Hashtags según categoría (ACTUALIZADO)
     hashtags_cat = {
         'politica': '#Política #Gobierno #Congreso #ActualidadPolítica',
         'economia': '#Economía #Finanzas #Negocios #Mercados',
@@ -621,10 +692,22 @@ def publicar_completo(titulo, texto, img_path, categoria):
     
     hashtags = hashtags_cat.get(categoria, '#Noticias #Actualidad')
     
-    # Asegurar que el texto no esté cortado al final
-    texto_limpio = texto.strip()
-    if texto_limpio.endswith(('en', 'de', 'la', 'el', 'un', 'una', 'a', 'con', 'por')):
-        texto_limpio += "."
+    # Limpiar texto final
+    texto_limpio = limpiar_texto_corte(texto)
+    
+    # Verificar longitud total (Facebook permite ~2000 caracteres)
+    mensaje_base = f"""📰 {titulo}
+
+{texto_limpio}
+
+{hashtags}
+
+— Verdad Hoy: Noticias al minuto"""
+    
+    # Si es muy largo, acortar inteligentemente
+    if len(mensaje_base) > 2000:
+        max_texto = 2000 - len(titulo) - len(hashtags) - 50
+        texto_limpio = texto_limpio[:max_texto].rsplit(' ', 1)[0] + "."
     
     mensaje = f"""📰 {titulo}
 
@@ -634,17 +717,16 @@ def publicar_completo(titulo, texto, img_path, categoria):
 
 — Verdad Hoy: Noticias al minuto"""
     
-    # Verificación final de longitud
-    print(f"\n   📝 MENSAJE ({len(mensaje)} caracteres):")
+    print(f"\n   📝 MENSAJE FINAL ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
-    for linea in mensaje.split('\n')[:6]:
+    for linea in mensaje.split('\n')[:8]:
         preview = linea[:65] + "..." if len(linea) > 65 else linea
         print(f"   {preview}")
     print(f"   {'='*50}")
     
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
-        print(f"   📤 Publicando...")
+        print(f"   📤 Publicando en Facebook...")
         
         with open(img_path, 'rb') as f:
             resp = requests.post(
@@ -656,14 +738,14 @@ def publicar_completo(titulo, texto, img_path, categoria):
             result = resp.json()
             
             if resp.status_code == 200 and 'id' in result:
-                print(f"   ✅ PUBLICADO: {result['id']}")
+                print(f"   ✅ PUBLICADO EXITOSAMENTE: {result['id']}")
                 return True
             else:
                 error = result.get('error', {}).get('message', str(result))
-                print(f"   ❌ Error: {error}")
+                print(f"   ❌ Error Facebook: {error}")
                 
     except Exception as e:
-        print(f"   ❌ Error: {e}")
+        print(f"   ❌ Error conexión: {e}")
     
     return False
 
@@ -675,10 +757,10 @@ def main():
     noticias = buscar_noticias_categorizadas()
     
     if not noticias:
-        print("⚠️ No hay noticias nuevas")
+        print("⚠️ No hay noticias nuevas disponibles")
         return False
     
-    print(f"\n🎯 Procesando {len(noticias)} noticia(s)")
+    print(f"\n🎯 Procesando {len(noticias)} noticia(s)...")
     
     for i, noticia in enumerate(noticias, 1):
         print(f"\n{'='*60}")
@@ -687,7 +769,7 @@ def main():
         
         img_path = descargar_imagen(noticia.get('urlToImage'))
         if not img_path:
-            print("   ⏭️ Sin imagen, saltando...")
+            print("   ⏭️ Sin imagen disponible, saltando...")
             continue
         
         categoria = noticia.get('categoria_detectada', 'general')
@@ -704,14 +786,14 @@ def main():
             if os.path.exists(img_path):
                 os.remove(img_path)
             print(f"\n{'='*60}")
-            print("✅ ÉXITO")
+            print("✅ ÉXITO: Noticia publicada correctamente")
             print(f"{'='*60}")
             return True
         
         if os.path.exists(img_path):
             os.remove(img_path)
     
-    print("\n❌ No se pudo publicar")
+    print("\n❌ No se pudo publicar ninguna noticia")
     return False
 
 if __name__ == "__main__":

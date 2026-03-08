@@ -13,7 +13,7 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 HISTORIAL_FILE = "historial_publicaciones.json"
 
-# SOLO MEDIOS EN ESPAÑOL
+# MEDIOS EN ESPAÑOL
 RSS_FEEDS = [
 
 "https://cnnespanol.cnn.com/feed/",
@@ -35,13 +35,11 @@ RSS_FEEDS = [
 ]
 
 PALABRAS_VIRALES = [
-
 "urgente","última hora","guerra","ataque","crisis",
 "explosión","conflicto","protestas","tensión",
 "invasión","misiles","bombardeo","tragedia",
 "colapso","investigación","escándalo","emergencia",
 "alerta","catástrofe","crisis económica"
-
 ]
 
 
@@ -56,6 +54,19 @@ def limpiar_html(texto):
     texto = texto.strip()
 
     return texto
+
+
+def limpiar_titulo(titulo):
+
+    if "|" in titulo:
+        titulo = titulo.split("|")[0]
+
+    titulo = titulo.replace("en directo","")
+    titulo = titulo.replace("En directo","")
+
+    titulo = titulo.strip()
+
+    return titulo
 
 
 def cargar_historial():
@@ -94,7 +105,7 @@ def buscar_rss():
 
         try:
 
-            feed=feedparser.parse(feed_url)
+            feed = feedparser.parse(feed_url)
 
             for entry in feed.entries[:5]:
 
@@ -105,7 +116,7 @@ def buscar_rss():
                 imagen=""
 
                 if "media_content" in entry:
-                    imagen=entry.media_content[0]["url"]
+                    imagen = entry.media_content[0]["url"]
 
                 noticias.append({
                     "titulo":titulo,
@@ -162,11 +173,11 @@ Información:
 
 Reglas:
 
-3 a 5 párrafos
-mínimo 700 caracteres
-explicar qué ocurrió y por qué es importante
-no usar HTML
-no incluir enlaces
+- 3 a 5 párrafos
+- mínimo 700 caracteres
+- explicar qué ocurrió y por qué es importante
+- no usar HTML
+- no incluir enlaces
 """
 
     try:
@@ -262,7 +273,7 @@ def publicar_facebook(texto,img):
 
 def crear_post(noticia):
 
-    titulo = noticia["titulo"]
+    titulo = limpiar_titulo(noticia["titulo"])
 
     texto = generar_texto(titulo,noticia["descripcion"])
 
@@ -284,11 +295,11 @@ def main():
 
     print("Buscando noticias en español...")
 
-    historial=cargar_historial()
+    historial = cargar_historial()
 
-    noticias=buscar_rss()
+    noticias = buscar_rss()
 
-    noticia=elegir_noticia(noticias,historial)
+    noticia = elegir_noticia(noticias,historial)
 
     if not noticia:
         print("No hay noticias nuevas")
@@ -296,11 +307,11 @@ def main():
 
     print("Noticia elegida:",noticia["titulo"])
 
-    post=crear_post(noticia)
+    post = crear_post(noticia)
 
-    img=descargar_imagen(noticia["imagen"])
+    img = descargar_imagen(noticia["imagen"])
 
-    publicado=publicar_facebook(post,img)
+    publicado = publicar_facebook(post,img)
 
     if publicado:
 

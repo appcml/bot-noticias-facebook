@@ -1,8 +1,8 @@
-name: Publicar Noticias Virales
+name: Publicar Noticias
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: "0 */2 * * *"
   workflow_dispatch:
 
 jobs:
@@ -10,47 +10,24 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write
-
     steps:
 
-    - name: Checkout código
+    - name: Descargar repositorio
       uses: actions/checkout@v4
 
-    - name: Descargar historial
-      uses: actions/download-artifact@v4
-      with:
-        name: historial-noticias
-        path: .
-      continue-on-error: true
-
-    - name: Crear historial si no existe
-      run: |
-        if [ ! -f historial_publicaciones.json ]; then
-          echo '{"urls":[]}' > historial_publicaciones.json
-        fi
-
-    - name: Setup Python
+    - name: Instalar Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: "3.11"
 
-    - name: Instalar dependencias
+    - name: Instalar librerías
       run: |
-        pip install requests feedparser pillow
+        pip install feedparser
+        pip install requests
+        pip install beautifulsoup4
 
     - name: Ejecutar bot
       env:
-        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-        FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
-      run: |
-        python bot_noticias.py
-
-    - name: Guardar historial
-      uses: actions/upload-artifact@v4
-      with:
-        name: historial-noticias
-        path: historial_publicaciones.json
-        overwrite: true
+        PAGE_ID: ${{ secrets.PAGE_ID }}
+        PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
+      run: python bot_noticias.py

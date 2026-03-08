@@ -13,7 +13,6 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 HISTORIAL_FILE = "historial_publicaciones.json"
 
-# MEDIOS EN ESPAÑOL
 RSS_FEEDS = [
 
 "https://cnnespanol.cnn.com/feed/",
@@ -39,7 +38,7 @@ PALABRAS_VIRALES = [
 "explosión","conflicto","protestas","tensión",
 "invasión","misiles","bombardeo","tragedia",
 "colapso","investigación","escándalo","emergencia",
-"alerta","catástrofe","crisis económica"
+"alerta","catástrofe"
 ]
 
 
@@ -64,9 +63,7 @@ def limpiar_titulo(titulo):
     titulo = titulo.replace("en directo","")
     titulo = titulo.replace("En directo","")
 
-    titulo = titulo.strip()
-
-    return titulo
+    return titulo.strip()
 
 
 def cargar_historial():
@@ -105,7 +102,7 @@ def buscar_rss():
 
         try:
 
-            feed = feedparser.parse(feed_url)
+            feed=feedparser.parse(feed_url)
 
             for entry in feed.entries[:5]:
 
@@ -116,7 +113,7 @@ def buscar_rss():
                 imagen=""
 
                 if "media_content" in entry:
-                    imagen = entry.media_content[0]["url"]
+                    imagen=entry.media_content[0]["url"]
 
                 noticias.append({
                     "titulo":titulo,
@@ -162,60 +159,64 @@ def elegir_noticia(noticias,historial):
 
 def generar_texto(titulo,descripcion):
 
-    prompt=f"""
-Redacta una noticia profesional en español para Facebook.
+    if not OPENROUTER_API_KEY:
+        return descripcion
 
-Título:
+    prompt=f"""
+Eres un periodista.
+
+Escribe una noticia en español basada en esta información.
+
+TITULO:
 {titulo}
 
-Información:
+INFORMACION:
 {descripcion}
 
-Reglas:
+REGLAS:
 
-- 3 a 5 párrafos
-- mínimo 700 caracteres
-- explicar qué ocurrió y por qué es importante
-- no usar HTML
-- no incluir enlaces
+3 a 5 párrafos
+mínimo 800 caracteres
+explicar claramente qué ocurrió
+estilo periodístico
+sin enlaces
 """
 
     try:
 
-        if OPENROUTER_API_KEY:
+        r=requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+        "Authorization":f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type":"application/json"
+        },
+        json={
+        "model":"mistralai/mistral-7b-instruct",
+        "messages":[{"role":"user","content":prompt}],
+        "temperature":0.7
+        },
+        timeout=30
+        )
 
-            r=requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization":f"Bearer {OPENROUTER_API_KEY}"},
-            json={
-            "model":"mistralai/mistral-7b-instruct:free",
-            "messages":[{"role":"user","content":prompt}]
-            },
-            timeout=20
-            )
+        data=r.json()
 
-            data=r.json()
+        texto=data["choices"][0]["message"]["content"]
 
-            texto=data["choices"][0]["message"]["content"]
+        if len(texto)<400:
+            return descripcion
 
-            return texto.strip()
+        return texto.strip()
 
-    except:
-        pass
+    except Exception as e:
 
-    return descripcion
+        print("Error IA:",e)
+
+        return descripcion
 
 
 def generar_hashtags():
 
-    tags=[
-    "#Noticias",
-    "#Actualidad",
-    "#UltimaHora",
-    "#Mundo"
-    ]
-
-    return " ".join(tags)
+    return "#Noticias #Actualidad #UltimaHora #Mundo"
 
 
 def descargar_imagen(url):
@@ -236,6 +237,7 @@ def descargar_imagen(url):
         return path
 
     except:
+
         return None
 
 
@@ -273,11 +275,11 @@ def publicar_facebook(texto,img):
 
 def crear_post(noticia):
 
-    titulo = limpiar_titulo(noticia["titulo"])
+    titulo=limpiar_titulo(noticia["titulo"])
 
-    texto = generar_texto(titulo,noticia["descripcion"])
+    texto=generar_texto(titulo,noticia["descripcion"])
 
-    hashtags = generar_hashtags()
+    hashtags=generar_hashtags()
 
     mensaje=f"""📰 {titulo}
 
@@ -293,13 +295,13 @@ def crear_post(noticia):
 
 def main():
 
-    print("Buscando noticias en español...")
+    print("Buscando noticias...")
 
-    historial = cargar_historial()
+    historial=cargar_historial()
 
-    noticias = buscar_rss()
+    noticias=buscar_rss()
 
-    noticia = elegir_noticia(noticias,historial)
+    noticia=elegir_noticia(noticias,historial)
 
     if not noticia:
         print("No hay noticias nuevas")
@@ -307,11 +309,11 @@ def main():
 
     print("Noticia elegida:",noticia["titulo"])
 
-    post = crear_post(noticia)
+    post=crear_post(noticia)
 
-    img = descargar_imagen(noticia["imagen"])
+    img=descargar_imagen(noticia["imagen"])
 
-    publicado = publicar_facebook(post,img)
+    publicado=publicar_facebook(post,img)
 
     if publicado:
 

@@ -128,7 +128,6 @@ def cargar_historial():
 
 def guardar_historial(historial, url, titulo):
     """Guarda una noticia en el historial"""
-    # Crear hash único para la URL
     url_hash = hashlib.md5(url.lower().strip().encode()).hexdigest()
     
     historial['urls'].append(url)
@@ -136,7 +135,6 @@ def guardar_historial(historial, url, titulo):
     historial['hashes'].append(url_hash)
     historial['ultima_publicacion'] = datetime.now().isoformat()
     
-    # Mantener solo las últimas 500 entradas
     historial['urls'] = historial['urls'][-500:]
     historial['titulos'] = historial['titulos'][-500:]
     historial['hashes'] = historial['hashes'][-500:]
@@ -152,15 +150,12 @@ def es_duplicado(historial, url, titulo):
     """Verifica si una noticia ya fue publicada"""
     url_hash = hashlib.md5(url.lower().strip().encode()).hexdigest()
     
-    # Verificar por hash de URL
     if url_hash in historial.get('hashes', []):
         return True
     
-    # Verificar por URL exacta
     if url in historial.get('urls', []):
         return True
     
-    # Verificar por similitud de título
     titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
     for t in historial.get('titulos', []):
         t_simple = re.sub(r'[^\w]', '', t.lower())[:40]
@@ -217,33 +212,23 @@ def calcular_puntaje_viral(titulo, descripcion):
     return puntaje
 
 def asegurar_puntuacion(texto):
-    """
-    Asegura que el texto termine con punto final y tenga puntuación correcta
-    """
+    """Asegura que el texto termine con punto final y tenga puntuación correcta"""
     if not texto:
         return texto
     
     texto = texto.strip()
-    
-    # Eliminar espacios antes de puntuación
     texto = re.sub(r'\s+([.,;:!?])', r'\1', texto)
     
-    # Asegurar punto final
     if not texto.endswith(('.', '!', '?')):
         texto += '.'
     
-    # Eliminar puntos múltiples
     texto = re.sub(r'\.{2,}', '.', texto)
-    
-    # Asegurar espacio después de punto
     texto = re.sub(r'\.([A-ZÁÉÍÓÚÑ])', r'. \1', texto)
     
     return texto
 
 def limpiar_texto_extraccion(texto):
-    """
-    Limpia el texto extraído eliminando metadatos, fechas, horas y elementos no deseados
-    """
+    """Limpia el texto extraído eliminando metadatos, fechas, horas y elementos no deseados"""
     if not texto:
         return texto
     
@@ -295,9 +280,7 @@ def limpiar_texto_extraccion(texto):
     return texto_limpio.strip()
 
 def extraer_texto_completo(url):
-    """
-    Extrae el texto completo de una noticia desde su URL de forma limpia y ordenada
-    """
+    """Extrae el texto completo de una noticia desde su URL de forma limpia y ordenada"""
     print(f"   🔍 Extrayendo texto de: {url[:50]}...")
     
     try:
@@ -400,7 +383,6 @@ def extraer_texto_completo(url):
                 if texto.isupper() and len(texto) < 100:
                     continue
                 
-                # Asegurar puntuación en cada párrafo
                 texto = asegurar_puntuacion(texto)
                 parrafos.append(texto)
             
@@ -420,9 +402,7 @@ def extraer_texto_completo(url):
     return None
 
 def generar_redaccion_profesional(titulo, texto_completo, descripcion_rss, fuente):
-    """
-    Genera redacción periodística profesional usando IA con el texto COMPLETO limpio
-    """
+    """Genera redacción periodística profesional usando IA con el texto COMPLETO limpio"""
     print(f"   🤖 Generando redacción profesional...")
     
     texto_para_ia = texto_completo[:5000] if len(texto_completo) > 5000 else texto_completo
@@ -524,13 +504,10 @@ AHORA ESCRIBE LA NOTICIA:"""
     return generar_redaccion_manual(titulo, texto_completo, descripcion_rss, fuente)
 
 def asegurar_puntuacion_parrafos(texto):
-    """
-    Asegura que cada párrafo termine con punto final y estén separados por líneas en blanco
-    """
+    """Asegura que cada párrafo termine con punto final y estén separados por líneas en blanco"""
     if not texto:
         return texto
     
-    # Separar párrafos (pueden venir separados por \n\n o por \n)
     parrafos = re.split(r'\n\s*\n', texto.strip())
     parrafos_corregidos = []
     
@@ -539,16 +516,12 @@ def asegurar_puntuacion_parrafos(texto):
         if not parrafo:
             continue
         
-        # Eliminar saltos de línea internos (unir líneas del mismo párrafo)
         parrafo = parrafo.replace('\n', ' ')
         parrafo = re.sub(r'\s+', ' ', parrafo)
-        
-        # Asegurar punto final
         parrafo = asegurar_puntuacion(parrafo)
         
         parrafos_corregidos.append(parrafo)
     
-    # Unir con doble salto de línea para separación visual clara
     return '\n\n'.join(parrafos_corregidos)
 
 def limpiar_salida_ia(contenido):
@@ -556,11 +529,9 @@ def limpiar_salida_ia(contenido):
     if not contenido:
         return contenido
     
-    # Eliminar instrucciones y corchetes
     contenido = re.sub(r'\[.*?\]', '', contenido, flags=re.DOTALL)
     contenido = re.sub(r'\{.*?\}', '', contenido, flags=re.DOTALL)
     
-    # Eliminar líneas de instrucción
     lineas_a_eliminar = [
         r'^TÍTULO ATRACTIVO$',
         r'^Párrafo \d+',
@@ -615,43 +586,36 @@ def generar_redaccion_manual(titulo, texto_completo, descripcion_rss, fuente):
     
     parrafos = []
     
-    # Párrafo 1: Lead
     if len(oraciones) >= 2:
         p = f"{oraciones[0]}. {oraciones[1]}."
     else:
         p = oraciones[0] if oraciones else f"Se reporta un importante acontecimiento de relevancia internacional."
     parrafos.append(asegurar_puntuacion(p))
     
-    # Párrafo 2: Contexto
     if len(oraciones) >= 4:
         p = f"{oraciones[2]}. {oraciones[3]}."
     else:
         p = "El hecho ha generado amplia repercusión en los medios de comunicación y entre la opinión pública."
     parrafos.append(asegurar_puntuacion(p))
     
-    # Párrafo 3: Desarrollo
     if len(oraciones) >= 6:
         p = f"{oraciones[4]}. {oraciones[5]}."
     else:
         p = "Las autoridades competentes continúan evaluando la situación mientras se desarrollan los hechos."
     parrafos.append(asegurar_puntuacion(p))
     
-    # Párrafo 4: Cierre
     if len(oraciones) >= 8:
         p = f"{oraciones[6]}. {oraciones[7]}."
     else:
         p = "Se esperan actualizaciones oficiales en las próximas horas sobre el desarrollo de esta información."
     parrafos.append(asegurar_puntuacion(p))
     
-    # Unir con doble salto de línea para separación clara
     cuerpo = '\n\n'.join(parrafos)
     cuerpo = re.sub(r'\.\.+', '.', cuerpo)
     cuerpo = re.sub(r'\s+', ' ', cuerpo)
     
-    # Re-asegurar la separación de párrafos después del regex
     parrafos_finales = cuerpo.split('. ')
     if len(parrafos_finales) >= 4:
-        # Reconstruir con separación adecuada
         cuerpo = '\n\n'.join([
             f"{parrafos_finales[0]}. {parrafos_finales[1]}.",
             f"{parrafos_finales[2]}. {parrafos_finales[3]}.",
@@ -762,10 +726,8 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Asegurar que el texto tenga puntuación correcta y párrafos separados
     texto = asegurar_puntuacion_parrafos(texto)
     
-    # Construir mensaje con separación clara entre párrafos
     mensaje = f"""{texto}
 
 {hashtags}
@@ -870,7 +832,6 @@ def buscar_noticias():
         except:
             pass
     
-    # Mezclar feeds para variedad
     random.shuffle(RSS_FEEDS)
     
     for feed_url in RSS_FEEDS[:10]:
@@ -914,7 +875,6 @@ def filtrar_y_seleccionar(noticias, historial):
     candidatas = []
     
     for noticia in noticias:
-        # Verificación estricta de duplicados
         if es_duplicado(historial, noticia['url'], noticia['titulo']):
             print(f"   ⏭️ Ya publicada: {noticia['titulo'][:40]}...")
             continue
@@ -932,7 +892,6 @@ def filtrar_y_seleccionar(noticias, historial):
         print("⚠️ No hay noticias nuevas disponibles")
         return None
     
-    # Ordenar por puntaje viral y seleccionar la mejor
     candidatas.sort(key=lambda x: x['puntaje_viral'], reverse=True)
     seleccionada = candidatas[0]
     
@@ -987,8 +946,9 @@ def main():
     print(f"\n🖼️ Descargando imagen...")
     imagen_path = descargar_imagen(seleccionada['imagen'])
     
+    # CORRECCIÓN: Línea 991 - regex corregida con paréntesis balanceados
     if not imagen_path and seleccionada.get('texto_completo'):
-        urls_img = re.findall(r'https?://[^\s"\'']+\.(?:jpg|jpeg|png)', seleccionada['texto_completo'])
+        urls_img = re.findall(r'https?://[^\s"\']+\.(?:jpg|jpeg|png)', seleccionada['texto_completo'])
         for url_img in urls_img[:2]:
             imagen_path = descargar_imagen(url_img)
             if imagen_path:
@@ -1029,38 +989,6 @@ def main():
         print("\n❌ Falló la publicación")
         return False
 
-def ejecutar_bot():
-    """Ejecuta el bot en bucle cada 30 minutos"""
-    print("="*60)
-    print("🚀 BOT DE NOTICIAS - Verdad Hoy")
-    print("⏰ Modo: Publicación automática cada 30 minutos")
-    print("="*60)
-    
-    while True:
-        try:
-            exito = main()
-            
-            if exito:
-                print(f"\n⏳ Próxima publicación en 30 minutos...")
-                print(f"   ({(datetime.now() + timedelta(minutes=30)).strftime('%H:%M:%S')})")
-                time.sleep(30 * 60)  # 30 minutos
-            else:
-                print(f"\n⏳ Reintentando en 5 minutos...")
-                time.sleep(5 * 60)  # 5 minutos si falló
-                
-        except KeyboardInterrupt:
-            print("\n\n⚠️ Bot detenido por el usuario")
-            break
-        except Exception as e:
-            print(f"\n💥 Error crítico: {e}")
-            import traceback
-            traceback.print_exc()
-            print(f"\n⏳ Reintentando en 5 minutos...")
-            time.sleep(5 * 60)
-
 if __name__ == "__main__":
-    # Modo de ejecución única (para cron jobs)
-    # main()
-    
-    # Modo de ejecución continua (cada 30 minutos)
-    ejecutar_bot()
+    main()
+

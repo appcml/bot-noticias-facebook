@@ -3,6 +3,7 @@ import feedparser
 import json
 import hashlib
 import os
+import re
 from io import BytesIO
 from PIL import Image
 
@@ -12,31 +13,36 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 HISTORIAL_FILE = "historial_publicaciones.json"
 
-# RSS MEJORES Y MAS RAPIDOS
 RSS_FEEDS = [
-
 "https://feeds.bbci.co.uk/news/world/rss.xml",
 "https://rss.cnn.com/rss/edition_world.rss",
 "https://www.aljazeera.com/xml/rss/all.xml",
 "https://www.theguardian.com/world/rss",
 "https://www.reutersagency.com/feed/?best-topics=world",
-"https://www.reutersagency.com/feed/?best-topics=politics",
 "https://www.nytimes.com/services/xml/rss/nyt/World.xml",
 "https://www.euronews.com/rss?level=theme&name=news",
 "https://cnnespanol.cnn.com/feed/",
 "https://actualidad.rt.com/feeds/all.rss"
-
 ]
 
 PALABRAS_VIRALES = [
-
-"urgente","última hora","guerra","ataque","crisis",
-"explosión","conflicto","protestas","tensión",
-"invasión","misiles","bombardeo","tragedia",
-"colapso","investigación","escándalo","crisis económica",
-"emergencia","alarma","amenaza","terrorista"
-
+"urgente","última hora","guerra","ataque","crisis","explosión",
+"conflicto","protestas","tensión","invasión","misiles",
+"bombardeo","tragedia","colapso","investigación","escándalo",
+"emergencia","alarma","amenaza"
 ]
+
+
+def limpiar_html(texto):
+
+    if not texto:
+        return ""
+
+    texto = re.sub("<.*?>","",texto)
+    texto = texto.replace("\n"," ")
+    texto = texto.strip()
+
+    return texto
 
 
 def cargar_historial():
@@ -62,7 +68,7 @@ def hash_url(url):
 
 def es_viral(texto):
 
-    texto=texto.lower()
+    texto = texto.lower()
 
     return any(p in texto for p in PALABRAS_VIRALES)
 
@@ -79,9 +85,9 @@ def buscar_rss():
 
             for entry in feed.entries[:5]:
 
-                titulo=entry.get("title","")
-                link=entry.get("link","")
-                desc=entry.get("summary","")
+                titulo = limpiar_html(entry.get("title",""))
+                link = entry.get("link","")
+                desc = limpiar_html(entry.get("summary",""))
 
                 imagen=""
 
@@ -132,8 +138,8 @@ def elegir_noticia(noticias,historial):
 
 def optimizar_titulo(titulo):
 
-    if len(titulo) > 140:
-        titulo = titulo[:140] + "..."
+    if len(titulo)>140:
+        titulo=titulo[:140]+"..."
 
     return titulo
 
@@ -141,7 +147,7 @@ def optimizar_titulo(titulo):
 def generar_texto(titulo,descripcion):
 
     prompt=f"""
-Redacta una noticia periodística en español.
+Redacta una noticia en español basada en esta información.
 
 Título:
 {titulo}
@@ -151,10 +157,11 @@ Información:
 
 Reglas:
 
-3 a 5 párrafos
-mínimo 700 caracteres
-estilo periodístico claro
-explicar qué pasó y por qué es importante
+- 3 a 5 párrafos
+- mínimo 700 caracteres
+- estilo periodístico claro
+- explicar qué ocurrió
+- no usar HTML
 """
 
     try:
@@ -305,3 +312,4 @@ def main():
 
 if __name__=="__main__":
     main()
+

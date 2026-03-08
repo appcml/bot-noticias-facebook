@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 import random
-from datetime import datetime, timedelta  # ← Agregar timedelta
+from datetime import datetime, timedelta  # ← Agregado timedelta
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
@@ -17,7 +17,7 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = 'historial_publicaciones.json'
 
-# FUENTES RSS INTERNACIONALES - CORREGIDO: eliminados espacios al final
+# FUENTES RSS INTERNACIONALES - CORREGIDO: Eliminados espacios al final
 RSS_FEEDS = [
     'https://rss.cnn.com/rss/edition.rss',
     'https://feeds.bbci.co.uk/news/world/rss.xml',
@@ -35,30 +35,44 @@ RSS_FEEDS = [
     'https://www.reutersagency.com/feed/?best-topics=world',
 ]
 
-# ... (resto de configuraciones igual) ...
+# ... (PALABRAS_CLAVE_VIRALES, CATEGORIAS, PAISES se mantienen igual) ...
+
+print("="*60)
+print("🚀 BOT DE NOTICIAS - Verdad Hoy")
+print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
+print("="*60)
 
 def cargar_historial():
     """Carga el historial de publicaciones"""
     if os.path.exists(HISTORIAL_FILE):
         try:
             with open(HISTORIAL_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
+                data = json.load(f)
+                # Asegurar que exista la clave 'hashes'
+                if 'hashes' not in data:
+                    data['hashes'] = []
+                    # Generar hashes de URLs existentes
+                    for url in data.get('urls', []):
+                        url_hash = hashlib.md5(url.lower().strip().encode()).hexdigest()[:16]
+                        data['hashes'].append(url_hash)
+                return data
+        except Exception as e:
+            print(f"⚠️ Error cargando historial: {e}")
             pass
-    return {'urls': [], 'titulos': [], 'ultima_publicacion': None, 'hashes': []}  # ← Agregar 'hashes'
+    return {'urls': [], 'titulos': [], 'hashes': [], 'ultima_publicacion': None}  # ← Agregado 'hashes'
 
 def guardar_historial(historial, url, titulo):
     """Guarda una noticia en el historial - CORREGIDO"""
+    # Generar hash de la URL
     url_hash = hashlib.md5(url.lower().strip().encode()).hexdigest()[:16]
-    titulo_hash = hashlib.md5(titulo.lower().strip().encode()).hexdigest()[:16]
     
-    # ← CORREGIDO: Agregar a listas en el objeto historial
+    # Agregar a todas las listas
     historial['urls'].append(url)
     historial['titulos'].append(titulo[:100])
-    historial['hashes'].append(url_hash)  # ← Nuevo: guardar hash directamente
+    historial['hashes'].append(url_hash)  # ← Nuevo: guardar hash
     historial['ultima_publicacion'] = datetime.now().isoformat()
     
-    # Mantener solo últimas 500
+    # Mantener solo últimas 500 entradas
     historial['urls'] = historial['urls'][-500:]
     historial['titulos'] = historial['titulos'][-500:]
     historial['hashes'] = historial['hashes'][-500:]
@@ -66,27 +80,27 @@ def guardar_historial(historial, url, titulo):
     try:
         with open(HISTORIAL_FILE, 'w', encoding='utf-8') as f:
             json.dump(historial, f, ensure_ascii=False, indent=2)
-        print(f"💾 Guardada en historial: {url[:50]}...")
+        print(f"💾 Guardada en historial: {url[:60]}...")
     except Exception as e:
         print(f"⚠️ Error guardando historial: {e}")
 
 def es_duplicado(historial, url, titulo):
-    """Verifica si una noticia ya fue publicada - CORREGIDO: más estricto"""
+    """Verifica si una noticia ya fue publicada - CORREGIDO: Más estricto"""
     url_normalizada = url.lower().strip()
     url_hash = hashlib.md5(url_normalizada.encode()).hexdigest()[:16]
     
-    # ← CORREGIDO: Verificar en hashes guardados
+    # ← CORREGIDO: Verificar primero en hashes (más rápido y confiable)
     if url_hash in historial.get('hashes', []):
         print(f"   ⚠️ Duplicado por hash: {url[:50]}...")
         return True
     
-    # Verificación por URL exacta (backup)
+    # Verificación adicional por URL exacta (backup)
     for url_guardada in historial.get('urls', []):
         if url_normalizada == url_guardada.lower().strip():
             print(f"   ⚠️ Duplicado por URL exacta")
             return True
     
-    # ← CORREGIDO: Umbral más alto (85% en lugar de 75%) y comparación de palabras clave
+    # ← CORREGIDO: Verificación de título más estricta (85% en vez de 75%)
     titulo_normalizado = re.sub(r'[^\w\s]', '', titulo.lower()).strip()
     palabras_titulo = set(titulo_normalizado.split())
     
@@ -94,20 +108,20 @@ def es_duplicado(historial, url, titulo):
         titulo_g_normalizado = re.sub(r'[^\w\s]', '', titulo_guardado.lower()).strip()
         palabras_guardadas = set(titulo_g_normalizado.split())
         
-        # Calcular similitud de Jaccard
         if palabras_titulo and palabras_guardadas:
+            # Calcular similitud de Jaccard
             interseccion = len(palabras_titulo & palabras_guardadas)
             union = len(palabras_titulo | palabras_guardadas)
             similitud = interseccion / union if union > 0 else 0
             
-            if similitud > 0.85:  # ← Más estricto: 85%
-                print(f"   ⚠️ Duplicado por título similar ({similitud:.0%})")
+            if similitud > 0.85:  # ← Más estricto: 85% en vez de 75%
+                print(f"   ⚠️ Duplicado por título similar ({similitud:.0%}): '{titulo[:40]}...'")
                 return True
     
     return False
 
 def verificar_tiempo_ultima_publicacion(historial):
-    """← NUEVA FUNCIÓN: Verifica si pasaron 30 minutos"""
+    """← NUEVA FUNCIÓN: Verifica si pasaron 30 minutos desde la última publicación"""
     ultima = historial.get('ultima_publicacion')
     if not ultima:
         return True
@@ -117,15 +131,227 @@ def verificar_tiempo_ultima_publicacion(historial):
         ahora = datetime.now()
         diferencia = ahora - ultima_dt
         
-        if diferencia < timedelta(minutes=30):
-            minutos_restantes = 30 - (diferencia.seconds // 60)
-            print(f"⏰ Esperando... {minutos_restantes} minutos restantes")
+        minutos_pasados = diferencia.total_seconds() / 60
+        
+        if minutos_pasados < 30:
+            minutos_restantes = 30 - minutos_pasados
+            print(f"⏰ Esperando... Última publicación hace {minutos_pasados:.1f} minutos. Faltan {minutos_restantes:.1f} minutos")
             return False
         return True
-    except:
+    except Exception as e:
+        print(f"⚠️ Error verificando tiempo: {e}")
         return True
 
-# ... (resto de funciones igual hasta main) ...
+# ... (detectar_pais, clasificar_categoria, calcular_puntaje_viral se mantienen igual) ...
+
+def asegurar_puntuacion(texto):
+    # ... (igual que antes) ...
+    pass
+
+def limpiar_texto_extraccion(texto):
+    # ... (igual que antes) ...
+    pass
+
+def extraer_texto_completo(url):
+    # ... (igual que antes) ...
+    pass
+
+def generar_redaccion_profesional(titulo, texto_completo, descripcion_rss, fuente):
+    # ... (igual que antes, pero corregir URL de OpenRouter) ...
+    
+    # CORREGIDO: Eliminar espacios en URLs
+    headers = {
+        'Authorization': f'Bearer {OPENROUTER_API_KEY}',
+        'HTTP-Referer': 'https://github.com',  # ← Sin espacio al final
+        'X-Title': 'Bot Noticias',
+        'Content-Type': 'application/json'
+    }
+    
+    for modelo in modelos:
+        try:
+            print(f"   🔄 Modelo: {modelo.split('/')[-1]}...")
+            
+            response = requests.post(
+                'https://openrouter.ai/api/v1/chat/completions',  # ← Sin espacio al final
+                headers=headers,
+                json={
+                    'model': modelo,
+                    'messages': [{'role': 'user', 'content': prompt}],
+                    'temperature': 0.2,
+                    'max_tokens': 1500
+                },
+                timeout=120
+            )
+            # ... (resto igual) ...
+
+def asegurar_puntuacion_parrafos(texto):
+    # ... (igual que antes) ...
+    pass
+
+def limpiar_salida_ia(contenido):
+    # ... (igual que antes) ...
+    pass
+
+def generar_redaccion_manual(titulo, texto_completo, descripcion_rss, fuente):
+    # ... (igual que antes) ...
+    pass
+
+def generar_hashtags(categoria, pais, titulo):
+    # ... (igual que antes) ...
+    pass
+
+def extraer_imagen(entry, url_noticia=None):
+    # ... (igual que antes) ...
+    pass
+
+def descargar_imagen(url):
+    # ... (igual que antes) ...
+    pass
+
+def publicar_facebook(titulo, texto, imagen_path, hashtags):
+    # ... (igual que antes, pero corregir URL) ...
+    
+    try:
+        # CORREGIDO: Eliminar espacio en URL de Facebook
+        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"  # ← Sin espacio antes de FB_PAGE_ID
+        
+        # ... (resto igual) ...
+
+def buscar_noticias():
+    """Busca noticias en fuentes RSS - CORREGIDO"""
+    print("\n🔍 Buscando noticias...")
+    noticias = []
+    
+    if NEWS_API_KEY:
+        try:
+            terminos = random.sample([
+                'urgente crisis', 'última hora', 'alerta internacional',
+                'guerra conflicto', 'economía crisis', 'política elecciones'
+            ], 2)
+            
+            for termino in terminos:
+                try:
+                    # CORREGIDO: Eliminar espacio en URL
+                    resp = requests.get(
+                        "https://newsapi.org/v2/everything",  # ← Sin espacio
+                        params={
+                            'q': termino,
+                            'language': 'es',
+                            'sortBy': 'publishedAt',
+                            'pageSize': 5,
+                            'apiKey': NEWS_API_KEY
+                        },
+                        timeout=15
+                    )
+                    # ... (resto igual) ...
+        except:
+            pass
+    
+    random.shuffle(RSS_FEEDS)
+    
+    for feed_url in RSS_FEEDS[:10]:
+        try:
+            # CORREGIDO: feedparser ahora recibe URLs limpias (sin espacios)
+            feed = feedparser.parse(feed_url)
+            fuente_nombre = feed.feed.get('title', feed_url.split('/')[2])
+            
+            # ← NUEVO: Verificar si el feed se parseó correctamente
+            if not feed.entries:
+                print(f"   ⚠️ Feed vacío o error: {fuente_nombre[:25]}")
+                continue
+            
+            for entry in feed.entries[:3]:
+                titulo = entry.get('title', '')
+                descripcion = entry.get('summary', entry.get('description', ''))
+                url = entry.get('link', '')
+                
+                # ← NUEVO: Validar que tenga URL y título
+                if not url or not titulo:
+                    continue
+                
+                imagen = extraer_imagen(entry, url)
+                puntaje = calcular_puntaje_viral(titulo, descripcion)
+                
+                if puntaje > 0:
+                    noticias.append({
+                        'titulo': titulo,
+                        'descripcion': descripcion,
+                        'url': url,
+                        'imagen': imagen,
+                        'fuente': fuente_nombre,
+                        'fecha': entry.get('published', ''),
+                        'puntaje_viral': puntaje,
+                        'texto_completo': None
+                    })
+            
+            print(f"   📡 {fuente_nombre[:25]}: {len(feed.entries)} entradas")
+            
+        except Exception as e:
+            print(f"   ⚠️ Error feed {feed_url[:30]}: {str(e)[:40]}")
+            continue
+    
+    print(f"\n📊 Total: {len(noticias)} noticias candidatas")
+    return noticias
+
+def filtrar_y_seleccionar(noticias, historial):
+    """Filtra y selecciona la mejor noticia - CORREGIDO"""
+    print("\n🔎 Filtrando duplicados...")
+    
+    candidatas = []
+    
+    for noticia in noticias:
+        # ← CORREGIDO: Verificación más detallada de duplicados
+        if es_duplicado(historial, noticia['url'], noticia['titulo']):
+            continue
+        
+        # ← NUEVO: Filtros adicionales de calidad
+        if len(noticia['titulo']) < 15:
+            print(f"   ⚠️ Título muy corto: {noticia['titulo'][:30]}...")
+            continue
+            
+        if "[Removed]" in noticia['titulo'] or "removed" in noticia['titulo'].lower():
+            print(f"   ⚠️ Noticia removida: {noticia['titulo'][:30]}...")
+            continue
+            
+        # ← NUEVO: Verificar que la URL sea válida
+        if not noticia['url'].startswith('http'):
+            print(f"   ⚠️ URL inválida: {noticia['url'][:30]}...")
+            continue
+        
+        noticia['categoria'] = clasificar_categoria(noticia['titulo'], noticia['descripcion'])
+        noticia['pais'] = detectar_pais(noticia['titulo'], noticia['descripcion'])
+        
+        candidatas.append(noticia)
+        print(f"   ✅ [{noticia['categoria']}] {noticia['titulo'][:45]}... (viral: {noticia['puntaje_viral']})")
+    
+    if not candidatas:
+        print("⚠️ No hay noticias candidatas después de filtrar")
+        return None
+    
+    # Ordenar por puntaje viral
+    candidatas.sort(key=lambda x: x['puntaje_viral'], reverse=True)
+    
+    # ← NUEVO: Mostrar top 3 para debug
+    print(f"\n🏆 Top 3 noticias candidatas:")
+    for i, n in enumerate(candidatas[:3], 1):
+        print(f"   {i}. [{n['puntaje_viral']}] {n['titulo'][:50]}...")
+    
+    seleccionada = candidatas[0]
+    print(f"\n🎯 Seleccionada: {seleccionada['titulo'][:60]}...")
+    print(f"   URL: {seleccionada['url'][:70]}...")
+    
+    print(f"\n📄 Extrayendo contenido completo...")
+    texto_completo = extraer_texto_completo(seleccionada['url'])
+    
+    if texto_completo and len(texto_completo) > 200:
+        seleccionada['texto_completo'] = texto_completo
+        print(f"   ✅ Texto extraído: {len(texto_completo)} caracteres")
+    else:
+        desc_limpia = re.sub(r'<[^>]+>', '', seleccionada['descripcion'])
+        seleccionada['texto_completo'] = limpiar_texto_extraccion(desc_limpia)
+        print(f"   ⚠️ Usando descripción RSS: {len(seleccionada['texto_completo'])} caracteres")
+    
+    return seleccionada
 
 def main():
     """Función principal - CORREGIDA"""
@@ -134,25 +360,29 @@ def main():
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
+    # Cargar historial
     historial = cargar_historial()
-    print(f"📚 Historial: {len(historial.get('urls', []))} noticias")
+    print(f"📚 Historial cargado: {len(historial.get('urls', []))} noticias publicadas")
     
-    # ← NUEVO: Verificar tiempo mínimo entre publicaciones
+    # ← NUEVO: Verificar tiempo mínimo entre publicaciones (30 minutos)
     if not verificar_tiempo_ultima_publicacion(historial):
-        print("❌ No han pasado 30 minutos desde la última publicación")
+        print("❌ No se puede publicar: deben pasar 30 minutos entre publicaciones")
         return False
     
+    # Buscar noticias
     noticias = buscar_noticias()
     if not noticias:
-        print("\n❌ Sin noticias disponibles")
+        print("\n❌ No se encontraron noticias en las fuentes RSS")
         return False
     
+    # Filtrar y seleccionar
     seleccionada = filtrar_y_seleccionar(noticias, historial)
     if not seleccionada:
-        print("\n❌ Sin noticias nuevas para publicar")
+        print("\n❌ No hay noticias nuevas para publicar (todas son duplicadas)")
         return False
     
-    print(f"\n✍️ Redactando...")
+    # Generar redacción
+    print(f"\n✍️ Generando redacción profesional...")
     redaccion = generar_redaccion_profesional(
         seleccionada['titulo'],
         seleccionada['texto_completo'],
@@ -160,27 +390,31 @@ def main():
         seleccionada['fuente']
     )
     
+    # Generar hashtags
     hashtags = generar_hashtags(
         seleccionada['categoria'],
         seleccionada['pais'],
         seleccionada['titulo']
     )
     
-    print(f"\n🖼️ Descargando imagen...")
+    # Descargar imagen
+    print(f"\n🖼️ Procesando imagen...")
     imagen_path = descargar_imagen(seleccionada['imagen'])
     
     if not imagen_path and seleccionada.get('texto_completo'):
-        urls_img = re.findall(r'https?://[^\s"\']+\.(?:jpg|jpeg|png)', seleccionada['texto_completo'])
+        urls_img = re.findall(r'https?://[^\s"']+\.(?:jpg|jpeg|png)', seleccionada['texto_completo'])
         for url_img in urls_img[:2]:
             imagen_path = descargar_imagen(url_img)
             if imagen_path:
+                print(f"   ✅ Imagen extraída del contenido")
                 break
     
     if not imagen_path:
-        print("❌ Sin imagen disponible")
+        print("❌ No se pudo obtener imagen para la noticia")
         return False
     
-    print(f"\n📤 Publicando...")
+    # Publicar en Facebook
+    print(f"\n📤 Publicando en Facebook...")
     exito = publicar_facebook(
         seleccionada['titulo'],
         redaccion,
@@ -188,29 +422,24 @@ def main():
         hashtags
     )
     
+    # Limpiar y finalizar
+    try:
+        if os.path.exists(imagen_path):
+            os.remove(imagen_path)
+    except:
+        pass
+    
     if exito:
-        # ← CORREGIDO: Guardar y actualizar historial en memoria
+        # ← CORREGIDO: Guardar en historial inmediatamente después de publicar
         guardar_historial(historial, seleccionada['url'], seleccionada['titulo'])
         
-        # Limpiar imagen temporal
-        try:
-            if os.path.exists(imagen_path):
-                os.remove(imagen_path)
-        except:
-            pass
-        
         print("\n" + "="*60)
-        print("✅ ÉXITO - Publicación guardada en historial")
+        print("✅ ÉXITO: Noticia publicada y guardada en historial")
+        print(f"📰 {seleccionada['titulo'][:50]}...")
         print("="*60)
         return True
     else:
-        try:
-            if os.path.exists(imagen_path):
-                os.remove(imagen_path)
-        except:
-            pass
-        
-        print("\n❌ Falló la publicación")
+        print("\n❌ Falló la publicación en Facebook")
         return False
 
 if __name__ == "__main__":

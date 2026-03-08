@@ -1,124 +1,267 @@
-import feedparser
 import requests
-from bs4 import BeautifulSoup
-import random
+import feedparser
 import os
+import random
+import re
+from datetime import datetime
+from PIL import Image
+from io import BytesIO
 
-PAGE_ID = os.getenv("PAGE_ID")
-ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
+# ==============================
+# CONFIGURACIÓN
+# ==============================
 
-RSS_FEEDS = {
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+FB_PAGE_ID = os.getenv("FB_PAGE_ID")
+FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN")
 
-    "El Pais": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada",
-    "Infobae": "https://www.infobae.com/arc/outboundfeeds/rss/?outputType=xml",
-    "BBC Mundo": "https://feeds.bbci.co.uk/mundo/rss.xml",
-    "DW Español": "https://rss.dw.com/xml/rss-es-all",
-    "La Vanguardia": "https://www.lavanguardia.com/rss/internacional.xml",
-    "20 Minutos": "https://www.20minutos.es/rss/internacional/",
-    "BioBioChile": "https://www.biobiochile.cl/rss/internacional.xml"
+RSS_FEEDS = [
+    "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada",
+    "https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml",
+    "https://www.20minutos.es/rss/"
+]
 
-}
-
-HASHTAGS = "#Noticias #Actualidad #UltimaHora #Mundo"
-
-
-def obtener_articulo(url):
-
-    try:
-
-        headers = {"User-Agent": "Mozilla/5.0"}
-
-        r = requests.get(url, headers=headers)
-
-        soup = BeautifulSoup(r.text, "html.parser")
-
-        parrafos = soup.find_all("p")
-
-        texto = ""
-
-        for p in parrafos:
-
-            contenido = p.get_text()
-
-            if len(contenido) > 80:
-
-                texto += contenido + "\n\n"
-
-        imagen = None
-
-        img = soup.find("img")
-
-        if img and img.get("src"):
-
-            imagen = img["src"]
-
-        return texto[:2000], imagen
-
-    except:
-
-        return "", None
-
+# ==============================
+# BUSCAR NOTICIA
+# ==============================
 
 def buscar_noticia():
 
-    medio = random.choice(list(RSS_FEEDS.keys()))
+    print("Buscando noticias...")
 
-    feed_url = RSS_FEEDS[medio]
+    noticias = []
 
-    feed = feedparser.parse(feed_url)
+    for feed_url in RSS_FEEDS:
 
-    noticia = random.choice(feed.entries)
+        try:
 
-    titulo = noticia.title
+            feed = feedparser.parse(feed_url)
 
-    link = noticia.link
+            for entry in feed.entries[:10]:
 
-    texto, imagen = obtener_articulo(link)
+                imagen = ""
 
-    return titulo, texto, medio, imagen
+                if hasattr(entry, "media_content"):
+                    imagen = entry.media_content[0]["url"]
+
+                if "summary" in entry:
+                    m = re.search(r'src="(https?://[^"]+)"', entry.summary)
+                    if m:
+                        imagen = m.group(1)
+
+                noticias.append({
+                    "titulo": entry.title,
+                    "descripcion": entry.summary if "summary" in entry else "",
+                    "imagen": imagen,
+                    "fuente": feed.feed.title
+                })
+
+        except:
+            continue
+
+    if not noticias:
+        return None
+
+    noticia = random.choice(noticias)
+
+    print("Noticia encontrada:")
+    print(noticia["titulo"])
+
+    return noticia
 
 
-def crear_post():
+# ==============================
+# GENERAR TEXTO CON IA
+# ==============================
 
-    titulo, texto, medio, imagen = buscar_noticia()
+def generar_texto(titulo, descripcion, fuente):
 
-    if len(texto) < 200:
+    print("Generando redacción con IA...")
 
-        texto = "Más detalles de esta noticia en desarrollo."
+    prompt = f"""
+Actúa como editor profesional de noticias en español.
 
-    mensaje = f"""📰 {titulo}
+Tu tarea es tomar el contenido de una noticia real y reorganizarlo para publicarlo en redes sociales.
 
-{texto}
+Reglas:
 
-{HASHTAGS}
+1. El texto debe estar completamente en español.
+2. La primera línea debe ser el título completo de la noticia.
+3. Luego escribir entre 3 y 5 párrafos claros que expliquen la noticia.
+4. Cada párrafo debe tener 2 o 3 frases.
+5. El texto debe ser informativo y neutral.
+6. No incluir enlaces.
+7. No cortar el título original.
+8. No inventar información.
+9. Mantener el sentido original de la noticia.
 
-Fuente: {medio}
+Formato final:
+
+📰 TITULO COMPLETO
+
+Párrafo 1
+
+Párrafo 2
+
+Párrafo 3
+
+#Noticias #Actualidad #UltimaHora #Mundo
+
+Fuente: {fuente}
 — Verdad Hoy: Noticias al minuto
+
+
+NOTICIA ORIGINAL
+
+Título:
+{titulo}
+
+Descripción:
+{descripcion}
 """
 
-    return mensaje, imagen
+    try:
+
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "mistralai/mistral-7b-instruct:free",
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.4
+            },
+            timeout=60
+        )
+
+        data = response.json()
+
+        texto = data["choices"][0]["message"]["content"]
+
+        texto = re.sub(r'http\S+', '', texto)
+
+        return texto
+
+    except Exception as e:
+
+        print("Error generando texto:", e)
+
+        return None
 
 
-def publicar():
+# ==============================
+# DESCARGAR IMAGEN
+# ==============================
 
-    mensaje, imagen = crear_post()
+def descargar_imagen(url):
 
-    url = f"https://graph.facebook.com/{PAGE_ID}/photos"
+    if not url:
+        return None
 
-    data = {
+    try:
 
-        "caption": mensaje,
-        "url": imagen,
-        "access_token": ACCESS_TOKEN
+        print("Descargando imagen...")
 
-    }
+        r = requests.get(url, timeout=15)
 
-    r = requests.post(url, data=data)
+        img = Image.open(BytesIO(r.content))
 
-    print("Respuesta Facebook:")
-    print(r.text)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
 
+        path = "/tmp/noticia.jpg"
+
+        img.save(path, "JPEG", quality=90)
+
+        return path
+
+    except Exception as e:
+
+        print("Error descargando imagen:", e)
+
+        return None
+
+
+# ==============================
+# PUBLICAR EN FACEBOOK
+# ==============================
+
+def publicar_facebook(texto, imagen):
+
+    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
+        print("Faltan credenciales de Facebook")
+        return
+
+    url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
+
+    try:
+
+        with open(imagen, "rb") as f:
+
+            response = requests.post(
+                url,
+                files={"file": f},
+                data={
+                    "message": texto,
+                    "access_token": FB_ACCESS_TOKEN
+                }
+            )
+
+        print("Respuesta Facebook:")
+        print(response.text)
+
+    except Exception as e:
+
+        print("Error publicando:", e)
+
+
+# ==============================
+# PROCESO PRINCIPAL
+# ==============================
+
+def main():
+
+    print("===================================")
+    print("BOT DE NOTICIAS VERDAD HOY")
+    print(datetime.now())
+    print("===================================")
+
+    noticia = buscar_noticia()
+
+    if not noticia:
+        print("No se encontró noticia")
+        return
+
+    texto = generar_texto(
+        noticia["titulo"],
+        noticia["descripcion"],
+        noticia["fuente"]
+    )
+
+    if not texto:
+        print("No se pudo generar texto")
+        return
+
+    print("Texto generado")
+
+    imagen = descargar_imagen(noticia["imagen"])
+
+    if not imagen:
+        print("No se pudo obtener imagen")
+        return
+
+    publicar_facebook(texto, imagen)
+
+    print("Proceso finalizado")
+
+
+# ==============================
+# EJECUTAR
+# ==============================
 
 if __name__ == "__main__":
-
-    publicar()
+    main()

@@ -136,7 +136,6 @@ def guardar_historial(historial, url, titulo):
     historial['titulos'].append(titulo[:100])
     historial['ultima_publicacion'] = datetime.now().isoformat()
     
-    # Mantener solo últimas 500
     historial['urls'] = historial['urls'][-500:]
     historial['titulos'] = historial['titulos'][-500:]
     
@@ -155,7 +154,6 @@ def es_duplicado(historial, url, titulo):
     if url_hash in urls_hashes:
         return True
     
-    # Verificar por título similar
     titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
     for t in historial.get('titulos', []):
         t_simple = re.sub(r'[^\w]', '', t.lower())[:40]
@@ -174,7 +172,6 @@ def detectar_pais(titulo, descripcion):
         if pais in texto:
             return hashtag
     
-    # Detectar por contexto
     if any(x in texto for x in ['unión europea', 'ue', 'europeo', 'europea', 'bruselas']):
         return 'Europa'
     if any(x in texto for x in ['onu', 'naciones unidas', 'nueva york']):
@@ -205,13 +202,36 @@ def calcular_puntaje_viral(titulo, descripcion):
     
     for palabra in PALABRAS_VIRALES:
         if palabra in texto:
-            # Palabras de alta prioridad valen más
             if palabra in ['urgente', 'última hora', 'crisis', 'alerta', 'guerra', 'ataque']:
                 puntaje += 3
             else:
                 puntaje += 1
     
     return puntaje
+
+def asegurar_puntuacion(texto):
+    """
+    Asegura que el texto termine con punto final y tenga puntuación correcta
+    """
+    if not texto:
+        return texto
+    
+    texto = texto.strip()
+    
+    # Eliminar espacios antes de puntuación
+    texto = re.sub(r'\s+([.,;:!?])', r'\1', texto)
+    
+    # Asegurar punto final
+    if not texto.endswith(('.', '!', '?')):
+        texto += '.'
+    
+    # Eliminar puntos múltiples
+    texto = re.sub(r'\.{2,}', '.', texto)
+    
+    # Asegurar espacio después de punto
+    texto = re.sub(r'\.([A-ZÁÉÍÓÚÑ])', r'. \1', texto)
+    
+    return texto
 
 def limpiar_texto_extraccion(texto):
     """
@@ -220,42 +240,38 @@ def limpiar_texto_extraccion(texto):
     if not texto:
         return texto
     
-    # Eliminar líneas que son puramente fechas/horas/metadatos
     lineas = texto.split('\n')
     lineas_limpias = []
     
     patrones_eliminar = [
-        r'^\d{1,2}\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+de\s+\d{4}$',  # 7 de marzo de 2026
-        r'^\d{1,2}/\d{1,2}/\d{2,4}$',  # 09/03/2026
-        r'^\d{1,2}-\d{1,2}-\d{2,4}$',  # 09-03-2026
-        r'^\d{2}:\d{2}\s*(h|hrs|horas)?$',  # 22:37 h
-        r'^actualizado\s+(el|la)?',  # Actualizado el
-        r'^\d+\s*$',  # Solo números (contadores, etc)
-        r'^[A-Z][a-z]+?\s*/\s*[A-Z]+$',  # Nombre / Agencia (ej: Taherkareh / EFE)
-        r'^ANÁLISIS$',  # Etiquetas de sección
+        r'^\d{1,2}\s+de\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\s+de\s+\d{4}$',
+        r'^\d{1,2}/\d{1,2}/\d{2,4}$',
+        r'^\d{1,2}-\d{1,2}-\d{2,4}$',
+        r'^\d{2}:\d{2}\s*(h|hrs|horas)?$',
+        r'^actualizado\s+(el|la)?',
+        r'^\d+\s*$',
+        r'^[A-Z][a-z]+?\s*/\s*[A-Z]+$',
+        r'^ANÁLISIS$',
         r'^OPINIÓN$',
         r'^REPORTAJE$',
         r'^ENTREVISTA$',
-        r'^—\s*[A-Z]',  # Firma de autor — Nombre Apellido
-        r'^[A-Z][a-zA-Z\s]+?\s*/\s*[A-Z][a-zA-Z\s]+?$',  # Nombre / Apellido
-        r'^\d{1,2}\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)$',  # 7 marzo
+        r'^—\s*[A-Z]',
+        r'^[A-Z][a-zA-Z\s]+?\s*/\s*[A-Z][a-zA-Z\s]+?$',
+        r'^\d{1,2}\s+(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)$',
     ]
     
     for linea in lineas:
         linea_strip = linea.strip()
         
-        # Saltar líneas vacías muy cortas
         if len(linea_strip) < 3:
             continue
         
-        # Verificar si coincide con algún patrón de metadato
         es_metadato = False
         for patron in patrones_eliminar:
             if re.match(patron, linea_strip, re.IGNORECASE):
                 es_metadato = True
                 break
         
-        # Eliminar también líneas que parezcan menú o navegación
         palabras_menu = ['compartir', 'facebook', 'twitter', 'whatsapp', 'telegram', 
                         'imprimir', 'guardar', 'enviar', 'suscríbete', 'newsletter',
                         'cookie', 'aviso legal', 'política de privacidad', 'mapa web']
@@ -265,7 +281,6 @@ def limpiar_texto_extraccion(texto):
         if not es_metadato:
             lineas_limpias.append(linea_strip)
     
-    # Unir y limpiar espacios múltiples
     texto_limpio = '\n'.join(lineas_limpias)
     texto_limpio = re.sub(r'\n{3,}', '\n\n', texto_limpio)
     texto_limpio = re.sub(r'[ \t]+', ' ', texto_limpio)
@@ -290,22 +305,18 @@ def extraer_texto_completo(url):
         
         soup = BeautifulSoup(resp.content, 'html.parser')
         
-        # Eliminar TODOS los elementos no deseados
         for elemento in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 
                              'form', 'iframe', 'noscript', 'figure', 'figcaption',
                              'button', 'input', 'select', 'textarea']):
             elemento.decompose()
         
-        # Eliminar elementos por clase común de metadatos
         for clase in ['date', 'time', 'author', 'byline', 'meta', 'tags', 'share',
                       'social', 'comments', 'related', 'sidebar', 'menu', 'breadcrumb']:
             for elem in soup.find_all(class_=re.compile(clase, re.I)):
                 elem.decompose()
         
-        # Buscar el contenedor principal del artículo
         contenido = None
         
-        # Selectores específicos por sitio
         selectores_por_dominio = {
             'eldiario.es': ['.article-content', '.news-body', '[data-testid="article-body"]'],
             'elpais.com': ['.article_body', '.a_c', '.article-content'],
@@ -313,23 +324,22 @@ def extraer_texto_completo(url):
             'bbc.com': ['.ssrcss-pv1rh6-ArticleWrapper', '.article-body'],
             'cnn.com': ['.article__content', '.zn-body__paragraph'],
             'reuters.com': ['.article-body__content__17Yit', '.ArticleBodyWrapper'],
+            '20minutos.es': ['.article-body', '.content'],
         }
         
         dominio = urlparse(url).netloc.replace('www.', '')
         
-        # Intentar selectores específicos del dominio
         if dominio in selectores_por_dominio:
             for selector in selectores_por_dominio[dominio]:
                 try:
                     elem = soup.select_one(selector)
                     if elem and len(elem.get_text(strip=True)) > 300:
                         contenido = elem
-                        print(f"   ✅ Usando selector específico para {dominio}")
+                        print(f"   ✅ Selector específico para {dominio}")
                         break
                 except:
                     continue
         
-        # Selectores genéricos si no funcionó el específico
         if not contenido:
             selectores_genericos = [
                 'article',
@@ -356,9 +366,7 @@ def extraer_texto_completo(url):
                 except:
                     continue
         
-        # Si aún no hay contenido, buscar por densidad de párrafos
         if not contenido:
-            # Encontrar el elemento con más párrafos <p>
             candidatos = {}
             for p in soup.find_all('p'):
                 padre = p.find_parent(['div', 'article', 'section'])
@@ -373,30 +381,25 @@ def extraer_texto_completo(url):
                     contenido = mejor['elem']
         
         if contenido:
-            # Extraer solo párrafos de texto sustancial
             parrafos = []
             for elem in contenido.find_all(['p', 'h2', 'h3']):
                 texto = elem.get_text(strip=True)
                 
-                # Filtrar párrafos muy cortos o que parezcan menú/publicidad
                 if len(texto) < 40:
                     continue
                 if any(x in texto.lower() for x in ['publicidad', 'anuncio', 'suscríbete', 
                                                      'comparte en', 'síguenos en', 'más información']):
                     continue
-                # Evitar que sean puramente mayúsculas (suelen ser títulos de sección o menú)
                 if texto.isupper() and len(texto) < 100:
                     continue
                 
+                # Asegurar puntuación en cada párrafo
+                texto = asegurar_puntuacion(texto)
                 parrafos.append(texto)
             
-            # Unir párrafos con doble salto de línea para mejor legibilidad
             texto_final = '\n\n'.join(parrafos)
-            
-            # Limpiar metadatos residuales
             texto_final = limpiar_texto_extraccion(texto_final)
             
-            # Limitar longitud razonable
             if len(texto_final) > 6000:
                 texto_final = texto_final[:6000].rsplit('.', 1)[0] + '.'
             
@@ -415,7 +418,6 @@ def generar_redaccion_profesional(titulo, texto_completo, descripcion_rss, fuent
     """
     print(f"   🤖 Generando redacción profesional...")
     
-    # Preparar texto para IA (limpio y ordenado)
     texto_para_ia = texto_completo[:5000] if len(texto_completo) > 5000 else texto_completo
     
     if not OPENROUTER_API_KEY:
@@ -431,33 +433,35 @@ FUENTE: {fuente}
 TEXTO COMPLETO DE LA NOTICIA:
 {texto_para_ia}
 
-REGLAS DE REDACCIÓN:
+REGLAS DE REDACCIÓN OBLIGATORIAS:
 
 1. Escribe en ESPAÑOL neutro y profesional
-2. Estructura OBLIGATORIA:
-   - PÁRRAFO 1 (Lead): Lo más importante (quién, qué, cuándo, dónde, por qué)
-   - PÁRRAFO 2: Contexto y antecedentes
-   - PÁRRAFO 3: Desarrollo y detalles clave
-   - PÁRRAFO 4: Consecuencias o próximos pasos
-3. Cada párrafo debe tener 2-4 oraciones máximo
-4. Longitud total: 600-1200 caracteres
-5. NO incluir: fechas de publicación, horas, nombres de fotógrafos, "ANÁLISIS", etiquetas de sección
-6. NO usar corchetes ni texto entre [ ]
-7. Terminar con: "Fuente: {fuente}"
+2. Estructura EXACTA:
+   - PÁRRAFO 1 (Lead): Lo más importante (quién, qué, cuándo, dónde, por qué). Mínimo 2 oraciones, máximo 3. Debe terminar con PUNTO.
+   - PÁRRAFO 2: Contexto y antecedentes. Mínimo 2 oraciones, máximo 3. Debe terminar con PUNTO.
+   - PÁRRAFO 3: Desarrollo y detalles clave. Mínimo 2 oraciones, máximo 3. Debe terminar con PUNTO.
+   - PÁRRAFO 4: Consecuencias o próximos pasos. Mínimo 2 oraciones, máximo 3. Debe terminar con PUNTO.
 
-FORMATO DE SALIDA (solo texto, sin etiquetas):
+3. CADA párrafo DEBE terminar con punto (.)
+4. Entre párrafo y párrafo deja una línea en blanco
+5. Longitud total: 600-1200 caracteres
+6. NO incluir: fechas de publicación, horas, nombres de fotógrafos, "ANÁLISIS", etiquetas de sección
+7. NO usar corchetes ni texto entre [ ]
+8. Terminar con: "Fuente: {fuente}."
 
-TÍTULO ATRACTIVO
+EJEMPLO DE FORMATO CORRECTO:
 
-Párrafo 1...
+El gobierno de Irán anunció nuevas medidas de defensa ante los ataques recibidos. Las autoridades confirmaron que se reforzarán las instalaciones militares en todo el territorio.
 
-Párrafo 2...
+La tensión en la región ha escalado desde el inicio del conflicto hace dos semanas. Diversos países han expresado su preocupación por la situación y llamado al diálogo.
 
-Párrafo 3...
+Los bombardeos han afectado principalmente zonas industriales y militares. Se reportan daños significativos en infraestructura crítica del país.
 
-Párrafo 4...
+Las autoridades internacionales continúan monitoreando la situación. Se esperan declaraciones oficiales en las próximas horas.
 
-Fuente: {fuente}"""
+Fuente: {fuente}
+
+AHORA ESCRIBE LA NOTICIA:"""
 
     modelos = [
         "meta-llama/llama-3.1-8b-instruct:free",
@@ -482,7 +486,7 @@ Fuente: {fuente}"""
                 json={
                     'model': modelo,
                     'messages': [{'role': 'user', 'content': prompt}],
-                    'temperature': 0.3,
+                    'temperature': 0.2,
                     'max_tokens': 1500
                 },
                 timeout=120
@@ -493,22 +497,47 @@ Fuente: {fuente}"""
                 if 'choices' in data and len(data['choices']) > 0:
                     contenido = data['choices'][0]['message']['content']
                     
-                    # Limpiar completamente
                     contenido = limpiar_salida_ia(contenido)
+                    contenido = asegurar_puntuacion_parrafos(contenido)
                     
-                    # Verificar calidad
                     if len(contenido) > 500 and '\n\n' in contenido:
                         print(f"   ✅ Redacción: {len(contenido)} caracteres")
                         return contenido
                     else:
-                        print(f"   ⚠️ Respuesta corta o mal formateada, probando otro modelo...")
+                        print(f"   ⚠️ Respuesta corta, probando otro modelo...")
                         
         except Exception as e:
             print(f"   ⚠️ Error: {str(e)[:40]}")
             continue
     
-    # Fallback manual
     return generar_redaccion_manual(titulo, texto_completo, descripcion_rss, fuente)
+
+def asegurar_puntuacion_parrafos(texto):
+    """
+    Asegura que cada párrafo termine con punto final
+    """
+    if not texto:
+        return texto
+    
+    # Separar párrafos
+    parrafos = texto.split('\n\n')
+    parrafos_corregidos = []
+    
+    for parrafo in parrafos:
+        parrafo = parrafo.strip()
+        if not parrafo:
+            continue
+        
+        # Eliminar saltos de línea internos
+        parrafo = parrafo.replace('\n', ' ')
+        parrafo = re.sub(r'\s+', ' ', parrafo)
+        
+        # Asegurar punto final
+        parrafo = asegurar_puntuacion(parrafo)
+        
+        parrafos_corregidos.append(parrafo)
+    
+    return '\n\n'.join(parrafos_corregidos)
 
 def limpiar_salida_ia(contenido):
     """Limpia la salida de la IA de cualquier elemento no deseado"""
@@ -530,6 +559,8 @@ def limpiar_salida_ia(contenido):
         r'^IMPORTANTE',
         r'^Nota:',
         r'^Notas?:',
+        r'^EJEMPLO',
+        r'^AHORA ESCRIBE',
     ]
     
     lineas = contenido.split('\n')
@@ -538,11 +569,9 @@ def limpiar_salida_ia(contenido):
     for linea in lineas:
         linea_strip = linea.strip()
         
-        # Saltar líneas vacías al inicio
         if not linea_strip and not lineas_limpias:
             continue
         
-        # Verificar si es línea de instrucción
         es_instruccion = False
         for patron in lineas_a_eliminar:
             if re.match(patron, linea_strip, re.IGNORECASE):
@@ -552,68 +581,63 @@ def limpiar_salida_ia(contenido):
         if not es_instruccion:
             lineas_limpias.append(linea_strip)
     
-    # Unir y limpiar
     contenido = '\n'.join(lineas_limpias)
     contenido = re.sub(r'\n{3,}', '\n\n', contenido)
     contenido = re.sub(r'[ \t]+', ' ', contenido)
-    
-    # Asegurar que no termine con espacios o incompleto
     contenido = contenido.strip()
     
     return contenido
 
 def generar_redaccion_manual(titulo, texto_completo, descripcion_rss, fuente):
-    """Genera redacción manual ordenada cuando la IA falla"""
+    """Genera redacción manual ordenada con puntación correcta"""
     print(f"   📝 Redacción manual ordenada...")
     
-    # Usar el texto ya limpio
     oraciones = [s.strip() for s in re.split(r'[.!?]+', texto_completo) 
                  if len(s.strip()) > 30 and len(s.strip()) < 300]
     
-    # Si no hay suficientes, usar descripción
     if len(oraciones) < 4:
         oraciones = [s.strip() for s in re.split(r'[.!?]+', descripcion_rss) 
                      if len(s.strip()) > 20]
         oraciones.extend([s.strip() for s in re.split(r'[.!?]+', texto_completo) 
                           if len(s.strip()) > 30][:5])
     
-    # Construir 4 párrafos ordenados
     parrafos = []
     
-    # Párrafo 1: Lead (hecho principal)
+    # Párrafo 1: Lead
     if len(oraciones) >= 2:
-        parrafos.append(f"{oraciones[0]}. {oraciones[1]}.")
+        p = f"{oraciones[0]}. {oraciones[1]}."
     else:
-        parrafos.append(oraciones[0] if oraciones else f"Se reporta un importante acontecimiento de relevancia internacional.")
+        p = oraciones[0] if oraciones else f"Se reporta un importante acontecimiento de relevancia internacional."
+    parrafos.append(asegurar_puntuacion(p))
     
     # Párrafo 2: Contexto
     if len(oraciones) >= 4:
-        parrafos.append(f"{oraciones[2]}. {oraciones[3]}.")
+        p = f"{oraciones[2]}. {oraciones[3]}."
     else:
-        parrafos.append("El hecho ha generado amplia repercusión en los medios de comunicación y entre la opinión pública.")
+        p = "El hecho ha generado amplia repercusión en los medios de comunicación y entre la opinión pública."
+    parrafos.append(asegurar_puntuacion(p))
     
     # Párrafo 3: Desarrollo
     if len(oraciones) >= 6:
-        parrafos.append(f"{oraciones[4]}. {oraciones[5]}.")
+        p = f"{oraciones[4]}. {oraciones[5]}."
     else:
-        parrafos.append("Las autoridades competentes continúan evaluando la situación mientras se desarrollan los hechos.")
+        p = "Las autoridades competentes continúan evaluando la situación mientras se desarrollan los hechos."
+    parrafos.append(asegurar_puntuacion(p))
     
     # Párrafo 4: Cierre
     if len(oraciones) >= 8:
-        parrafos.append(f"{oraciones[6]}. {oraciones[7]}.")
+        p = f"{oraciones[6]}. {oraciones[7]}."
     else:
-        parrafos.append("Se esperan actualizaciones oficiales en las próximas horas sobre el desarrollo de esta información.")
+        p = "Se esperan actualizaciones oficiales en las próximas horas sobre el desarrollo de esta información."
+    parrafos.append(asegurar_puntuacion(p))
     
-    # Unir todo
     cuerpo = '\n\n'.join(parrafos)
+    cuerpo = re.sub(r'\.\.+', '.', cuerpo)
+    cuerpo = re.sub(r'\s+', ' ', cuerpo)
     
-    # Limpiar y formatear
-    cuerpo = re.sub(r'\.\.+', '.', cuerpo)  # Puntos dobles
-    cuerpo = re.sub(r'\s+', ' ', cuerpo)     # Espacios múltiples
+    redaccion = f"{titulo}\n\n{cuerpo}\n\nFuente: {fuente}."
     
-    redaccion = f"{titulo}\n\n{cuerpo}\n\nFuente: {fuente}"
-    
-    print(f"   ✅ Manual: {len(redaccion)} caracteres, {len(parrafos)} párrafos")
+    print(f"   ✅ Manual: {len(redaccion)} caracteres")
     return redaccion
 
 def generar_hashtags(categoria, pais, titulo):
@@ -643,19 +667,16 @@ def generar_hashtags(categoria, pais, titulo):
 
 def extraer_imagen(entry, url_noticia=None):
     """Extrae la imagen de la noticia"""
-    # Intentar media_content
     if hasattr(entry, 'media_content') and entry.media_content:
         for media in entry.media_content:
             if media.get('url'):
                 return media['url']
     
-    # Intentar enclosures
     if hasattr(entry, 'enclosures') and entry.enclosures:
         for enc in entry.enclosures:
             if enc.get('href') and any(x in enc.get('type', '') for x in ['image', 'jpg', 'png']):
                 return enc['href']
     
-    # Buscar en summary/description
     for campo in ['summary', 'description', 'content']:
         if hasattr(entry, campo):
             texto = getattr(entry, campo, '')
@@ -664,21 +685,18 @@ def extraer_imagen(entry, url_noticia=None):
                 if match:
                     return match.group(1)
     
-    # Buscar en la URL de la noticia
     if url_noticia:
         try:
             headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             resp = requests.get(url_noticia, headers=headers, timeout=10)
             soup = BeautifulSoup(resp.content, 'html.parser')
             
-            # Meta tags
             meta_img = soup.find('meta', property='og:image') or soup.find('meta', attrs={'name': 'twitter:image'})
             if meta_img:
                 img_url = meta_img.get('content') or meta_img.get('value')
                 if img_url:
                     return img_url
             
-            # Imagen principal
             img = soup.find('img', class_=re.compile(r'article|main|featured|hero', re.I))
             if img and img.get('src'):
                 return img['src']
@@ -720,16 +738,16 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
         print("❌ Faltan credenciales Facebook")
         return False
     
-    # Construir mensaje final LIMPIO
+    # Asegurar que el texto tenga puntuación correcta antes de publicar
+    texto = asegurar_puntuacion_parrafos(texto)
+    
     mensaje = f"""{texto}
 
 {hashtags}
 
 — Verdad Hoy: Noticias al minuto"""
     
-    # Verificar longitud
     if len(mensaje) > 2000:
-        # Acortar manteniendo estructura
         exceso = len(mensaje) - 1950
         parrafos = texto.split('\n\n')
         texto_corto = ''
@@ -746,7 +764,6 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
 
 — Verdad Hoy: Noticias al minuto"""
     
-    # Preview en consola
     print(f"\n   📝 Publicación ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
     lineas = mensaje.split('\n')
@@ -790,7 +807,6 @@ def buscar_noticias():
     print("\n🔍 Buscando noticias...")
     noticias = []
     
-    # NewsAPI
     if NEWS_API_KEY:
         try:
             terminos = random.sample([
@@ -829,7 +845,6 @@ def buscar_noticias():
         except:
             pass
     
-    # RSS Feeds
     random.shuffle(RSS_FEEDS)
     
     for feed_url in RSS_FEEDS[:10]:
@@ -893,14 +908,12 @@ def filtrar_y_seleccionar(noticias, historial):
     
     print(f"\n🎯 Seleccionada: {seleccionada['titulo'][:50]}...")
     
-    # Extraer texto completo limpio
     print(f"\n📄 Extrayendo contenido...")
     texto_completo = extraer_texto_completo(seleccionada['url'])
     
     if texto_completo:
         seleccionada['texto_completo'] = texto_completo
     else:
-        # Limpiar descripción RSS como fallback
         desc_limpia = re.sub(r'<[^>]+>', '', seleccionada['descripcion'])
         seleccionada['texto_completo'] = limpiar_texto_extraccion(desc_limpia)
         print(f"   ⚠️ Usando descripción RSS: {len(seleccionada['texto_completo'])} caracteres")
@@ -913,23 +926,19 @@ def main():
     print("INICIANDO PUBLICACIÓN")
     print("="*60)
     
-    # 1. Cargar historial
     historial = cargar_historial()
     print(f"📚 Historial: {len(historial.get('urls', []))} noticias")
     
-    # 2. Buscar noticias
     noticias = buscar_noticias()
     if not noticias:
         print("\n❌ Sin noticias")
         return False
     
-    # 3. Seleccionar y extraer
     seleccionada = filtrar_y_seleccionar(noticias, historial)
     if not seleccionada:
         print("\n❌ Sin noticias nuevas")
         return False
     
-    # 4. Generar redacción profesional
     print(f"\n✍️ Redactando...")
     redaccion = generar_redaccion_profesional(
         seleccionada['titulo'],
@@ -938,19 +947,16 @@ def main():
         seleccionada['fuente']
     )
     
-    # 5. Generar hashtags
     hashtags = generar_hashtags(
         seleccionada['categoria'],
         seleccionada['pais'],
         seleccionada['titulo']
     )
     
-    # 6. Descargar imagen
     print(f"\n🖼️ Descargando imagen...")
     imagen_path = descargar_imagen(seleccionada['imagen'])
     
     if not imagen_path and seleccionada.get('texto_completo'):
-        # Buscar imágenes en el contenido
         urls_img = re.findall(r'https?://[^\s"\']+\.(?:jpg|jpeg|png)', seleccionada['texto_completo'])
         for url_img in urls_img[:2]:
             imagen_path = descargar_imagen(url_img)
@@ -961,7 +967,6 @@ def main():
         print("❌ Sin imagen")
         return False
     
-    # 7. Publicar
     print(f"\n📤 Publicando...")
     exito = publicar_facebook(
         seleccionada['titulo'],
@@ -970,7 +975,6 @@ def main():
         hashtags
     )
     
-    # 8. Guardar y limpiar
     if exito:
         guardar_historial(historial, seleccionada['url'], seleccionada['titulo'])
         

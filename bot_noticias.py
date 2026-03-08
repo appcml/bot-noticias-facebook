@@ -13,23 +13,35 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 HISTORIAL_FILE = "historial_publicaciones.json"
 
+# SOLO MEDIOS EN ESPAÑOL
 RSS_FEEDS = [
-"https://feeds.bbci.co.uk/news/world/rss.xml",
-"https://rss.cnn.com/rss/edition_world.rss",
-"https://www.aljazeera.com/xml/rss/all.xml",
-"https://www.theguardian.com/world/rss",
-"https://www.reutersagency.com/feed/?best-topics=world",
-"https://www.nytimes.com/services/xml/rss/nyt/World.xml",
-"https://www.euronews.com/rss?level=theme&name=news",
+
 "https://cnnespanol.cnn.com/feed/",
-"https://actualidad.rt.com/feeds/all.rss"
+"https://www.infobae.com/feeds/rss/",
+"https://www.eltiempo.com/rss/mundo.xml",
+"https://www.clarin.com/rss/mundo/",
+"https://www.20minutos.es/rss/",
+"https://www.eldiario.es/rss/",
+"https://www.elconfidencial.com/rss/",
+"https://www.dw.com/es/actualidad/s-30684/rss",
+"https://www.france24.com/es/rss",
+"https://actualidad.rt.com/feeds/all.rss",
+"https://www.latercera.com/feed/",
+"https://www.elpais.com/rss/",
+"https://www.abc.es/rss/feeds/abc_Internacional.xml",
+"https://www.lavanguardia.com/rss/internacional.xml",
+"https://www.publico.es/rss/internacional.xml"
+
 ]
 
 PALABRAS_VIRALES = [
-"urgente","última hora","guerra","ataque","crisis","explosión",
-"conflicto","protestas","tensión","invasión","misiles",
-"bombardeo","tragedia","colapso","investigación","escándalo",
-"emergencia","alarma","amenaza"
+
+"urgente","última hora","guerra","ataque","crisis",
+"explosión","conflicto","protestas","tensión",
+"invasión","misiles","bombardeo","tragedia",
+"colapso","investigación","escándalo","emergencia",
+"alerta","catástrofe","crisis económica"
+
 ]
 
 
@@ -40,6 +52,7 @@ def limpiar_html(texto):
 
     texto = re.sub("<.*?>","",texto)
     texto = texto.replace("\n"," ")
+    texto = texto.replace("Continue reading","")
     texto = texto.strip()
 
     return texto
@@ -136,63 +149,51 @@ def elegir_noticia(noticias,historial):
     return mejor
 
 
-def optimizar_titulo(titulo):
+def generar_texto(titulo,descripcion):
 
-    if len(titulo)>140:
-        titulo=titulo[:140]+"..."
+    prompt=f"""
+Redacta una noticia profesional en español para Facebook.
 
-    return titulo
+Título:
+{titulo}
 
+Información:
+{descripcion}
 
-def generar_texto(titulo, descripcion):
+Reglas:
 
-    prompt = f"""
-Tu trabajo es crear una noticia para una página de Facebook en español.
-
-INFORMACIÓN ORIGINAL:
-Título: {titulo}
-Descripción: {descripcion}
-
-INSTRUCCIONES:
-
-- Si el texto está en inglés u otro idioma, TRADÚCELO al español.
-- Escribe una noticia clara y profesional en español.
-- Debe tener entre 3 y 5 párrafos.
-- Mínimo 700 caracteres.
-- Explica qué ocurrió y por qué es importante.
-- No incluyas HTML ni enlaces.
-- No escribas "Continue reading".
-- No repitas el título dentro del texto.
-
-Devuelve solo el texto de la noticia.
+3 a 5 párrafos
+mínimo 700 caracteres
+explicar qué ocurrió y por qué es importante
+no usar HTML
+no incluir enlaces
 """
 
     try:
 
         if OPENROUTER_API_KEY:
 
-            r = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
-                json={
-                    "model": "mistralai/mistral-7b-instruct:free",
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ]
-                },
-                timeout=20
+            r=requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization":f"Bearer {OPENROUTER_API_KEY}"},
+            json={
+            "model":"mistralai/mistral-7b-instruct:free",
+            "messages":[{"role":"user","content":prompt}]
+            },
+            timeout=20
             )
 
-            data = r.json()
+            data=r.json()
 
-            texto = data["choices"][0]["message"]["content"]
+            texto=data["choices"][0]["message"]["content"]
 
             return texto.strip()
 
-    except Exception as e:
-        print("Error IA:", e)
+    except:
+        pass
 
     return descripcion
+
 
 def generar_hashtags():
 
@@ -261,11 +262,11 @@ def publicar_facebook(texto,img):
 
 def crear_post(noticia):
 
-    titulo=optimizar_titulo(noticia["titulo"])
+    titulo = noticia["titulo"]
 
-    texto=generar_texto(titulo,noticia["descripcion"])
+    texto = generar_texto(titulo,noticia["descripcion"])
 
-    hashtags=generar_hashtags()
+    hashtags = generar_hashtags()
 
     mensaje=f"""📰 {titulo}
 
@@ -281,7 +282,7 @@ def crear_post(noticia):
 
 def main():
 
-    print("Buscando noticias...")
+    print("Buscando noticias en español...")
 
     historial=cargar_historial()
 
@@ -316,5 +317,3 @@ def main():
 
 if __name__=="__main__":
     main()
-
-

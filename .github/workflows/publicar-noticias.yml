@@ -1,4 +1,4 @@
-name: Publicar Noticias
+name: Bot Noticias
 
 on:
   schedule:
@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
+
   publicar:
 
     runs-on: ubuntu-latest

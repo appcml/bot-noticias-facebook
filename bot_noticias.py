@@ -48,7 +48,7 @@ def limpiar_texto(texto):
 
 
 # ==============================
-# EXTRAER TEXTO DE LA NOTICIA
+# EXTRAER TEXTO DE NOTICIA
 # ==============================
 
 def obtener_texto(url):
@@ -88,7 +88,6 @@ def obtener_texto(url):
 def buscar_noticia():
 
     medio = random.choice(list(RSS_FEEDS.keys()))
-
     feed_url = RSS_FEEDS[medio]
 
     feed = feedparser.parse(feed_url)
@@ -155,7 +154,6 @@ def publicar():
     r = requests.post(url, data=data)
 
     print("✅ Noticia publicada")
-    print(mensaje)
 
 
 # ==============================
@@ -163,5 +161,4 @@ def publicar():
 # ==============================
 
 if __name__ == "__main__":
-    publicar()py
-
+    publicar()

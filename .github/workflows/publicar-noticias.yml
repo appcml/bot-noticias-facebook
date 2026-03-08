@@ -2,58 +2,59 @@ name: Publicar Noticias Virales
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # Cada 30 minutos
-  workflow_dispatch:  # Permite ejecución manual
+    - cron: '*/30 * * * *'   # Cada 30 minutos
+  workflow_dispatch:
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
+    
     permissions:
       contents: write
-    
+
     steps:
-    - name: Checkout código
+
+    - name: 📥 Clonar repositorio
       uses: actions/checkout@v4
-      
-    - name: Descargar historial previo
+
+    - name: 📦 Descargar historial previo
       uses: actions/download-artifact@v4
       with:
         name: historial-noticias
         path: .
       continue-on-error: true
-      
-    - name: Verificar historial
+
+    - name: 📄 Verificar o crear historial
       run: |
-        if [ -f "historial_publicaciones.json" ]; then
-          echo "✅ Historial encontrado"
-          cat historial_publicaciones.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'📊 {len(d[\\\"urls\\\"])} noticias guardadas')" 2>/dev/null || echo "📄 Archivo existe"
-        else
-          echo "⚠️ Creando historial nuevo"
+        if [ ! -f historial_publicaciones.json ]; then
+          echo "Creando historial nuevo..."
           echo '{"urls": [], "titulos": [], "fechas": {}}' > historial_publicaciones.json
+        else
+          echo "Historial encontrado"
+          cat historial_publicaciones.json
         fi
-      shell: bash
-      
-    - name: Setup Python
+
+    - name: 🐍 Instalar Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
-        
-    - name: Instalar dependencias
+        python-version: "3.11"
+
+    - name: 📚 Instalar dependencias
       run: |
-        pip install requests pillow feedparser
-        echo "✅ Dependencias instaladas"
-        
-    - name: Verificar archivos
+        python -m pip install --upgrade pip
+        pip install requests feedparser pillow beautifulsoup4
+
+    - name: 🔎 Verificar archivos del proyecto
       run: |
-        ls -la *.py 2>/dev/null || echo "Buscando Python files..."
-        if [ ! -f "bot_noticias.py" ]; then
-          echo "❌ bot_noticias.py no encontrado"
+        echo "Archivos del repositorio:"
+        ls -la
+        
+        if [ ! -f bot_noticias.py ]; then
+          echo "ERROR: bot_noticias.py no existe"
           exit 1
         fi
-        echo "✅ bot_noticias.py listo"
-      shell: bash
-      
-    - name: Ejecutar bot
+
+    - name: 🚀 Ejecutar bot de noticias
       env:
         NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
@@ -61,21 +62,27 @@ jobs:
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
       run: |
-        echo "🚀 Iniciando bot de noticias..."
+        echo "====================================="
+        echo "INICIANDO BOT DE NOTICIAS"
+        echo "====================================="
+        
         python bot_noticias.py
-        echo "🏁 Bot finalizado"
-      shell: bash
-      
-    - name: Verificar historial actualizado
+        
+        echo "====================================="
+        echo "BOT FINALIZADO"
+        echo "====================================="
+
+    - name: 📊 Revisar historial actualizado
       if: always()
       run: |
-        if [ -f "historial_publicaciones.json" ]; then
-          echo "📊 Historial actualizado:"
-          cat historial_publicaciones.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Total: {len(d[\\\"urls\\\"])} noticias')" 2>/dev/null || echo "✅ OK"
+        if [ -f historial_publicaciones.json ]; then
+          echo "Historial actualizado:"
+          cat historial_publicaciones.json
+        else
+          echo "No se encontró historial"
         fi
-      shell: bash
-      
-    - name: Guardar historial
+
+    - name: 💾 Guardar historial
       if: always()
       uses: actions/upload-artifact@v4
       with:

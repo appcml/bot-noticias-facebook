@@ -117,17 +117,34 @@ PAISES = {
 }
 
 def cargar_historial():
-    """Carga el historial de publicaciones"""
+    """Carga el historial de publicaciones con manejo seguro de todas las claves"""
     if os.path.exists(HISTORIAL_FILE):
         try:
             with open(HISTORIAL_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except:
+                historial = json.load(f)
+                # Asegurar que todas las claves existan
+                historial.setdefault('urls', [])
+                historial.setdefault('titulos', [])
+                historial.setdefault('hashes', [])
+                historial.setdefault('ultima_publicacion', None)
+                return historial
+        except Exception as e:
+            print(f"⚠️ Error cargando historial: {e}")
             pass
-    return {'urls': [], 'titulos': [], 'ultima_publicacion': None, 'hashes': []}
+    
+    # Retornar estructura vacía si no existe o hay error
+    return {'urls': [], 'titulos': [], 'hashes': [], 'ultima_publicacion': None}
 
 def guardar_historial(historial, url, titulo):
     """Guarda una noticia en el historial"""
+    # Asegurar que las claves existan antes de usarlas
+    if 'urls' not in historial:
+        historial['urls'] = []
+    if 'titulos' not in historial:
+        historial['titulos'] = []
+    if 'hashes' not in historial:
+        historial['hashes'] = []
+    
     url_hash = hashlib.md5(url.lower().strip().encode()).hexdigest()
     
     historial['urls'].append(url)
@@ -135,6 +152,7 @@ def guardar_historial(historial, url, titulo):
     historial['hashes'].append(url_hash)
     historial['ultima_publicacion'] = datetime.now().isoformat()
     
+    # Mantener solo las últimas 500 entradas
     historial['urls'] = historial['urls'][-500:]
     historial['titulos'] = historial['titulos'][-500:]
     historial['hashes'] = historial['hashes'][-500:]
@@ -150,12 +168,15 @@ def es_duplicado(historial, url, titulo):
     """Verifica si una noticia ya fue publicada"""
     url_hash = hashlib.md5(url.lower().strip().encode()).hexdigest()
     
+    # Verificar por hash de URL
     if url_hash in historial.get('hashes', []):
         return True
     
+    # Verificar por URL exacta
     if url in historial.get('urls', []):
         return True
     
+    # Verificar por similitud de título
     titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
     for t in historial.get('titulos', []):
         t_simple = re.sub(r'[^\w]', '', t.lower())[:40]
@@ -946,7 +967,6 @@ def main():
     print(f"\n🖼️ Descargando imagen...")
     imagen_path = descargar_imagen(seleccionada['imagen'])
     
-    # CORRECCIÓN: Línea 991 - regex corregida con paréntesis balanceados
     if not imagen_path and seleccionada.get('texto_completo'):
         urls_img = re.findall(r'https?://[^\s"\']+\.(?:jpg|jpeg|png)', seleccionada['texto_completo'])
         for url_img in urls_img[:2]:
@@ -991,4 +1011,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -2,91 +2,55 @@ name: Publicar Noticias Virales
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # Cada 30 minutos
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
   publicar:
+
     runs-on: ubuntu-latest
-    
+
     permissions:
       contents: write
 
     steps:
 
-    - name: 📥 Clonar repositorio
+    - name: Checkout código
       uses: actions/checkout@v4
 
-    - name: 📦 Descargar historial previo
+    - name: Descargar historial
       uses: actions/download-artifact@v4
       with:
         name: historial-noticias
         path: .
       continue-on-error: true
 
-    - name: 📄 Verificar o crear historial
+    - name: Crear historial si no existe
       run: |
         if [ ! -f historial_publicaciones.json ]; then
-          echo "Creando historial nuevo..."
-          echo '{"urls": [], "titulos": [], "fechas": {}}' > historial_publicaciones.json
-        else
-          echo "Historial encontrado"
-          cat historial_publicaciones.json
+          echo '{"urls":[]}' > historial_publicaciones.json
         fi
 
-    - name: 🐍 Instalar Python
+    - name: Setup Python
       uses: actions/setup-python@v5
       with:
-        python-version: "3.11"
+        python-version: '3.11'
 
-    - name: 📚 Instalar dependencias
+    - name: Instalar dependencias
       run: |
-        python -m pip install --upgrade pip
-        pip install requests feedparser pillow beautifulsoup4
+        pip install requests feedparser pillow
 
-    - name: 🔎 Verificar archivos del proyecto
-      run: |
-        echo "Archivos del repositorio:"
-        ls -la
-        
-        if [ ! -f bot_noticias.py ]; then
-          echo "ERROR: bot_noticias.py no existe"
-          exit 1
-        fi
-
-    - name: 🚀 Ejecutar bot de noticias
+    - name: Ejecutar bot
       env:
-        NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
-        GNEWS_API_KEY: ${{ secrets.GNEWS_API_KEY }}
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
       run: |
-        echo "====================================="
-        echo "INICIANDO BOT DE NOTICIAS"
-        echo "====================================="
-        
         python bot_noticias.py
-        
-        echo "====================================="
-        echo "BOT FINALIZADO"
-        echo "====================================="
 
-    - name: 📊 Revisar historial actualizado
-      if: always()
-      run: |
-        if [ -f historial_publicaciones.json ]; then
-          echo "Historial actualizado:"
-          cat historial_publicaciones.json
-        else
-          echo "No se encontró historial"
-        fi
-
-    - name: 💾 Guardar historial
-      if: always()
+    - name: Guardar historial
       uses: actions/upload-artifact@v4
       with:
         name: historial-noticias
         path: historial_publicaciones.json
-        retention-days: 90
         overwrite: true

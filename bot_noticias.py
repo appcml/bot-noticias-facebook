@@ -144,51 +144,55 @@ def optimizar_titulo(titulo):
     return titulo
 
 
-def generar_texto(titulo,descripcion):
+def generar_texto(titulo, descripcion):
 
-    prompt=f"""
-Redacta una noticia en español basada en esta información.
+    prompt = f"""
+Tu trabajo es crear una noticia para una página de Facebook en español.
 
-Título:
-{titulo}
+INFORMACIÓN ORIGINAL:
+Título: {titulo}
+Descripción: {descripcion}
 
-Información:
-{descripcion}
+INSTRUCCIONES:
 
-Reglas:
+- Si el texto está en inglés u otro idioma, TRADÚCELO al español.
+- Escribe una noticia clara y profesional en español.
+- Debe tener entre 3 y 5 párrafos.
+- Mínimo 700 caracteres.
+- Explica qué ocurrió y por qué es importante.
+- No incluyas HTML ni enlaces.
+- No escribas "Continue reading".
+- No repitas el título dentro del texto.
 
-- 3 a 5 párrafos
-- mínimo 700 caracteres
-- estilo periodístico claro
-- explicar qué ocurrió
-- no usar HTML
+Devuelve solo el texto de la noticia.
 """
 
     try:
 
         if OPENROUTER_API_KEY:
 
-            r=requests.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={"Authorization":f"Bearer {OPENROUTER_API_KEY}"},
-            json={
-            "model":"mistralai/mistral-7b-instruct:free",
-            "messages":[{"role":"user","content":prompt}]
-            },
-            timeout=20
+            r = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"},
+                json={
+                    "model": "mistralai/mistral-7b-instruct:free",
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ]
+                },
+                timeout=20
             )
 
-            data=r.json()
+            data = r.json()
 
-            texto=data["choices"][0]["message"]["content"]
+            texto = data["choices"][0]["message"]["content"]
 
             return texto.strip()
 
-    except:
-        pass
+    except Exception as e:
+        print("Error IA:", e)
 
     return descripcion
-
 
 def generar_hashtags():
 
@@ -312,4 +316,5 @@ def main():
 
 if __name__=="__main__":
     main()
+
 

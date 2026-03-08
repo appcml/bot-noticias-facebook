@@ -33,22 +33,7 @@ HASHTAGS = "#Noticias #Actualidad #UltimaHora #Mundo"
 
 
 # ==============================
-# LIMPIAR TEXTO
-# ==============================
-
-def limpiar_texto(texto):
-
-    texto = texto.replace("\n", " ")
-    texto = texto.replace("Continue reading", "")
-    texto = texto.replace("Leer más", "")
-    texto = texto.replace("Read more", "")
-    texto = texto.strip()
-
-    return texto
-
-
-# ==============================
-# EXTRAER TEXTO DE NOTICIA
+# EXTRAER TEXTO
 # ==============================
 
 def obtener_texto(url):
@@ -72,11 +57,11 @@ def obtener_texto(url):
             if len(t) > 80:
                 texto += t + "\n\n"
 
-        texto = limpiar_texto(texto)
+        return texto[:1500]
 
-        return texto[:1800]
+    except Exception as e:
 
-    except:
+        print("Error extrayendo texto:", e)
 
         return ""
 
@@ -90,15 +75,22 @@ def buscar_noticia():
     medio = random.choice(list(RSS_FEEDS.keys()))
     feed_url = RSS_FEEDS[medio]
 
+    print("Buscando noticia en:", medio)
+
     feed = feedparser.parse(feed_url)
 
     if not feed.entries:
+
+        print("No se encontraron noticias")
+
         return None, None, None
 
     noticia = random.choice(feed.entries)
 
-    titulo = noticia.title.strip()
+    titulo = noticia.title
     link = noticia.link
+
+    print("Titulo encontrado:", titulo)
 
     texto = obtener_texto(link)
 
@@ -116,8 +108,8 @@ def crear_post():
     if titulo is None:
         return None
 
-    if len(texto) < 300:
-        texto = "Más detalles en desarrollo sobre esta noticia."
+    if len(texto) < 200:
+        texto = "Más información en desarrollo."
 
     post = f"""📰 {titulo}
 
@@ -141,24 +133,33 @@ def publicar():
     mensaje = crear_post()
 
     if mensaje is None:
-        print("No se encontró noticia")
+
+        print("No se pudo generar noticia")
+
         return
+
+    print("Publicando en Facebook...")
 
     url = f"https://graph.facebook.com/{PAGE_ID}/feed"
 
     data = {
+
         "message": mensaje,
         "access_token": ACCESS_TOKEN
+
     }
 
     r = requests.post(url, data=data)
 
-    print("✅ Noticia publicada")
+    print("Respuesta Facebook:")
+
+    print(r.text)
 
 
 # ==============================
-# EJECUTAR BOT
+# EJECUCIÓN
 # ==============================
 
 if __name__ == "__main__":
+
     publicar()

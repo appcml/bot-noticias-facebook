@@ -7,10 +7,6 @@ from datetime import datetime
 from PIL import Image
 from io import BytesIO
 
-# ==============================
-# CONFIGURACIÓN
-# ==============================
-
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 FB_PAGE_ID = os.getenv("FB_PAGE_ID")
 FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN")
@@ -20,10 +16,6 @@ RSS_FEEDS = [
     "https://e00-elmundo.uecdn.es/elmundo/rss/portada.xml",
     "https://www.20minutos.es/rss/"
 ]
-
-# ==============================
-# BUSCAR NOTICIA
-# ==============================
 
 def buscar_noticia():
 
@@ -64,19 +56,12 @@ def buscar_noticia():
 
     noticia = random.choice(noticias)
 
-    print("Noticia encontrada:")
-    print(noticia["titulo"])
+    print("Noticia encontrada:", noticia["titulo"])
 
     return noticia
 
 
-# ==============================
-# GENERAR TEXTO CON IA
-# ==============================
-
 def generar_texto(titulo, descripcion, fuente):
-
-    print("Generando redacción con IA...")
 
     prompt = f"""
 Actúa como editor profesional de noticias en español.
@@ -110,7 +95,6 @@ Párrafo 3
 Fuente: {fuente}
 — Verdad Hoy: Noticias al minuto
 
-
 NOTICIA ORIGINAL
 
 Título:
@@ -130,9 +114,7 @@ Descripción:
             },
             json={
                 "model": "mistralai/mistral-7b-instruct:free",
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
+                "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.4
             },
             timeout=60
@@ -148,14 +130,10 @@ Descripción:
 
     except Exception as e:
 
-        print("Error generando texto:", e)
+        print("Error IA:", e)
 
         return None
 
-
-# ==============================
-# DESCARGAR IMAGEN
-# ==============================
 
 def descargar_imagen(url):
 
@@ -181,14 +159,10 @@ def descargar_imagen(url):
 
     except Exception as e:
 
-        print("Error descargando imagen:", e)
+        print("Error imagen:", e)
 
         return None
 
-
-# ==============================
-# PUBLICAR EN FACEBOOK
-# ==============================
 
 def publicar_facebook(texto, imagen):
 
@@ -219,16 +193,10 @@ def publicar_facebook(texto, imagen):
         print("Error publicando:", e)
 
 
-# ==============================
-# PROCESO PRINCIPAL
-# ==============================
-
 def main():
 
-    print("===================================")
     print("BOT DE NOTICIAS VERDAD HOY")
     print(datetime.now())
-    print("===================================")
 
     noticia = buscar_noticia()
 
@@ -246,22 +214,16 @@ def main():
         print("No se pudo generar texto")
         return
 
-    print("Texto generado")
-
     imagen = descargar_imagen(noticia["imagen"])
 
     if not imagen:
-        print("No se pudo obtener imagen")
+        print("No se encontró imagen")
         return
 
     publicar_facebook(texto, imagen)
 
-    print("Proceso finalizado")
+    print("Proceso terminado")
 
-
-# ==============================
-# EJECUTAR
-# ==============================
 
 if __name__ == "__main__":
     main()

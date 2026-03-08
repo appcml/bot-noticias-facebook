@@ -1,4 +1,4 @@
-name: Publicar Noticias
+name: Publicar Noticias Facebook
 
 on:
   schedule:
@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
     - name: Descargar repositorio
       uses: actions/checkout@v4
 
@@ -19,8 +20,11 @@ jobs:
         python-version: "3.11"
 
     - name: Instalar dependencias
-      run: |
-        pip install requests feedparser pillow
+      run: pip install -r requirements.txt
 
     - name: Ejecutar bot
+      env:
+        OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+        FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
       run: python bot_noticias.py

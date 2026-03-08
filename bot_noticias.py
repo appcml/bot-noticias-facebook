@@ -3,7 +3,6 @@ import feedparser
 import json
 import hashlib
 import os
-import re
 from datetime import datetime
 from io import BytesIO
 from PIL import Image
@@ -49,7 +48,9 @@ PAISES = {
 "Ucrania":["zelensky","kiev","ucrania"],
 "España":["sánchez","madrid","españa"],
 "Chile":["boric","santiago","chile"],
-"Argentina":["milei","buenos aires","argentina"]
+"Argentina":["milei","buenos aires","argentina"],
+"Irán":["iran","teherán"],
+"Israel":["israel","tel aviv"]
 }
 
 CATEGORIAS = {
@@ -150,7 +151,6 @@ def buscar_reddit():
             data=feedparser.parse(feed)
 
             for entry in data.entries[:8]:
-
                 tendencias.append(entry.title.lower())
 
         except:
@@ -199,45 +199,62 @@ def elegir_noticia(noticias,tendencias,historial):
     return mejor
 
 
-def generar_texto(titulo,descripcion):
+def generar_texto(titulo, descripcion):
 
-    if not OPENROUTER_API_KEY:
-        return descripcion[:900]
+    prompt = f"""
+Escribe una noticia periodística profesional en español.
 
-    prompt=f"""
-Escribe una noticia periodística clara y profesional.
-
-Título:
+TÍTULO:
 {titulo}
 
-Información:
+INFORMACIÓN:
 {descripcion}
 
-Debe tener entre 600 y 1000 caracteres.
-Dos o tres párrafos.
-Tono periodístico.
-Sin enlaces.
+REGLAS:
+- 3 a 5 párrafos
+- entre 700 y 1200 caracteres
+- estilo periodístico
+- explicar qué pasó, dónde ocurrió y por qué es importante
+- NO repetir el título
+- sin hashtags
 """
 
     try:
 
-        r=requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-        "Authorization":f"Bearer {OPENROUTER_API_KEY}"
-        },
-        json={
-        "model":"mistralai/mistral-7b-instruct:free",
-        "messages":[{"role":"user","content":prompt}]
-        }
-        )
+        if OPENROUTER_API_KEY:
 
-        data=r.json()
+            r = requests.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}"
+                },
+                json={
+                    "model": "mistralai/mistral-7b-instruct:free",
+                    "messages": [
+                        {"role": "user", "content": prompt}
+                    ]
+                },
+                timeout=25
+            )
 
-        return data["choices"][0]["message"]["content"]
+            data=r.json()
 
-    except:
-        return descripcion[:900]
+            texto=data["choices"][0]["message"]["content"]
+
+            return texto.strip()
+
+    except Exception as e:
+        print("IA no disponible:", e)
+
+    return f"""
+La situación continúa desarrollándose tras conocerse nuevos antecedentes sobre este hecho que ha generado preocupación a nivel internacional.
+
+De acuerdo con los primeros reportes, el acontecimiento ocurrió recientemente y ha provocado diversas reacciones tanto en autoridades como en analistas que siguen de cerca el desarrollo de los acontecimientos.
+
+Expertos advierten que este escenario podría tener consecuencias importantes en los próximos días, especialmente considerando el contexto político y estratégico en la región.
+
+Se espera que en las próximas horas se conozcan más detalles mientras organismos internacionales y gobiernos monitorean la evolución de la situación.
+"""
 
 
 def optimizar_titulo(titulo):
@@ -286,17 +303,32 @@ def descargar_imagen(url):
 
 def publicar_facebook(texto,img):
 
-    url=f"https://graph.facebook.com/{FB_PAGE_ID}/photos"
+    if img:
 
-    with open(img,"rb") as f:
+        url=f"https://graph.facebook.com/{FB_PAGE_ID}/photos"
+
+        with open(img,"rb") as f:
+
+            r=requests.post(
+            url,
+            files={"file":f},
+            data={
+            "message":texto,
+            "access_token":FB_ACCESS_TOKEN
+            })
+
+    else:
+
+        url=f"https://graph.facebook.com/{FB_PAGE_ID}/feed"
 
         r=requests.post(
         url,
-        files={"file":f},
         data={
         "message":texto,
         "access_token":FB_ACCESS_TOKEN
         })
+
+    print(r.text)
 
     return r.status_code==200
 
@@ -316,8 +348,7 @@ def crear_post(noticia):
 
     hashtags=generar_hashtags(categoria,pais)
 
-    mensaje=f"""
-📰 {titulo}
+    mensaje=f"""📰 {titulo}
 
 {texto}
 
@@ -350,10 +381,6 @@ def main():
     post,pais,categoria=crear_post(noticia)
 
     img=descargar_imagen(noticia["imagen"])
-
-    if not img:
-        print("No se encontró imagen")
-        return
 
     publicado=publicar_facebook(post,img)
 

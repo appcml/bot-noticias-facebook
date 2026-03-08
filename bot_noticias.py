@@ -4,45 +4,31 @@ from bs4 import BeautifulSoup
 import random
 import os
 
-# ==============================
-# CONFIGURACIÓN FACEBOOK
-# ==============================
-
 PAGE_ID = os.getenv("PAGE_ID")
 ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 
-# ==============================
-# MEDIOS EN ESPAÑOL
-# ==============================
-
 RSS_FEEDS = {
 
-    "El País": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada",
-    "20 Minutos": "https://www.20minutos.es/rss/internacional/",
-    "La Vanguardia": "https://www.lavanguardia.com/rss/internacional.xml",
-    "ABC": "https://www.abc.es/rss/feeds/abc_Internacional.xml",
-    "El Mundo": "https://www.elmundo.es/rss/internacional.xml",
-    "Clarín": "https://www.clarin.com/rss/mundo/",
+    "El Pais": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada",
     "Infobae": "https://www.infobae.com/arc/outboundfeeds/rss/?outputType=xml",
-    "BioBioChile": "https://www.biobiochile.cl/rss/internacional.xml",
-    "DW Español": "https://rss.dw.com/xml/rss-es-all"
+    "BBC Mundo": "https://feeds.bbci.co.uk/mundo/rss.xml",
+    "DW Español": "https://rss.dw.com/xml/rss-es-all",
+    "La Vanguardia": "https://www.lavanguardia.com/rss/internacional.xml",
+    "20 Minutos": "https://www.20minutos.es/rss/internacional/",
+    "BioBioChile": "https://www.biobiochile.cl/rss/internacional.xml"
 
 }
 
 HASHTAGS = "#Noticias #Actualidad #UltimaHora #Mundo"
 
 
-# ==============================
-# EXTRAER TEXTO
-# ==============================
-
-def obtener_texto(url):
+def obtener_articulo(url):
 
     try:
 
         headers = {"User-Agent": "Mozilla/5.0"}
 
-        r = requests.get(url, headers=headers, timeout=10)
+        r = requests.get(url, headers=headers)
 
         soup = BeautifulSoup(r.text, "html.parser")
 
@@ -52,66 +38,55 @@ def obtener_texto(url):
 
         for p in parrafos:
 
-            t = p.get_text()
+            contenido = p.get_text()
 
-            if len(t) > 80:
-                texto += t + "\n\n"
+            if len(contenido) > 80:
 
-        return texto[:1500]
+                texto += contenido + "\n\n"
 
-    except Exception as e:
+        imagen = None
 
-        print("Error extrayendo texto:", e)
+        img = soup.find("img")
 
-        return ""
+        if img and img.get("src"):
 
+            imagen = img["src"]
 
-# ==============================
-# BUSCAR NOTICIA
-# ==============================
+        return texto[:2000], imagen
+
+    except:
+
+        return "", None
+
 
 def buscar_noticia():
 
     medio = random.choice(list(RSS_FEEDS.keys()))
+
     feed_url = RSS_FEEDS[medio]
 
-    print("Buscando noticia en:", medio)
-
     feed = feedparser.parse(feed_url)
-
-    if not feed.entries:
-
-        print("No se encontraron noticias")
-
-        return None, None, None
 
     noticia = random.choice(feed.entries)
 
     titulo = noticia.title
+
     link = noticia.link
 
-    print("Titulo encontrado:", titulo)
+    texto, imagen = obtener_articulo(link)
 
-    texto = obtener_texto(link)
+    return titulo, texto, medio, imagen
 
-    return titulo, texto, medio
-
-
-# ==============================
-# CREAR POST
-# ==============================
 
 def crear_post():
 
-    titulo, texto, medio = buscar_noticia()
-
-    if titulo is None:
-        return None
+    titulo, texto, medio, imagen = buscar_noticia()
 
     if len(texto) < 200:
-        texto = "Más información en desarrollo."
 
-    post = f"""📰 {titulo}
+        texto = "Más detalles de esta noticia en desarrollo."
+
+    mensaje = f"""📰 {titulo}
 
 {texto}
 
@@ -121,30 +96,19 @@ Fuente: {medio}
 — Verdad Hoy: Noticias al minuto
 """
 
-    return post
+    return mensaje, imagen
 
-
-# ==============================
-# PUBLICAR EN FACEBOOK
-# ==============================
 
 def publicar():
 
-    mensaje = crear_post()
+    mensaje, imagen = crear_post()
 
-    if mensaje is None:
-
-        print("No se pudo generar noticia")
-
-        return
-
-    print("Publicando en Facebook...")
-
-    url = f"https://graph.facebook.com/{PAGE_ID}/feed"
+    url = f"https://graph.facebook.com/{PAGE_ID}/photos"
 
     data = {
 
-        "message": mensaje,
+        "caption": mensaje,
+        "url": imagen,
         "access_token": ACCESS_TOKEN
 
     }
@@ -152,13 +116,8 @@ def publicar():
     r = requests.post(url, data=data)
 
     print("Respuesta Facebook:")
-
     print(r.text)
 
-
-# ==============================
-# EJECUCIÓN
-# ==============================
 
 if __name__ == "__main__":
 

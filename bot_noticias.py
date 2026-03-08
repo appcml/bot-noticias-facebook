@@ -3,7 +3,6 @@ import feedparser
 import json
 import hashlib
 import os
-from datetime import datetime
 from io import BytesIO
 from PIL import Image
 
@@ -13,13 +12,19 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 HISTORIAL_FILE = "historial_publicaciones.json"
 
+# MUCHOS MAS RSS
 RSS_FEEDS = [
+
 "https://rss.cnn.com/rss/edition.rss",
+"https://rss.cnn.com/rss/edition_world.rss",
 "https://feeds.bbci.co.uk/news/world/rss.xml",
+"https://feeds.bbci.co.uk/news/rss.xml",
 "https://www.france24.com/es/rss",
 "https://www.dw.com/es/actualidad/s-30684/rss",
 "https://www.eltiempo.com/rss/mundo.xml",
+"https://www.eltiempo.com/rss/politica.xml",
 "https://www.clarin.com/rss/mundo/",
+"https://www.clarin.com/rss/politica/",
 "https://www.latercera.com/feed/",
 "https://www.infobae.com/feeds/rss/",
 "https://www.20minutos.es/rss/",
@@ -27,18 +32,43 @@ RSS_FEEDS = [
 "https://www.rtve.es/api/rss/noticias/",
 "https://www.eldiario.es/rss/",
 "https://feeds.skynews.com/feeds/rss/world.xml",
-"https://www.reutersagency.com/feed/?best-topics=world"
+"https://www.reutersagency.com/feed/?best-topics=world",
+"https://www.reutersagency.com/feed/?best-topics=politics",
+"https://www.aljazeera.com/xml/rss/all.xml",
+"https://www.theguardian.com/world/rss",
+"https://www.theguardian.com/international/rss",
+"https://www.nytimes.com/services/xml/rss/nyt/World.xml",
+"https://www.nytimes.com/services/xml/rss/nyt/Politics.xml",
+"https://www.washingtonpost.com/rss/world",
+"https://www.washingtonpost.com/rss/politics",
+"https://www.euronews.com/rss?level=theme&name=news",
+"https://www.swissinfo.ch/spa/rss",
+"https://cnnespanol.cnn.com/feed/",
+"https://actualidad.rt.com/feeds/all.rss"
+
 ]
 
+# REDDIT PARA TENDENCIAS
 REDDIT_FEEDS = [
 "https://www.reddit.com/r/worldnews/.rss",
-"https://www.reddit.com/r/news/.rss"
+"https://www.reddit.com/r/news/.rss",
+"https://www.reddit.com/r/politics/.rss"
 ]
 
+# MUCHAS MAS PALABRAS VIRALES
 PALABRAS_VIRALES = [
-"urgente","crisis","ataque","histórico","explota","tensión",
-"investigación","escándalo","colapso","protesta","invasión",
-"guerra","bombardeo","crisis económica","inflación","recesión"
+
+"urgente","última hora","crisis","ataque","histórico","explota",
+"tensión","investigación","escándalo","colapso","protesta",
+"invasión","guerra","bombardeo","crisis económica","inflación",
+"recesión","conflicto","misiles","ejército","ataque aéreo",
+"amenaza","alarma","catástrofe","tragedia","emergencia",
+"explosión","muertos","heridos","detenido","acusado",
+"juicio","condena","corrupción","caos","colapso financiero",
+"derrumbe","alerta","evacuación","estado de emergencia",
+"protestas masivas","violencia","tensión internacional",
+"amenaza nuclear","ataque terrorista","crisis política"
+
 ]
 
 PAISES = {
@@ -50,7 +80,8 @@ PAISES = {
 "Chile":["boric","santiago","chile"],
 "Argentina":["milei","buenos aires","argentina"],
 "Irán":["iran","teherán"],
-"Israel":["israel","tel aviv"]
+"Israel":["israel","tel aviv"],
+"México":["mexico","amlo","sheinbaum"]
 }
 
 CATEGORIAS = {
@@ -65,26 +96,34 @@ CATEGORIAS = {
 
 
 def cargar_historial():
+
     if os.path.exists(HISTORIAL_FILE):
+
         with open(HISTORIAL_FILE,"r") as f:
             return json.load(f)
-    return {"urls":[],"titulos":[]}
+
+    return {"urls":[]}
 
 
 def guardar_historial(hist):
+
     with open(HISTORIAL_FILE,"w") as f:
         json.dump(hist,f)
 
 
 def hash_url(url):
+
     return hashlib.md5(url.encode()).hexdigest()
 
 
 def detectar_pais(texto):
+
     texto=texto.lower()
 
     for pais,claves in PAISES.items():
+
         for c in claves:
+
             if c in texto:
                 return pais
 
@@ -92,10 +131,13 @@ def detectar_pais(texto):
 
 
 def detectar_categoria(texto):
+
     texto=texto.lower()
 
     for cat,claves in CATEGORIAS.items():
+
         for c in claves:
+
             if c in texto:
                 return cat
 
@@ -103,7 +145,9 @@ def detectar_categoria(texto):
 
 
 def es_viral(texto):
+
     texto=texto.lower()
+
     return any(p in texto for p in PALABRAS_VIRALES)
 
 
@@ -114,6 +158,7 @@ def buscar_rss():
     for feed_url in RSS_FEEDS:
 
         try:
+
             feed=feedparser.parse(feed_url)
 
             for entry in feed.entries[:6]:
@@ -131,8 +176,7 @@ def buscar_rss():
                     "titulo":titulo,
                     "descripcion":desc,
                     "url":link,
-                    "imagen":imagen,
-                    "fuente":feed_url
+                    "imagen":imagen
                 })
 
         except:
@@ -148,9 +192,10 @@ def buscar_reddit():
     for feed in REDDIT_FEEDS:
 
         try:
+
             data=feedparser.parse(feed)
 
-            for entry in data.entries[:8]:
+            for entry in data.entries[:10]:
                 tendencias.append(entry.title.lower())
 
         except:
@@ -174,7 +219,7 @@ def calcular_score(noticia,tendencias):
     if any(t in titulo for t in tendencias):
         score+=2
 
-    if len(titulo)>80:
+    if len(titulo)>70:
         score+=1
 
     return score
@@ -193,15 +238,24 @@ def elegir_noticia(noticias,tendencias,historial):
         score=calcular_score(n,tendencias)
 
         if score>mejor_score:
+
             mejor_score=score
             mejor=n
 
     return mejor
 
 
-def generar_texto(titulo, descripcion):
+def optimizar_titulo(titulo):
 
-    prompt = f"""
+    if len(titulo) > 140:
+        titulo = titulo[:140] + "..."
+
+    return titulo
+
+
+def generar_texto(titulo,descripcion):
+
+    prompt=f"""
 Escribe una noticia periodística profesional en español.
 
 TÍTULO:
@@ -211,30 +265,24 @@ INFORMACIÓN:
 {descripcion}
 
 REGLAS:
-- 3 a 5 párrafos
-- entre 700 y 1200 caracteres
-- estilo periodístico
-- explicar qué pasó, dónde ocurrió y por qué es importante
-- NO repetir el título
-- sin hashtags
+3 a 5 párrafos
+mínimo 700 caracteres
+explicar qué pasó y por qué es importante
+sin hashtags
 """
 
     try:
 
         if OPENROUTER_API_KEY:
 
-            r = requests.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}"
-                },
-                json={
-                    "model": "mistralai/mistral-7b-instruct:free",
-                    "messages": [
-                        {"role": "user", "content": prompt}
-                    ]
-                },
-                timeout=25
+            r=requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization":f"Bearer {OPENROUTER_API_KEY}"},
+            json={
+            "model":"mistralai/mistral-7b-instruct:free",
+            "messages":[{"role":"user","content":prompt}]
+            },
+            timeout=25
             )
 
             data=r.json()
@@ -244,25 +292,9 @@ REGLAS:
             return texto.strip()
 
     except Exception as e:
-        print("IA no disponible:", e)
+        print("IA no disponible:",e)
 
-    return f"""
-La situación continúa desarrollándose tras conocerse nuevos antecedentes sobre este hecho que ha generado preocupación a nivel internacional.
-
-De acuerdo con los primeros reportes, el acontecimiento ocurrió recientemente y ha provocado diversas reacciones tanto en autoridades como en analistas que siguen de cerca el desarrollo de los acontecimientos.
-
-Expertos advierten que este escenario podría tener consecuencias importantes en los próximos días, especialmente considerando el contexto político y estratégico en la región.
-
-Se espera que en las próximas horas se conozcan más detalles mientras organismos internacionales y gobiernos monitorean la evolución de la situación.
-"""
-
-
-def optimizar_titulo(titulo):
-
-    if len(titulo)>90:
-        titulo=titulo[:90]+"..."
-
-    return titulo
+    return descripcion
 
 
 def generar_hashtags(categoria,pais):
@@ -337,10 +369,7 @@ def crear_post(noticia):
 
     titulo=optimizar_titulo(noticia["titulo"])
 
-    texto=generar_texto(
-    titulo,
-    noticia["descripcion"]
-    )
+    texto=generar_texto(titulo,noticia["descripcion"])
 
     pais=detectar_pais(titulo+texto)
 
@@ -357,7 +386,7 @@ def crear_post(noticia):
 — Verdad Hoy: Noticias al minuto
 """
 
-    return mensaje,pais,categoria
+    return mensaje
 
 
 def main():
@@ -378,7 +407,7 @@ def main():
 
     print("Noticia elegida:",noticia["titulo"])
 
-    post,pais,categoria=crear_post(noticia)
+    post=crear_post(noticia)
 
     img=descargar_imagen(noticia["imagen"])
 
@@ -387,8 +416,6 @@ def main():
     if publicado:
 
         historial["urls"].append(hash_url(noticia["url"]))
-
-        historial["titulos"].append(noticia["titulo"])
 
         guardar_historial(historial)
 

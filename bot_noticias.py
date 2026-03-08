@@ -28,17 +28,8 @@ RSS_FEEDS = [
 "https://www.latercera.com/feed/",
 "https://www.elpais.com/rss/",
 "https://www.abc.es/rss/feeds/abc_Internacional.xml",
-"https://www.lavanguardia.com/rss/internacional.xml",
-"https://www.publico.es/rss/internacional.xml"
+"https://www.lavanguardia.com/rss/internacional.xml"
 
-]
-
-PALABRAS_VIRALES = [
-"urgente","última hora","guerra","ataque","crisis",
-"explosión","conflicto","protestas","tensión",
-"invasión","misiles","bombardeo","tragedia",
-"colapso","investigación","escándalo","emergencia",
-"alerta","catástrofe"
 ]
 
 
@@ -47,12 +38,11 @@ def limpiar_html(texto):
     if not texto:
         return ""
 
-    texto = re.sub("<.*?>","",texto)
-    texto = texto.replace("\n"," ")
-    texto = texto.replace("Continue reading","")
-    texto = texto.strip()
+    texto = re.sub("<.*?>", "", texto)
+    texto = texto.replace("\n", " ")
+    texto = texto.replace("Continue reading", "")
 
-    return texto
+    return texto.strip()
 
 
 def limpiar_titulo(titulo):
@@ -60,8 +50,8 @@ def limpiar_titulo(titulo):
     if "|" in titulo:
         titulo = titulo.split("|")[0]
 
-    titulo = titulo.replace("en directo","")
-    titulo = titulo.replace("En directo","")
+    titulo = titulo.replace("en directo", "")
+    titulo = titulo.replace("En directo", "")
 
     return titulo.strip()
 
@@ -87,13 +77,6 @@ def hash_url(url):
     return hashlib.md5(url.encode()).hexdigest()
 
 
-def es_viral(texto):
-
-    texto = texto.lower()
-
-    return any(p in texto for p in PALABRAS_VIRALES)
-
-
 def buscar_rss():
 
     noticias=[]
@@ -102,7 +85,7 @@ def buscar_rss():
 
         try:
 
-            feed=feedparser.parse(feed_url)
+            feed = feedparser.parse(feed_url)
 
             for entry in feed.entries[:5]:
 
@@ -113,7 +96,7 @@ def buscar_rss():
                 imagen=""
 
                 if "media_content" in entry:
-                    imagen=entry.media_content[0]["url"]
+                    imagen = entry.media_content[0]["url"]
 
                 noticias.append({
                     "titulo":titulo,
@@ -130,54 +113,50 @@ def buscar_rss():
 
 def elegir_noticia(noticias,historial):
 
-    mejor=None
-    mejor_score=0
-
     for n in noticias:
 
-        if hash_url(n["url"]) in historial["urls"]:
-            continue
+        if hash_url(n["url"]) not in historial["urls"]:
+            return n
 
-        score=0
-
-        if es_viral(n["titulo"]):
-            score+=3
-
-        if n["imagen"]:
-            score+=1
-
-        if len(n["titulo"])>60:
-            score+=1
-
-        if score>mejor_score:
-
-            mejor_score=score
-            mejor=n
-
-    return mejor
+    return None
 
 
-def generar_texto(titulo,descripcion):
+def extraer_articulo(url):
+
+    try:
+
+        r = requests.get(url,timeout=15)
+
+        texto = limpiar_html(r.text)
+
+        texto = re.sub(r'\s+', ' ', texto)
+
+        return texto[:3000]
+
+    except:
+
+        return ""
+
+
+def generar_con_ia(titulo,contenido):
 
     if not OPENROUTER_API_KEY:
-        return descripcion
+        return ""
 
     prompt=f"""
-Eres un periodista.
-
 Escribe una noticia en español basada en esta información.
 
-TITULO:
+Titulo:
 {titulo}
 
-INFORMACION:
-{descripcion}
+Contenido:
+{contenido}
 
-REGLAS:
+Reglas:
 
 3 a 5 párrafos
 mínimo 800 caracteres
-explicar claramente qué ocurrió
+explicar qué ocurrió
 estilo periodístico
 sin enlaces
 """
@@ -192,8 +171,7 @@ sin enlaces
         },
         json={
         "model":"mistralai/mistral-7b-instruct",
-        "messages":[{"role":"user","content":prompt}],
-        "temperature":0.7
+        "messages":[{"role":"user","content":prompt}]
         },
         timeout=30
         )
@@ -202,21 +180,54 @@ sin enlaces
 
         texto=data["choices"][0]["message"]["content"]
 
-        if len(texto)<400:
-            return descripcion
-
         return texto.strip()
 
-    except Exception as e:
+    except:
 
-        print("Error IA:",e)
-
-        return descripcion
+        return ""
 
 
-def generar_hashtags():
+def verificar_texto(texto):
 
-    return "#Noticias #Actualidad #UltimaHora #Mundo"
+    if not texto:
+        return False
+
+    if len(texto) < 700:
+        return False
+
+    return True
+
+
+def crear_post(noticia):
+
+    titulo = limpiar_titulo(noticia["titulo"])
+
+    contenido = noticia["descripcion"]
+
+    texto = generar_con_ia(titulo,contenido)
+
+    if not verificar_texto(texto):
+
+        articulo = extraer_articulo(noticia["url"])
+
+        texto = generar_con_ia(titulo,articulo)
+
+        if not verificar_texto(texto):
+
+            texto = articulo[:1200]
+
+    hashtags = "#Noticias #Actualidad #UltimaHora #Mundo"
+
+    mensaje=f"""📰 {titulo}
+
+{texto}
+
+{hashtags}
+
+— Verdad Hoy: Noticias al minuto
+"""
+
+    return mensaje
 
 
 def descargar_imagen(url):
@@ -273,29 +284,7 @@ def publicar_facebook(texto,img):
     return r.status_code==200
 
 
-def crear_post(noticia):
-
-    titulo=limpiar_titulo(noticia["titulo"])
-
-    texto=generar_texto(titulo,noticia["descripcion"])
-
-    hashtags=generar_hashtags()
-
-    mensaje=f"""📰 {titulo}
-
-{texto}
-
-{hashtags}
-
-— Verdad Hoy: Noticias al minuto
-"""
-
-    return mensaje
-
-
 def main():
-
-    print("Buscando noticias...")
 
     historial=cargar_historial()
 
@@ -306,8 +295,6 @@ def main():
     if not noticia:
         print("No hay noticias nuevas")
         return
-
-    print("Noticia elegida:",noticia["titulo"])
 
     post=crear_post(noticia)
 

@@ -28,6 +28,9 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json')
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 
+# Tiempo mínimo entre publicaciones (en minutos)
+TIEMPO_ENTRE_PUBLICACIONES = 28  # Reducido para asegurar que publique cada 30 min
+
 # =============================================================================
 # FUENTES DE NOTICIAS
 # =============================================================================
@@ -75,7 +78,7 @@ PALABRAS_CLAVE = [
 
 def log(mensaje, tipo='info'):
     """Imprime mensajes con formato"""
-    iconos = {'info': 'ℹ️', 'exito': '✅', 'error': '❌', 'advertencia': '⚠️'}
+    iconos = {'info': 'ℹ️', 'exito': '✅', 'error': '❌', 'advertencia': '⚠️', 'debug': '🔍'}
     icono = iconos.get(tipo, 'ℹ️')
     print(f"{icono} {mensaje}")
 
@@ -174,19 +177,33 @@ def guardar_estado(estado):
     guardar_json(ESTADO_PATH, estado)
 
 def verificar_tiempo_ultima_publicacion(estado):
-    """Verifica si ya pasaron 25 minutos desde la última publicación"""
+    """
+    Verifica si ya pasó el tiempo mínimo entre publicaciones.
+    Retorna: (puede_publicar, minutos_transcurridos, minutos_faltantes)
+    """
     if not estado.get('ultima_publicacion'):
-        return True, 0
+        log("Primera ejecución - no hay historial de publicaciones", 'debug')
+        return True, 0, 0
     
     try:
         ultima = datetime.fromisoformat(estado['ultima_publicacion'])
-        transcurrido = (datetime.now() - ultima).total_seconds() / 60
+        ahora = datetime.now()
+        transcurrido = (ahora - ultima).total_seconds() / 60
         
-        if transcurrido < 25:
-            return False, 30 - int(transcurrido)
-        return True, 0
-    except:
-        return True, 0
+        log(f"Última publicación: {ultima.strftime('%H:%M:%S')} ({transcurrido:.1f} minutos atrás)", 'debug')
+        
+        if transcurrido < TIEMPO_ENTRE_PUBLICACIONES:
+            faltan = TIEMPO_ENTRE_PUBLICACIONES - transcurrido
+            log(f"Faltan {faltan:.1f} minutos para siguiente publicación", 'advertencia')
+            return False, transcurrido, faltan
+        
+        log(f"Tiempo suficiente transcurrido ({transcurrido:.1f} minutos)", 'exito')
+        return True, transcurrido, 0
+        
+    except Exception as e:
+        log(f"Error verificando tiempo: {e}", 'error')
+        # Si hay error, permitir publicar para no bloquear
+        return True, 0, 0
 
 # =============================================================================
 # BÚSQUEDA DE NOTICIAS
@@ -196,6 +213,7 @@ def obtener_noticias_newsapi():
     """Obtiene noticias de NewsAPI"""
     noticias = []
     if not NEWS_API_KEY:
+        log("NewsAPI no configurado", 'advertencia')
         return noticias
     
     terminos = ['noticias', 'actualidad', 'mundo', 'internacional']
@@ -240,6 +258,8 @@ def obtener_noticias_rss():
     noticias = []
     feeds = RSS_FEEDS.copy()
     random.shuffle(feeds)
+    
+    log(f"Consultando {len(feeds[:12])} feeds RSS...", 'debug')
     
     for feed_url in feeds[:12]:
         try:
@@ -298,24 +318,37 @@ def calcular_puntaje(titulo, descripcion):
 def seleccionar_noticia(noticias, historial, estado):
     """Selecciona la mejor noticia no publicada"""
     if not noticias:
+        log("No hay noticias para seleccionar", 'error')
         return None
     
+    # Filtrar ya publicadas
     nuevas = [n for n in noticias if not noticia_ya_publicada(historial, n['url'], n['titulo'])]
-    log(f"Noticias nuevas: {len(nuevas)} de {len(noticias)}")
+    log(f"Noticias nuevas: {len(nuevas)} de {len(noticias)}", 'debug')
     
-    candidatas = nuevas if nuevas else noticias
+    # Si no hay nuevas, usar cualquiera (rotación forzada para mantener frecuencia)
+    if not nuevas:
+        log("No hay noticias nuevas, usando rotación", 'advertencia')
+        candidatas = noticias
+    else:
+        candidatas = nuevas
     
+    # Evitar misma fuente consecutiva
     ultima_fuente = estado.get('ultima_fuente', '')
     diferentes = [n for n in candidatas if n['fuente'] != ultima_fuente]
     if diferentes:
         candidatas = diferentes
     
+    # Ordenar por puntaje
     candidatas.sort(key=lambda x: x['puntaje'], reverse=True)
     
-    return candidatas[0] if candidatas else None
+    seleccionada = candidatas[0] if candidatas else None
+    if seleccionada:
+        log(f"Seleccionada noticia de: {seleccionada['fuente']}", 'debug')
+    
+    return seleccionada
 
 # =============================================================================
-# PROCESAMIENTO DE NOTICIAS - CORREGIDO PARA ESPACIADO
+# PROCESAMIENTO DE NOTICIAS
 # =============================================================================
 
 def extraer_contenido_web(url):
@@ -341,17 +374,13 @@ def extraer_contenido_web(url):
         if not contenido:
             return None
         
-        # Extraer párrafos con espacios correctos
         parrafos = []
         for p in contenido.find_all(['p', 'h2', 'h3']):
-            # Usar separator=' ' para asegurar espacios entre elementos
             texto = p.get_text(separator=' ', strip=True)
-            # Normalizar espacios
             texto = re.sub(r'\s+', ' ', texto)
             if len(texto) > 40:
                 parrafos.append(texto)
         
-        # Unir con espacio entre párrafos
         return ' '.join(parrafos)
         
     except Exception as e:
@@ -364,15 +393,12 @@ def generar_texto_publicacion(noticia):
     descripcion = noticia['descripcion']
     fuente = noticia['fuente']
     
-    # Obtener contenido
     contenido = extraer_contenido_web(noticia['url'])
     if not contenido:
         contenido = descripcion
     
-    # Normalizar espacios en todo el contenido
     contenido = re.sub(r'\s+', ' ', contenido).strip()
     
-    # Dividir en oraciones
     oraciones_raw = re.split(r'[.!?]+', contenido)
     oraciones = []
     
@@ -381,7 +407,6 @@ def generar_texto_publicacion(noticia):
         if 30 < len(s) < 300:
             oraciones.append(s)
     
-    # Eliminar duplicados
     vistas = set()
     oraciones_unicas = []
     for o in oraciones:
@@ -392,22 +417,18 @@ def generar_texto_publicacion(noticia):
     
     oraciones = oraciones_unicas
     
-    # Construir párrafos de 2 oraciones
     parrafos = []
     i = 0
     while i < len(oraciones):
         if i + 1 < len(oraciones):
-            # IMPORTANTE: Punto + ESPACIO + oración + Punto
             parrafo = f"{oraciones[i]}. {oraciones[i+1]}."
         else:
             parrafo = f"{oraciones[i]}."
         
-        # Normalizar espacios
         parrafo = re.sub(r'\s+', ' ', parrafo).strip()
         parrafos.append(parrafo)
         i += 2
     
-    # Si no hay suficientes, usar descripción
     if len(parrafos) < 2:
         desc_limpia = re.sub(r'\s+', ' ', descripcion).strip()
         parrafos = [
@@ -415,20 +436,13 @@ def generar_texto_publicacion(noticia):
             "Se esperan más detalles en las próximas horas."
         ]
     
-    # Limitar a 4 párrafos
     parrafos = parrafos[:4]
-    
-    # Unir párrafos con doble salto de línea
     texto = '\n\n'.join(parrafos)
     
-    # LIMPIEZA FINAL CRÍTICA: Asegurar espacio después de puntuación
-    # Esto corrige "confirmadopor" -> "confirmado por"
+    # Limpieza final para evitar palabras pegadas
     texto = re.sub(r'([.!?])([A-Za-zÁÉÍÓÚáéíóúÑñ])', r'\1 \2', texto)
-    
-    # Eliminar espacios múltiples
     texto = re.sub(r' +', ' ', texto)
     
-    # Agregar fuente
     texto += f"\n\nFuente: {fuente}."
     
     return texto
@@ -553,6 +567,7 @@ def main():
     print("\n" + "="*60)
     print("🤖 BOT DE NOTICIAS - FACEBOOK")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"⏱️  Tiempo mínimo entre publicaciones: {TIEMPO_ENTRE_PUBLICACIONES} minutos")
     print("="*60)
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
@@ -561,12 +576,19 @@ def main():
     
     log("Credenciales OK")
     
+    # Cargar estado y verificar tiempo
     estado = cargar_estado()
-    puede_publicar, minutos_restantes = verificar_tiempo_ultima_publicacion(estado)
+    puede_publicar, minutos_transcurridos, minutos_faltantes = verificar_tiempo_ultima_publicacion(estado)
     
     if not puede_publicar:
-        log(f"Esperando {minutos_restantes} minutos para siguiente publicación", 'advertencia')
-        return True
+        log(f"⏳ AÚN NO ES HORA DE PUBLICAR", 'advertencia')
+        log(f"   Última publicación: hace {minutos_transcurridos:.1f} minutos", 'info')
+        log(f"   Debe esperar: {minutos_faltantes:.1f} minutos más", 'info')
+        log(f"   Próxima ejecución válida: en {minutos_faltantes:.0f} minutos", 'info')
+        return True  # No es error, solo no es hora
+    
+    # Si llegamos aquí, podemos publicar
+    log("✅ ES HORA DE PUBLICAR - Iniciando proceso", 'exito')
     
     historial = cargar_historial()
     

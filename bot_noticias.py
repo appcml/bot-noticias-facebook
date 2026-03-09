@@ -16,12 +16,14 @@ OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
-HISTORIAL_FILE = 'historial_publicaciones.json'
+HISTORIAL_FILE = os.getenv('HISTORIAL_PATH', 'historial_publicaciones.json')
+ESTADO_FILE = os.getenv('ESTADO_PATH', 'estado_bot.json')  # Nuevo: control de estado
 
-# FUENTES RSS INTERNACIONALES
+# FUENTES RSS INTERNACIONALES - EXPANDIDAS
 RSS_FEEDS = [
-    'https://rss.cnn.com/rss/edition.rss',
+    # Español - General
     'https://feeds.bbci.co.uk/news/world/rss.xml',
+    'https://rss.cnn.com/rss/edition.rss',
     'https://www.france24.com/es/rss',
     'https://www.dw.com/es/actualidad/s-30684/rss',
     'https://www.eltiempo.com/rss/mundo.xml',
@@ -34,9 +36,28 @@ RSS_FEEDS = [
     'https://www.eldiario.es/rss/',
     'https://feeds.skynews.com/feeds/rss/world.xml',
     'https://www.reutersagency.com/feed/?best-topics=world',
+    'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
+    'https://elmundo.es/rss/portada.xml',
+    'https://www.lavanguardia.com/mvc/feed/rss/home',
+    'https://www.abc.es/rss/feeds/abc_ultima.xml',
+    'https://www.publico.es/rss/',
+    'https://www.europapress.es/rss/',
+    # Tecnología
+    'https://www.xataka.com/rss.xml',
+    'https://feeds.weblogssl.com/genbeta',
+    'https://www.muycomputer.com/feed/',
+    # Economía
+    'https://www.expansion.com/rss/portada.xml',
+    'https://cincodias.elpais.com/rss/cincodias/portada.xml',
+    # Deportes
+    'https://as.com/rss/tags/ultimas_noticias.xml',
+    'https://www.marca.com/rss/portada.xml',
+    # Ciencia y Salud
+    'https://www.abc.es/rss/feeds/abc_Ciencia.xml',
+    'https://www.abc.es/rss/feeds/abc_Salud.xml',
 ]
 
-# PALABRAS CLAVE VIRALES
+# PALABRAS CLAVE VIRALES - EXPANDIDAS
 PALABRAS_VIRALES = [
     'última hora', 'urgente', 'impactante', 'histórico', 'crisis', 'grave', 'alerta',
     'polémica', 'escándalo', 'revelan', 'confirmado', 'tensión', 'sorpresa', 'inesperado',
@@ -53,26 +74,36 @@ PALABRAS_VIRALES = [
     'narcotráfico', 'detenido', 'operativo policial', 'elecciones', 'gobierno', 'presidente',
     'reforma', 'ley', 'empresa', 'inversión', 'economía', 'mercado', 'bolsa', 'banco',
     'estrategia', 'decisión clave', 'medida urgente', 'impacto global', 'debate internacional',
-    'preocupación mundial'
+    'preocupación mundial', 'breaking', 'exclusiva', 'urgente', 'alerts', 'robo', 'fraude',
+    'corrupción', 'dimisión', 'renuncia', 'muere', 'fallece', 'accidente', 'tragedia',
+    'rescate', 'milagro', 'récord', 'histórico', 'sin precedentes', 'bomba', 'amenaza',
+    'secuestro', 'terrorismo', 'golpe de estado', 'manifestación', 'huelga', 'paro',
+    'desempleo', 'subida', 'bajada', 'sube', 'baja', 'aumento', 'disminución',
 ]
 
 # CATEGORÍAS CON PALABRAS CLAVE
 CATEGORIAS = {
     'politica': ['gobierno', 'presidente', 'elecciones', 'congreso', 'senado', 'parlamento', 
-                 'ministro', 'ley', 'reforma', 'oposición', 'partido', 'votación', 'candidato'],
+                 'ministro', 'ley', 'reforma', 'oposición', 'partido', 'votación', 'candidato',
+                 'política', 'político', 'política', 'diputado', 'senador'],
     'economia': ['economía', 'mercado', 'bolsa', 'inversión', 'banco', 'inflación', 
-                 'dólar', 'empresa', 'comercio', 'finanzas', 'pérdidas', 'quiebra', 'recesión'],
+                 'dólar', 'empresa', 'comercio', 'finanzas', 'pérdidas', 'quiebra', 'recesión',
+                 'euro', 'dinero', 'precio', 'costo', 'gasto', 'ahorro', 'crédito'],
     'internacional': ['guerra', 'conflicto', 'ataque', 'bombardeo', 'invasión', 'misil', 
-                      'tensión internacional', 'diplomacia', 'acuerdo', 'tratado', 'sanciones'],
+                      'tensión internacional', 'diplomacia', 'acuerdo', 'tratado', 'sanciones',
+                      'país', 'nación', 'extranjero', 'global', 'mundo'],
     'seguridad': ['crimen', 'asesinato', 'narcotráfico', 'detenido', 'operativo', 'policía',
-                  'investigación', 'homicidio', 'robo', 'banda criminal'],
+                  'investigación', 'homicidio', 'robo', 'banda criminal', 'delito', 'violencia'],
     'tecnologia': ['inteligencia artificial', 'tecnología', 'innovación', 'ciberataque', 
-                   'hackeo', 'digital', 'software', 'app', 'internet'],
-    'salud': ['pandemia', 'epidemia', 'virus', 'vacuna', 'brote', 'hospital', 'medicina'],
+                   'hackeo', 'digital', 'software', 'app', 'internet', 'móvil', 'ordenador'],
+    'salud': ['pandemia', 'epidemia', 'virus', 'vacuna', 'brote', 'hospital', 'medicina',
+              'salud', 'enfermedad', 'tratamiento', 'médico', 'sanitario'],
     'medio_ambiente': ['cambio climático', 'huracán', 'incendio', 'sequía', 'inundación',
-                       'temperatura', 'calentamiento global'],
+                       'temperatura', 'calentamiento global', 'naturaleza', 'ecología'],
     'ciencia': ['descubrimiento', 'hallazgo', 'científicos', 'estudio', 'espacio', 
-                'astronomía', 'planeta', 'misión espacial']
+                'astronomía', 'planeta', 'misión espacial', 'investigación', 'ciencia'],
+    'deportes': ['fútbol', 'baloncesto', 'tenis', 'deporte', 'equipo', 'jugador', 'partido',
+                 'competición', 'olimpiadas', 'mundial', 'liga', 'copa'],
 }
 
 # PAÍSES PARA HASHTAGS
@@ -116,6 +147,30 @@ PAISES = {
     'oriente medio': 'OrienteMedio', 'medio oriente': 'OrienteMedio'
 }
 
+def cargar_estado():
+    """Carga el estado del bot (última ejecución, contadores, etc.)"""
+    if os.path.exists(ESTADO_FILE):
+        try:
+            with open(ESTADO_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            pass
+    return {
+        'ultima_publicacion': None,
+        'intentos_fallidos': 0,
+        'total_publicadas': 0,
+        'ultima_fuente': None
+    }
+
+def guardar_estado(estado):
+    """Guarda el estado del bot"""
+    try:
+        os.makedirs(os.path.dirname(ESTADO_FILE) if os.path.dirname(ESTADO_FILE) else '.', exist_ok=True)
+        with open(ESTADO_FILE, 'w', encoding='utf-8') as f:
+            json.dump(estado, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"⚠️ Error guardando estado: {e}")
+
 def cargar_historial():
     """Carga el historial de publicaciones con manejo seguro de todas las claves"""
     if os.path.exists(HISTORIAL_FILE):
@@ -127,17 +182,16 @@ def cargar_historial():
                 historial.setdefault('titulos', [])
                 historial.setdefault('hashes', [])
                 historial.setdefault('ultima_publicacion', None)
+                print(f"📚 Historial cargado: {len(historial['urls'])} URLs")
                 return historial
         except Exception as e:
             print(f"⚠️ Error cargando historial: {e}")
-            pass
     
-    # Retornar estructura vacía si no existe o hay error
+    print("🆕 Creando historial nuevo")
     return {'urls': [], 'titulos': [], 'hashes': [], 'ultima_publicacion': None}
 
 def guardar_historial(historial, url, titulo):
     """Guarda una noticia en el historial"""
-    # Asegurar que las claves existan antes de usarlas
     if 'urls' not in historial:
         historial['urls'] = []
     if 'titulos' not in historial:
@@ -152,12 +206,13 @@ def guardar_historial(historial, url, titulo):
     historial['hashes'].append(url_hash)
     historial['ultima_publicacion'] = datetime.now().isoformat()
     
-    # Mantener solo las últimas 500 entradas
-    historial['urls'] = historial['urls'][-500:]
-    historial['titulos'] = historial['titulos'][-500:]
-    historial['hashes'] = historial['hashes'][-500:]
+    # Mantener solo las últimas 1000 entradas (aumentado para más historial)
+    historial['urls'] = historial['urls'][-1000:]
+    historial['titulos'] = historial['titulos'][-1000:]
+    historial['hashes'] = historial['hashes'][-1000:]
     
     try:
+        os.makedirs(os.path.dirname(HISTORIAL_FILE) if os.path.dirname(HISTORIAL_FILE) else '.', exist_ok=True)
         with open(HISTORIAL_FILE, 'w', encoding='utf-8') as f:
             json.dump(historial, f, ensure_ascii=False, indent=2)
         print(f"💾 Guardada en historial")
@@ -176,13 +231,15 @@ def es_duplicado(historial, url, titulo):
     if url in historial.get('urls', []):
         return True
     
-    # Verificar por similitud de título
+    # Verificar por similitud de título (más permisivo)
     titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
     for t in historial.get('titulos', []):
         t_simple = re.sub(r'[^\w]', '', t.lower())[:40]
         if titulo_simple and t_simple:
+            # Usar distancia de Levenshtein simple
             coincidencias = sum(1 for a, b in zip(titulo_simple, t_simple) if a == b)
-            if coincidencias / max(len(titulo_simple), len(t_simple)) > 0.75:
+            similitud = coincidencias / max(len(titulo_simple), len(t_simple))
+            if similitud > 0.85:  # Más estricto para evitar duplicados
                 return True
     
     return False
@@ -225,10 +282,16 @@ def calcular_puntaje_viral(titulo, descripcion):
     
     for palabra in PALABRAS_VIRALES:
         if palabra in texto:
-            if palabra in ['urgente', 'última hora', 'crisis', 'alerta', 'guerra', 'ataque']:
+            if palabra in ['urgente', 'última hora', 'crisis', 'alerta', 'guerra', 'ataque', 'breaking']:
+                puntaje += 5
+            elif palabra in ['confirmado', 'revelan', 'escándalo', 'polémica', 'histórico']:
                 puntaje += 3
             else:
                 puntaje += 1
+    
+    # Bonus por longitud adecuada del título
+    if 40 <= len(titulo) <= 100:
+        puntaje += 2
     
     return puntaje
 
@@ -336,6 +399,8 @@ def extraer_texto_completo(url):
             'cnn.com': ['.article__content', '.zn-body__paragraph'],
             'reuters.com': ['.article-body__content__17Yit', '.ArticleBodyWrapper'],
             '20minutos.es': ['.article-body', '.content'],
+            'xataka.com': ['.article-content', '.article-body'],
+            'genbeta.com': ['.article-content', '.article-body'],
         }
         
         dominio = urlparse(url).netloc.replace('www.', '')
@@ -660,6 +725,7 @@ def generar_hashtags(categoria, pais, titulo):
         'ciencia': ['#Ciencia', '#Investigación'],
         'salud': ['#Salud', '#Medicina'],
         'medio_ambiente': ['#MedioAmbiente', '#Clima'],
+        'deportes': ['#Deportes', '#Actualidad'],
         'general': ['#Actualidad', '#Noticias']
     }
     
@@ -810,234 +876,263 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
     
     return False
 
-def buscar_noticias():
-    """Busca noticias en fuentes RSS"""
-    print("\n🔍 Buscando noticias...")
+def obtener_noticias_newsapi():
+    """Obtiene noticias de NewsAPI"""
     noticias = []
+    if not NEWS_API_KEY:
+        return noticias
     
-    if NEWS_API_KEY:
+    terminos = [
+        'noticias', 'actualidad', 'mundo', 'internacional',
+        'política', 'economía', 'tecnología', 'deportes'
+    ]
+    
+    for termino in random.sample(terminos, 3):
         try:
-            terminos = random.sample([
-                'urgente crisis', 'última hora', 'alerta internacional',
-                'guerra conflicto', 'economía crisis', 'política elecciones'
-            ], 2)
-            
-            for termino in terminos:
-                try:
-                    resp = requests.get(
-                        "https://newsapi.org/v2/everything",
-                        params={
-                            'q': termino,
-                            'language': 'es',
-                            'sortBy': 'publishedAt',
-                            'pageSize': 5,
-                            'apiKey': NEWS_API_KEY
-                        },
-                        timeout=15
-                    )
-                    data = resp.json()
-                    if data.get('status') == 'ok':
-                        for art in data.get('articles', []):
-                            noticias.append({
-                                'titulo': art.get('title', ''),
-                                'descripcion': art.get('description', ''),
-                                'url': art.get('url', ''),
-                                'imagen': art.get('urlToImage', ''),
-                                'fuente': art.get('source', {}).get('name', 'Agencias'),
-                                'fecha': art.get('publishedAt', ''),
-                                'puntaje_viral': calcular_puntaje_viral(art.get('title', ''), art.get('description', '')),
-                                'texto_completo': None
-                            })
-                except:
-                    continue
-        except:
-            pass
+            resp = requests.get(
+                "https://newsapi.org/v2/everything",
+                params={
+                    'q': termino,
+                    'language': 'es',
+                    'sortBy': 'publishedAt',
+                    'pageSize': 10,
+                    'apiKey': NEWS_API_KEY
+                },
+                timeout=15
+            )
+            data = resp.json()
+            if data.get('status') == 'ok':
+                for art in data.get('articles', []):
+                    if not art.get('title') or "[Removed]" in art['title']:
+                        continue
+                    noticias.append({
+                        'titulo': art.get('title', ''),
+                        'descripcion': art.get('description', ''),
+                        'url': art.get('url', ''),
+                        'imagen': art.get('urlToImage', ''),
+                        'fuente': art.get('source', {}).get('name', 'Agencias'),
+                        'fecha': art.get('publishedAt', ''),
+                        'puntaje_viral': calcular_puntaje_viral(art.get('title', ''), art.get('description', '')),
+                        'texto_completo': None,
+                        'tipo': 'newsapi'
+                    })
+        except Exception as e:
+            print(f"   ⚠️ Error NewsAPI ({termino}): {str(e)[:40]}")
+            continue
     
-    random.shuffle(RSS_FEEDS)
+    return noticias
+
+def obtener_noticias_rss():
+    """Obtiene noticias de feeds RSS"""
+    noticias = []
+    feeds_procesados = 0
     
-    for feed_url in RSS_FEEDS[:10]:
+    # Mezclar feeds para variedad
+    feeds_aleatorios = RSS_FEEDS.copy()
+    random.shuffle(feeds_aleatorios)
+    
+    for feed_url in feeds_aleatorios[:15]:  # Procesar máximo 15 feeds por ejecución
         try:
             feed = feedparser.parse(feed_url)
             fuente_nombre = feed.feed.get('title', feed_url.split('/')[2])
             
-            for entry in feed.entries[:3]:
+            entradas_procesadas = 0
+            for entry in feed.entries[:5]:  # Máximo 5 noticias por feed
                 titulo = entry.get('title', '')
                 descripcion = entry.get('summary', entry.get('description', ''))
                 url = entry.get('link', '')
                 
-                imagen = extraer_imagen(entry, url)
-                puntaje = calcular_puntaje_viral(titulo, descripcion)
+                if not titulo or len(titulo) < 10 or "[Removed]" in titulo:
+                    continue
                 
-                if puntaje > 0:
-                    noticias.append({
-                        'titulo': titulo,
-                        'descripcion': descripcion,
-                        'url': url,
-                        'imagen': imagen,
-                        'fuente': fuente_nombre,
-                        'fecha': entry.get('published', ''),
-                        'puntaje_viral': puntaje,
-                        'texto_completo': None
-                    })
+                # Limpiar descripción de HTML
+                descripcion_limpia = re.sub(r'<[^>]+>', '', descripcion)
+                
+                imagen = extraer_imagen(entry, url)
+                puntaje = calcular_puntaje_viral(titulo, descripcion_limpia)
+                
+                noticias.append({
+                    'titulo': titulo,
+                    'descripcion': descripcion_limpia,
+                    'url': url,
+                    'imagen': imagen,
+                    'fuente': fuente_nombre,
+                    'fecha': entry.get('published', ''),
+                    'puntaje_viral': puntaje,
+                    'texto_completo': None,
+                    'tipo': 'rss'
+                })
+                entradas_procesadas += 1
             
-            print(f"   📡 {fuente_nombre[:25]}: {len(feed.entries)} entradas")
-            
+            feeds_procesados += 1
+            if entradas_procesadas > 0:
+                print(f"   📡 {fuente_nombre[:30]}: {entradas_procesadas} noticias")
+                
         except Exception as e:
-            print(f"   ⚠️ Error feed: {str(e)[:40]}")
+            print(f"   ⚠️ Error feed {feed_url[:30]}: {str(e)[:40]}")
             continue
     
-    print(f"\n📊 Total: {len(noticias)} noticias")
+    print(f"   ✅ Feeds procesados: {feeds_procesados}")
     return noticias
 
-def filtrar_y_seleccionar(noticias, historial):
-    """Filtra y selecciona la mejor noticia que NO haya sido publicada antes"""
-    print("\n🔎 Filtrando noticias no publicadas...")
+def buscar_noticias_forzado(historial, minimo_noticias=20):
+    """Busca noticias de forma forzada, incluso si no son muy virales"""
+    print("\n🔍 Buscando noticias (modo forzado)...")
     
-    candidatas = []
+    todas_noticias = []
     
-    for noticia in noticias:
+    # 1. Intentar NewsAPI primero
+    print("   📡 Consultando NewsAPI...")
+    noticias_api = obtener_noticias_newsapi()
+    todas_noticias.extend(noticias_api)
+    print(f"   ✅ NewsAPI: {len(noticias_api)} noticias")
+    
+    # 2. Consultar RSS
+    print("   📡 Consultando feeds RSS...")
+    noticias_rss = obtener_noticias_rss()
+    todas_noticias.extend(noticias_rss)
+    print(f"   ✅ RSS total: {len(noticias_rss)} noticias")
+    
+    print(f"\n📊 Total recolectado: {len(todas_noticias)} noticias")
+    
+    # Eliminar duplicados por URL
+    urls_vistas = set()
+    noticias_unicas = []
+    for n in todas_noticias:
+        if n['url'] not in urls_vistas:
+            urls_vistas.add(n['url'])
+            noticias_unicas.append(n)
+    
+    print(f"📊 Únicas después de filtrar: {len(noticias_unicas)} noticias")
+    
+    # Separar en publicadas y nuevas
+    nuevas = []
+    ya_publicadas = []
+    
+    for noticia in noticias_unicas:
         if es_duplicado(historial, noticia['url'], noticia['titulo']):
-            print(f"   ⏭️ Ya publicada: {noticia['titulo'][:40]}...")
-            continue
-            
-        if len(noticia['titulo']) < 15 or "[Removed]" in noticia['titulo']:
-            continue
-        
-        noticia['categoria'] = clasificar_categoria(noticia['titulo'], noticia['descripcion'])
-        noticia['pais'] = detectar_pais(noticia['titulo'], noticia['descripcion'])
-        
-        candidatas.append(noticia)
-        print(f"   ✅ [{noticia['categoria']}] {noticia['titulo'][:40]}... (viral: {noticia['puntaje_viral']})")
+            ya_publicadas.append(noticia)
+        else:
+            nuevas.append(noticia)
     
-    if not candidatas:
-        print("⚠️ No hay noticias nuevas disponibles")
+    print(f"   🆕 Nuevas: {len(nuevas)} | 📚 Ya publicadas: {len(ya_publicadas)}")
+    
+    # Si hay suficientes nuevas, usar las mejor puntuadas
+    if len(nuevas) >= 3:
+        nuevas.sort(key=lambda x: x['puntaje_viral'], reverse=True)
+        print(f"   🎯 Usando noticias nuevas (mejor puntuada: {nuevas[0]['puntaje_viral']} pts)")
+        return nuevas[:minimo_noticias]
+    
+    # Si hay pocas nuevas, incluir algunas ya publicadas (rotación)
+    if nuevas:
+        print(f"   ⚠️ Solo {len(nuevas)} nuevas, agregando rotación...")
+        # Mezclar publicadas antiguas (más de 24h)
+        ahora = datetime.now()
+        antiguas = []
+        for p in ya_publicadas:
+            # Simular antigüedad basada en puntaje más bajo
+            if p['puntaje_viral'] < 3:
+                antiguas.append(p)
+        
+        random.shuffle(antiguas)
+        combinadas = nuevas + antiguas[:5]
+        combinadas.sort(key=lambda x: x['puntaje_viral'], reverse=True)
+        return combinadas[:minimo_noticias]
+    
+    # Si no hay ninguna nueva, usar las más antiguas del historial (rotación forzada)
+    print("   🔄 Rotación forzada: reutilizando noticias antiguas...")
+    random.shuffle(ya_publicadas)
+    return ya_publicadas[:minimo_noticias] if ya_publicadas []
+
+def seleccionar_mejor_noticia(noticias, estado):
+    """Selecciona la mejor noticia, evitando la última fuente usada"""
+    if not noticias:
         return None
     
+    # Filtrar por fuente diferente a la última (para variedad)
+    ultima_fuente = estado.get('ultima_fuente', '')
+    candidatas = [n for n in noticias if n['fuente'] != ultima_fuente]
+    
+    if not candidatas:
+        candidatas = noticias
+    
+    # Ordenar por puntaje viral
     candidatas.sort(key=lambda x: x['puntaje_viral'], reverse=True)
+    
+    # Seleccionar la mejor
     seleccionada = candidatas[0]
-    
-    print(f"\n🎯 Seleccionada: {seleccionada['titulo'][:50]}...")
-    
-    print(f"\n📄 Extrayendo contenido...")
-    texto_completo = extraer_texto_completo(seleccionada['url'])
-    
-    if texto_completo:
-        seleccionada['texto_completo'] = texto_completo
-    else:
-        desc_limpia = re.sub(r'<[^>]+>', '', seleccionada['descripcion'])
-        seleccionada['texto_completo'] = limpiar_texto_extraccion(desc_limpia)
-        print(f"   ⚠️ Usando descripción RSS: {len(seleccionada['texto_completo'])} caracteres")
     
     return seleccionada
 
-def main():
-    """Función principal que publica UNA noticia nueva con DEBUG completo"""
-    print("\n" + "="*60)
-    print("INICIANDO PUBLICACIÓN - MODO DEBUG")
-    print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
-    print("="*60)
+def procesar_y_publicar(noticia, historial, estado):
+    """Procesa una noticia y la publica"""
+    print(f"\n🎯 Procesando: {noticia['titulo'][:50]}...")
     
-    # DEBUG: Verificar credenciales
-    print(f"\n🔐 VERIFICANDO CREDENCIALES:")
-    print(f"   FB_PAGE_ID: {'✅ Configurado (' + FB_PAGE_ID[:10] + '...)' if FB_PAGE_ID else '❌ FALTA - No se puede publicar'}")
-    print(f"   FB_ACCESS_TOKEN: {'✅ Configurado (' + FB_ACCESS_TOKEN[:15] + '...)' if FB_ACCESS_TOKEN else '❌ FALTA - No se puede publicar'}")
-    print(f"   NEWS_API_KEY: {'✅ Configurado' if NEWS_API_KEY else '⚠️ No configurado (opcional)'}")
-    print(f"   OPENROUTER_API_KEY: {'✅ Configurado' if OPENROUTER_API_KEY else '⚠️ No configurado (opcional)'}")
+    # Clasificar
+    noticia['categoria'] = clasificar_categoria(noticia['titulo'], noticia['descripcion'])
+    noticia['pais'] = detectar_pais(noticia['titulo'], noticia['descripcion'])
     
-    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
-        print("\n❌ ERROR CRÍTICO: Faltan credenciales de Facebook obligatorias")
-        print("   Revisa los secrets en GitHub: Settings > Secrets and variables > Actions")
-        return False
+    print(f"   📂 Categoría: {noticia['categoria']} | 🌍 País: {noticia['pais']}")
     
-    # DEBUG: Cargar historial
-    historial = cargar_historial()
-    print(f"\n📚 HISTORIAL CARGADO:")
-    print(f"   - URLs guardadas: {len(historial.get('urls', []))}")
-    print(f"   - Hashes guardados: {len(historial.get('hashes', []))}")
-    print(f"   - Última publicación: {historial.get('ultima_publicacion', 'Nunca')}")
+    # Extraer texto completo
+    print(f"\n📄 Extrayendo contenido...")
+    texto_completo = extraer_texto_completo(noticia['url'])
     
-    # DEBUG: Buscar noticias
-    noticias = buscar_noticias()
-    print(f"\n📰 RESULTADO BÚSQUEDA:")
-    print(f"   Total noticias encontradas: {len(noticias)}")
+    if texto_completo:
+        noticia['texto_completo'] = texto_completo
+    else:
+        desc_limpia = re.sub(r'<[^>]+>', '', noticia['descripcion'])
+        noticia['texto_completo'] = limpiar_texto_extraccion(desc_limpia)
+        print(f"   ⚠️ Usando descripción: {len(noticia['texto_completo'])} caracteres")
     
-    if not noticias:
-        print("❌ ERROR: No se encontraron noticias en ninguna fuente RSS")
-        print("   Posibles causas:")
-        print("   - Problemas de conexión con las fuentes RSS")
-        print("   - Fuentes RSS caídas o cambiadas")
-        return False
-    
-    # DEBUG: Mostrar primeras noticias
-    print(f"\n📝 PRIMERAS 5 NOTICIAS ENCONTRADAS:")
-    for i, n in enumerate(noticias[:5]):
-        print(f"   {i+1}. [{n['puntaje_viral']}] {n['titulo'][:45]}...")
-    
-    # DEBUG: Filtrar
-    seleccionada = filtrar_y_seleccionar(noticias, historial)
-    
-    if not seleccionada:
-        print("\n⚠️ NO SE ENCONTRARON NOTICIAS NUEVAS PARA PUBLICAR")
-        print("   Razones posibles:")
-        print("   - Todas las noticias ya están en el historial")
-        print("   - Las noticias no tienen palabras clave virales")
-        print("   - Fuentes RSS no tienen contenido nuevo")
-        print("\n   💡 SOLUCIÓN: Borra el historial para forzar nueva publicación")
-        return False
-    
-    # DEBUG: Redacción
-    print(f"\n✍️ REDACTANDO NOTICIA:")
-    print(f"   Título: {seleccionada['titulo'][:60]}...")
-    print(f"   Fuente: {seleccionada['fuente']}")
-    print(f"   Categoría: {seleccionada['categoria']}")
-    print(f"   País: {seleccionada['pais']}")
-    
+    # Generar redacción
+    print(f"\n✍️ Generando redacción...")
     redaccion = generar_redaccion_profesional(
-        seleccionada['titulo'],
-        seleccionada['texto_completo'],
-        seleccionada['descripcion'],
-        seleccionada['fuente']
+        noticia['titulo'],
+        noticia['texto_completo'],
+        noticia['descripcion'],
+        noticia['fuente']
     )
     
-    print(f"\n📄 REDACCIÓN GENERADA ({len(redaccion)} caracteres):")
-    print("   " + "="*50)
-    for linea in redaccion.split('\n')[:6]:
-        print(f"   {linea[:60]}...")
-    print("   " + "="*50)
-    
+    # Generar hashtags
     hashtags = generar_hashtags(
-        seleccionada['categoria'],
-        seleccionada['pais'],
-        seleccionada['titulo']
+        noticia['categoria'],
+        noticia['pais'],
+        noticia['titulo']
     )
     
-    # DEBUG: Imagen
-    print(f"\n🖼️ PROCESANDO IMAGEN:")
-    print(f"   URL imagen RSS: {seleccionada['imagen'][:60] if seleccionada['imagen'] else 'No proporcionada'}...")
+    # Procesar imagen
+    print(f"\n🖼️ Procesando imagen...")
+    imagen_path = None
     
-    imagen_path = descargar_imagen(seleccionada['imagen'])
+    if noticia.get('imagen'):
+        imagen_path = descargar_imagen(noticia['imagen'])
     
-    if not imagen_path and seleccionada.get('texto_completo'):
-        urls_img = re.findall(r'https?://[^\s"\']+\.(?:jpg|jpeg|png)', seleccionada['texto_completo'])
-        print(f"   Imágenes encontradas en texto: {len(urls_img)}")
-        for url_img in urls_img[:2]:
-            print(f"   Intentando: {url_img[:50]}...")
+    if not imagen_path and noticia.get('texto_completo'):
+        urls_img = re.findall(r'https?://[^\s"\'<>]+\.(?:jpg|jpeg|png)', noticia['texto_completo'])
+        for url_img in urls_img[:3]:
+            print(f"   Intentando imagen del texto...")
             imagen_path = descargar_imagen(url_img)
             if imagen_path:
-                print(f"   ✅ Imagen descargada de texto")
                 break
     
     if not imagen_path:
-        print("❌ ERROR: No se pudo descargar ninguna imagen")
-        print("   La publicación en Facebook requiere una imagen")
+        print("   ❌ Sin imagen, buscando alternativa...")
+        # Intentar con la URL de la noticia para extraer imagen
+        imagen_url = extraer_imagen(type('obj', (object,), {'link': noticia['url']})(), noticia['url'])
+        if imagen_url:
+            imagen_path = descargar_imagen(imagen_url)
+    
+    if not imagen_path:
+        print("❌ ERROR: No se pudo obtener imagen")
         return False
     
-    print(f"   ✅ Imagen lista: {imagen_path}")
+    print(f"   ✅ Imagen lista")
     
-    # DEBUG: Publicar
-    print(f"\n📤 PUBLICANDO EN FACEBOOK:")
+    # Publicar
+    print(f"\n📤 Publicando en Facebook...")
     exito = publicar_facebook(
-        seleccionada['titulo'],
+        noticia['titulo'],
         redaccion,
         imagen_path,
         hashtags
@@ -1045,25 +1140,114 @@ def main():
     
     # Limpieza
     try:
-        if os.path.exists(imagen_path):
+        if imagen_path and os.path.exists(imagen_path):
             os.remove(imagen_path)
     except:
         pass
     
     if exito:
-        guardar_historial(historial, seleccionada['url'], seleccionada['titulo'])
+        # Guardar en historial
+        guardar_historial(historial, noticia['url'], noticia['titulo'])
         
+        # Actualizar estado
+        estado['ultima_publicacion'] = datetime.now().isoformat()
+        estado['ultima_fuente'] = noticia['fuente']
+        estado['total_publicadas'] = estado.get('total_publicadas', 0) + 1
+        estado['intentos_fallidos'] = 0
+        guardar_estado(estado)
+        
+        return True
+    else:
+        estado['intentos_fallidos'] = estado.get('intentos_fallidos', 0) + 1
+        guardar_estado(estado)
+        return False
+
+def main():
+    """Función principal mejorada para publicación cada 30 minutos"""
+    print("\n" + "="*60)
+    print("🤖 BOT DE NOTICIAS - MODO PRODUCCIÓN")
+    print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("="*60)
+    
+    # Verificar credenciales
+    print(f"\n🔐 Verificando credenciales...")
+    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
+        print("❌ ERROR: Faltan credenciales de Facebook")
+        return False
+    
+    print(f"   ✅ Facebook configurado")
+    print(f"   📰 NewsAPI: {'✅' if NEWS_API_KEY else '⚠️'}")
+    print(f"   🤖 OpenRouter: {'✅' if OPENROUTER_API_KEY else '⚠️'}")
+    
+    # Cargar estado e historial
+    estado = cargar_estado()
+    historial = cargar_historial()
+    
+    print(f"\n📊 Estado actual:")
+    print(f"   - Total publicadas: {estado.get('total_publicadas', 0)}")
+    print(f"   - Última publicación: {estado.get('ultima_publicacion', 'Nunca')}")
+    print(f"   - Intentos fallidos: {estado.get('intentos_fallidos', 0)}")
+    print(f"   - Historial: {len(historial.get('urls', []))} URLs")
+    
+    # Verificar si ya se publicó hace menos de 25 minutos (evitar duplicados por cron)
+    if estado.get('ultima_publicacion'):
+        try:
+            ultima = datetime.fromisoformat(estado['ultima_publicacion'])
+            tiempo_transcurrido = datetime.now() - ultima
+            if tiempo_transcurrido < timedelta(minutes=25):
+                minutos_restantes = 30 - tiempo_transcurrido.seconds // 60
+                print(f"\n⏱️ Ya se publicó hace {tiempo_transcurrido.seconds//60} minutos")
+                print(f"   Esperando {minutos_restantes} minutos para siguiente publicación")
+                return True  # No es error, solo no es hora aún
+        except:
+            pass
+    
+    # Buscar noticias (modo forzado para asegurar contenido)
+    noticias = buscar_noticias_forzado(historial, minimo_noticias=30)
+    
+    if not noticias:
+        print("\n❌ ERROR: No se encontraron noticias en ninguna fuente")
+        estado['intentos_fallidos'] = estado.get('intentos_fallidos', 0) + 1
+        guardar_estado(estado)
+        return False
+    
+    # Seleccionar y publicar la mejor
+    seleccionada = seleccionar_mejor_noticia(noticias, estado)
+    
+    if not seleccionada:
+        print("\n❌ ERROR: No se pudo seleccionar noticia")
+        return False
+    
+    print(f"\n📝 Noticia seleccionada:")
+    print(f"   Título: {seleccionada['titulo'][:60]}...")
+    print(f"   Fuente: {seleccionada['fuente']}")
+    print(f"   Puntaje: {seleccionada['puntaje_viral']}")
+    
+    # Procesar y publicar
+    exito = procesar_y_publicar(seleccionada, historial, estado)
+    
+    if exito:
         print("\n" + "="*60)
-        print("✅ PUBLICACIÓN COMPLETADA EXITOSAMENTE")
+        print("✅ PUBLICACIÓN EXITOSA")
+        print(f"📰 {seleccionada['titulo'][:50]}...")
+        print(f"🏢 {seleccionada['fuente']}")
+        print(f"⏰ Próxima publicación: {(datetime.now() + timedelta(minutes=30)).strftime('%H:%M')}")
         print("="*60)
         return True
     else:
         print("\n" + "="*60)
-        print("❌ FALLÓ LA PUBLICACIÓN EN FACEBOOK")
-        print("   Revisa:")
-        print("   - Token de acceso válido y no expirado")
-        print("   - Permisos de la app: pages_manage_posts")
-        print("   - ID de página correcto")
+        print("❌ FALLÓ LA PUBLICACIÓN")
+        print("   Intentando con siguiente noticia...")
+        
+        # Intentar con la siguiente noticia
+        for noticia_alt in noticias[1:3]:
+            print(f"\n🔄 Intentando alternativa: {noticia_alt['titulo'][:40]}...")
+            exito = procesar_y_publicar(noticia_alt, historial, estado)
+            if exito:
+                print("✅ Publicación alternativa exitosa")
+                return True
+        
+        print("❌ Todas las alternativas fallaron")
         print("="*60)
         return False
 
@@ -1075,7 +1259,7 @@ if __name__ == "__main__":
         print("\n\n⚠️ Interrumpido por usuario")
         exit(1)
     except Exception as e:
-        print(f"\n💥 ERROR CRÍTICO NO ESPERADO: {e}")
+        print(f"\n💥 ERROR CRÍTICO: {e}")
         import traceback
         traceback.print_exc()
         exit(1)

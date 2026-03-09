@@ -17,7 +17,7 @@ FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
 HISTORIAL_FILE = os.getenv('HISTORIAL_PATH', 'historial_publicaciones.json')
-ESTADO_FILE = os.getenv('ESTADO_PATH', 'estado_bot.json')  # Nuevo: control de estado
+ESTADO_FILE = os.getenv('ESTADO_PATH', 'estado_bot.json')
 
 # FUENTES RSS INTERNACIONALES - EXPANDIDAS
 RSS_FEEDS = [
@@ -85,7 +85,7 @@ PALABRAS_VIRALES = [
 CATEGORIAS = {
     'politica': ['gobierno', 'presidente', 'elecciones', 'congreso', 'senado', 'parlamento', 
                  'ministro', 'ley', 'reforma', 'oposición', 'partido', 'votación', 'candidato',
-                 'política', 'político', 'política', 'diputado', 'senador'],
+                 'política', 'político', 'diputado', 'senador'],
     'economia': ['economía', 'mercado', 'bolsa', 'inversión', 'banco', 'inflación', 
                  'dólar', 'empresa', 'comercio', 'finanzas', 'pérdidas', 'quiebra', 'recesión',
                  'euro', 'dinero', 'precio', 'costo', 'gasto', 'ahorro', 'crédito'],
@@ -177,7 +177,6 @@ def cargar_historial():
         try:
             with open(HISTORIAL_FILE, 'r', encoding='utf-8') as f:
                 historial = json.load(f)
-                # Asegurar que todas las claves existan
                 historial.setdefault('urls', [])
                 historial.setdefault('titulos', [])
                 historial.setdefault('hashes', [])
@@ -206,7 +205,6 @@ def guardar_historial(historial, url, titulo):
     historial['hashes'].append(url_hash)
     historial['ultima_publicacion'] = datetime.now().isoformat()
     
-    # Mantener solo las últimas 1000 entradas (aumentado para más historial)
     historial['urls'] = historial['urls'][-1000:]
     historial['titulos'] = historial['titulos'][-1000:]
     historial['hashes'] = historial['hashes'][-1000:]
@@ -223,23 +221,19 @@ def es_duplicado(historial, url, titulo):
     """Verifica si una noticia ya fue publicada"""
     url_hash = hashlib.md5(url.lower().strip().encode()).hexdigest()
     
-    # Verificar por hash de URL
     if url_hash in historial.get('hashes', []):
         return True
     
-    # Verificar por URL exacta
     if url in historial.get('urls', []):
         return True
     
-    # Verificar por similitud de título (más permisivo)
     titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
     for t in historial.get('titulos', []):
         t_simple = re.sub(r'[^\w]', '', t.lower())[:40]
         if titulo_simple and t_simple:
-            # Usar distancia de Levenshtein simple
             coincidencias = sum(1 for a, b in zip(titulo_simple, t_simple) if a == b)
             similitud = coincidencias / max(len(titulo_simple), len(t_simple))
-            if similitud > 0.85:  # Más estricto para evitar duplicados
+            if similitud > 0.85:
                 return True
     
     return False
@@ -289,7 +283,6 @@ def calcular_puntaje_viral(titulo, descripcion):
             else:
                 puntaje += 1
     
-    # Bonus por longitud adecuada del título
     if 40 <= len(titulo) <= 100:
         puntaje += 2
     
@@ -927,17 +920,16 @@ def obtener_noticias_rss():
     noticias = []
     feeds_procesados = 0
     
-    # Mezclar feeds para variedad
     feeds_aleatorios = RSS_FEEDS.copy()
     random.shuffle(feeds_aleatorios)
     
-    for feed_url in feeds_aleatorios[:15]:  # Procesar máximo 15 feeds por ejecución
+    for feed_url in feeds_aleatorios[:15]:
         try:
             feed = feedparser.parse(feed_url)
             fuente_nombre = feed.feed.get('title', feed_url.split('/')[2])
             
             entradas_procesadas = 0
-            for entry in feed.entries[:5]:  # Máximo 5 noticias por feed
+            for entry in feed.entries[:5]:
                 titulo = entry.get('title', '')
                 descripcion = entry.get('summary', entry.get('description', ''))
                 url = entry.get('link', '')
@@ -945,7 +937,6 @@ def obtener_noticias_rss():
                 if not titulo or len(titulo) < 10 or "[Removed]" in titulo:
                     continue
                 
-                # Limpiar descripción de HTML
                 descripcion_limpia = re.sub(r'<[^>]+>', '', descripcion)
                 
                 imagen = extraer_imagen(entry, url)
@@ -981,13 +972,11 @@ def buscar_noticias_forzado(historial, minimo_noticias=20):
     
     todas_noticias = []
     
-    # 1. Intentar NewsAPI primero
     print("   📡 Consultando NewsAPI...")
     noticias_api = obtener_noticias_newsapi()
     todas_noticias.extend(noticias_api)
     print(f"   ✅ NewsAPI: {len(noticias_api)} noticias")
     
-    # 2. Consultar RSS
     print("   📡 Consultando feeds RSS...")
     noticias_rss = obtener_noticias_rss()
     todas_noticias.extend(noticias_rss)
@@ -995,7 +984,6 @@ def buscar_noticias_forzado(historial, minimo_noticias=20):
     
     print(f"\n📊 Total recolectado: {len(todas_noticias)} noticias")
     
-    # Eliminar duplicados por URL
     urls_vistas = set()
     noticias_unicas = []
     for n in todas_noticias:
@@ -1005,7 +993,6 @@ def buscar_noticias_forzado(historial, minimo_noticias=20):
     
     print(f"📊 Únicas después de filtrar: {len(noticias_unicas)} noticias")
     
-    # Separar en publicadas y nuevas
     nuevas = []
     ya_publicadas = []
     
@@ -1017,20 +1004,15 @@ def buscar_noticias_forzado(historial, minimo_noticias=20):
     
     print(f"   🆕 Nuevas: {len(nuevas)} | 📚 Ya publicadas: {len(ya_publicadas)}")
     
-    # Si hay suficientes nuevas, usar las mejor puntuadas
     if len(nuevas) >= 3:
         nuevas.sort(key=lambda x: x['puntaje_viral'], reverse=True)
         print(f"   🎯 Usando noticias nuevas (mejor puntuada: {nuevas[0]['puntaje_viral']} pts)")
         return nuevas[:minimo_noticias]
     
-    # Si hay pocas nuevas, incluir algunas ya publicadas (rotación)
     if nuevas:
         print(f"   ⚠️ Solo {len(nuevas)} nuevas, agregando rotación...")
-        # Mezclar publicadas antiguas (más de 24h)
-        ahora = datetime.now()
         antiguas = []
         for p in ya_publicadas:
-            # Simular antigüedad basada en puntaje más bajo
             if p['puntaje_viral'] < 3:
                 antiguas.append(p)
         
@@ -1039,27 +1021,27 @@ def buscar_noticias_forzado(historial, minimo_noticias=20):
         combinadas.sort(key=lambda x: x['puntaje_viral'], reverse=True)
         return combinadas[:minimo_noticias]
     
-    # Si no hay ninguna nueva, usar las más antiguas del historial (rotación forzada)
     print("   🔄 Rotación forzada: reutilizando noticias antiguas...")
     random.shuffle(ya_publicadas)
-    return ya_publicadas[:minimo_noticias] if ya_publicadas []
+    
+    if ya_publicadas:
+        return ya_publicadas[:minimo_noticias]
+    else:
+        return []
 
 def seleccionar_mejor_noticia(noticias, estado):
     """Selecciona la mejor noticia, evitando la última fuente usada"""
     if not noticias:
         return None
     
-    # Filtrar por fuente diferente a la última (para variedad)
     ultima_fuente = estado.get('ultima_fuente', '')
     candidatas = [n for n in noticias if n['fuente'] != ultima_fuente]
     
     if not candidatas:
         candidatas = noticias
     
-    # Ordenar por puntaje viral
     candidatas.sort(key=lambda x: x['puntaje_viral'], reverse=True)
     
-    # Seleccionar la mejor
     seleccionada = candidatas[0]
     
     return seleccionada
@@ -1068,13 +1050,11 @@ def procesar_y_publicar(noticia, historial, estado):
     """Procesa una noticia y la publica"""
     print(f"\n🎯 Procesando: {noticia['titulo'][:50]}...")
     
-    # Clasificar
     noticia['categoria'] = clasificar_categoria(noticia['titulo'], noticia['descripcion'])
     noticia['pais'] = detectar_pais(noticia['titulo'], noticia['descripcion'])
     
     print(f"   📂 Categoría: {noticia['categoria']} | 🌍 País: {noticia['pais']}")
     
-    # Extraer texto completo
     print(f"\n📄 Extrayendo contenido...")
     texto_completo = extraer_texto_completo(noticia['url'])
     
@@ -1085,7 +1065,6 @@ def procesar_y_publicar(noticia, historial, estado):
         noticia['texto_completo'] = limpiar_texto_extraccion(desc_limpia)
         print(f"   ⚠️ Usando descripción: {len(noticia['texto_completo'])} caracteres")
     
-    # Generar redacción
     print(f"\n✍️ Generando redacción...")
     redaccion = generar_redaccion_profesional(
         noticia['titulo'],
@@ -1094,14 +1073,12 @@ def procesar_y_publicar(noticia, historial, estado):
         noticia['fuente']
     )
     
-    # Generar hashtags
     hashtags = generar_hashtags(
         noticia['categoria'],
         noticia['pais'],
         noticia['titulo']
     )
     
-    # Procesar imagen
     print(f"\n🖼️ Procesando imagen...")
     imagen_path = None
     
@@ -1118,7 +1095,6 @@ def procesar_y_publicar(noticia, historial, estado):
     
     if not imagen_path:
         print("   ❌ Sin imagen, buscando alternativa...")
-        # Intentar con la URL de la noticia para extraer imagen
         imagen_url = extraer_imagen(type('obj', (object,), {'link': noticia['url']})(), noticia['url'])
         if imagen_url:
             imagen_path = descargar_imagen(imagen_url)
@@ -1129,7 +1105,6 @@ def procesar_y_publicar(noticia, historial, estado):
     
     print(f"   ✅ Imagen lista")
     
-    # Publicar
     print(f"\n📤 Publicando en Facebook...")
     exito = publicar_facebook(
         noticia['titulo'],
@@ -1138,7 +1113,6 @@ def procesar_y_publicar(noticia, historial, estado):
         hashtags
     )
     
-    # Limpieza
     try:
         if imagen_path and os.path.exists(imagen_path):
             os.remove(imagen_path)
@@ -1146,10 +1120,8 @@ def procesar_y_publicar(noticia, historial, estado):
         pass
     
     if exito:
-        # Guardar en historial
         guardar_historial(historial, noticia['url'], noticia['titulo'])
         
-        # Actualizar estado
         estado['ultima_publicacion'] = datetime.now().isoformat()
         estado['ultima_fuente'] = noticia['fuente']
         estado['total_publicadas'] = estado.get('total_publicadas', 0) + 1
@@ -1169,7 +1141,6 @@ def main():
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
-    # Verificar credenciales
     print(f"\n🔐 Verificando credenciales...")
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ ERROR: Faltan credenciales de Facebook")
@@ -1179,7 +1150,6 @@ def main():
     print(f"   📰 NewsAPI: {'✅' if NEWS_API_KEY else '⚠️'}")
     print(f"   🤖 OpenRouter: {'✅' if OPENROUTER_API_KEY else '⚠️'}")
     
-    # Cargar estado e historial
     estado = cargar_estado()
     historial = cargar_historial()
     
@@ -1189,7 +1159,6 @@ def main():
     print(f"   - Intentos fallidos: {estado.get('intentos_fallidos', 0)}")
     print(f"   - Historial: {len(historial.get('urls', []))} URLs")
     
-    # Verificar si ya se publicó hace menos de 25 minutos (evitar duplicados por cron)
     if estado.get('ultima_publicacion'):
         try:
             ultima = datetime.fromisoformat(estado['ultima_publicacion'])
@@ -1198,11 +1167,10 @@ def main():
                 minutos_restantes = 30 - tiempo_transcurrido.seconds // 60
                 print(f"\n⏱️ Ya se publicó hace {tiempo_transcurrido.seconds//60} minutos")
                 print(f"   Esperando {minutos_restantes} minutos para siguiente publicación")
-                return True  # No es error, solo no es hora aún
+                return True
         except:
             pass
     
-    # Buscar noticias (modo forzado para asegurar contenido)
     noticias = buscar_noticias_forzado(historial, minimo_noticias=30)
     
     if not noticias:
@@ -1211,7 +1179,6 @@ def main():
         guardar_estado(estado)
         return False
     
-    # Seleccionar y publicar la mejor
     seleccionada = seleccionar_mejor_noticia(noticias, estado)
     
     if not seleccionada:
@@ -1223,7 +1190,6 @@ def main():
     print(f"   Fuente: {seleccionada['fuente']}")
     print(f"   Puntaje: {seleccionada['puntaje_viral']}")
     
-    # Procesar y publicar
     exito = procesar_y_publicar(seleccionada, historial, estado)
     
     if exito:
@@ -1239,7 +1205,6 @@ def main():
         print("❌ FALLÓ LA PUBLICACIÓN")
         print("   Intentando con siguiente noticia...")
         
-        # Intentar con la siguiente noticia
         for noticia_alt in noticias[1:3]:
             print(f"\n🔄 Intentando alternativa: {noticia_alt['titulo'][:40]}...")
             exito = procesar_y_publicar(noticia_alt, historial, estado)

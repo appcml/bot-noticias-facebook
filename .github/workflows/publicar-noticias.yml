@@ -2,7 +2,6 @@ name: Bot Noticias Facebook - Cada 30 min
 
 on:
   schedule:
-    # Ejecutar cada 30 minutos
     - cron: '*/30 * * * *'
   workflow_dispatch:
 

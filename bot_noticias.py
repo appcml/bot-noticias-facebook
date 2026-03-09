@@ -241,12 +241,12 @@ def obtener_noticias_rss():
     feeds = RSS_FEEDS.copy()
     random.shuffle(feeds)
     
-    for feed_url in feeds[:12]:  # Procesar máximo 12 feeds
+    for feed_url in feeds[:12]:
         try:
             feed = feedparser.parse(feed_url)
             fuente = feed.feed.get('title', feed_url.split('/')[2])
             
-            for entry in feed.entries[:3]:  # Máximo 3 por feed
+            for entry in feed.entries[:3]:
                 titulo = entry.get('title', '')
                 if not titulo or len(titulo) < 10 or '[Removed]' in titulo:
                     continue
@@ -290,7 +290,6 @@ def calcular_puntaje(titulo, descripcion):
         if palabra in texto:
             puntaje += 2 if palabra in ['urgente', 'breaking', 'última hora'] else 1
     
-    # Bonus por longitud adecuada
     if 30 <= len(titulo) <= 100:
         puntaje += 1
     
@@ -301,30 +300,26 @@ def seleccionar_noticia(noticias, historial, estado):
     if not noticias:
         return None
     
-    # Filtrar ya publicadas
     nuevas = [n for n in noticias if not noticia_ya_publicada(historial, n['url'], n['titulo'])]
     log(f"Noticias nuevas: {len(nuevas)} de {len(noticias)}")
     
-    # Si no hay nuevas, usar cualquiera (rotación)
     candidatas = nuevas if nuevas else noticias
     
-    # Evitar misma fuente consecutiva
     ultima_fuente = estado.get('ultima_fuente', '')
     diferentes = [n for n in candidatas if n['fuente'] != ultima_fuente]
     if diferentes:
         candidatas = diferentes
     
-    # Ordenar por puntaje
     candidatas.sort(key=lambda x: x['puntaje'], reverse=True)
     
     return candidatas[0] if candidatas else None
 
 # =============================================================================
-# PROCESAMIENTO DE NOTICIAS
+# PROCESAMIENTO DE NOTICIAS - CORREGIDO PARA ESPACIADO
 # =============================================================================
 
 def extraer_contenido_web(url):
-    """Extrae contenido de una URL"""
+    """Extrae contenido de una URL con espaciado correcto"""
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -332,11 +327,9 @@ def extraer_contenido_web(url):
         resp = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.content, 'html.parser')
         
-        # Eliminar elementos no deseados
-        for elem in soup(['script', 'style', 'nav', 'header', 'footer']):
+        for elem in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
             elem.decompose()
         
-        # Buscar contenido
         selectores = ['article', '[class*="article-body"]', '[class*="content"]', 'main']
         contenido = None
         
@@ -348,52 +341,94 @@ def extraer_contenido_web(url):
         if not contenido:
             return None
         
-        # Extraer párrafos
+        # Extraer párrafos con espacios correctos
         parrafos = []
-        for p in contenido.find_all('p'):
-            texto = p.get_text(strip=True)
+        for p in contenido.find_all(['p', 'h2', 'h3']):
+            # Usar separator=' ' para asegurar espacios entre elementos
+            texto = p.get_text(separator=' ', strip=True)
+            # Normalizar espacios
+            texto = re.sub(r'\s+', ' ', texto)
             if len(texto) > 40:
                 parrafos.append(texto)
         
-        return ' '.join(parrafos[:5])  # Máximo 5 párrafos
+        # Unir con espacio entre párrafos
+        return ' '.join(parrafos)
         
     except Exception as e:
         log(f"Error extrayendo contenido: {str(e)[:50]}", 'advertencia')
         return None
 
 def generar_texto_publicacion(noticia):
-    """Genera el texto para publicar en Facebook"""
+    """Genera el texto para publicar en Facebook con espaciado correcto"""
     titulo = noticia['titulo']
     descripcion = noticia['descripcion']
     fuente = noticia['fuente']
     
-    # Intentar obtener contenido completo
+    # Obtener contenido
     contenido = extraer_contenido_web(noticia['url'])
     if not contenido:
         contenido = descripcion
     
-    # Generar resumen de 4 párrafos
-    oraciones = [s.strip() for s in re.split(r'[.!?]+', contenido) if 30 < len(s.strip()) < 200]
+    # Normalizar espacios en todo el contenido
+    contenido = re.sub(r'\s+', ' ', contenido).strip()
     
+    # Dividir en oraciones
+    oraciones_raw = re.split(r'[.!?]+', contenido)
+    oraciones = []
+    
+    for s in oraciones_raw:
+        s = s.strip()
+        if 30 < len(s) < 300:
+            oraciones.append(s)
+    
+    # Eliminar duplicados
+    vistas = set()
+    oraciones_unicas = []
+    for o in oraciones:
+        o_lower = o.lower().strip()
+        if o_lower not in vistas:
+            vistas.add(o_lower)
+            oraciones_unicas.append(o)
+    
+    oraciones = oraciones_unicas
+    
+    # Construir párrafos de 2 oraciones
     parrafos = []
-    for i in range(0, min(8, len(oraciones)), 2):
-        if i+1 < len(oraciones):
-            parrafos.append(f"{oraciones[i]}. {oraciones[i+1]}.")
+    i = 0
+    while i < len(oraciones):
+        if i + 1 < len(oraciones):
+            # IMPORTANTE: Punto + ESPACIO + oración + Punto
+            parrafo = f"{oraciones[i]}. {oraciones[i+1]}."
         else:
-            parrafos.append(f"{oraciones[i]}.")
+            parrafo = f"{oraciones[i]}."
+        
+        # Normalizar espacios
+        parrafo = re.sub(r'\s+', ' ', parrafo).strip()
+        parrafos.append(parrafo)
+        i += 2
     
-    # Si no hay suficientes oraciones, usar descripción
+    # Si no hay suficientes, usar descripción
     if len(parrafos) < 2:
+        desc_limpia = re.sub(r'\s+', ' ', descripcion).strip()
         parrafos = [
-            descripcion[:200] + "...",
+            desc_limpia[:250] + ("..." if len(desc_limpia) > 250 else ""),
             "Se esperan más detalles en las próximas horas."
         ]
     
     # Limitar a 4 párrafos
     parrafos = parrafos[:4]
     
-    # Construir mensaje
+    # Unir párrafos con doble salto de línea
     texto = '\n\n'.join(parrafos)
+    
+    # LIMPIEZA FINAL CRÍTICA: Asegurar espacio después de puntuación
+    # Esto corrige "confirmadopor" -> "confirmado por"
+    texto = re.sub(r'([.!?])([A-Za-zÁÉÍÓÚáéíóúÑñ])', r'\1 \2', texto)
+    
+    # Eliminar espacios múltiples
+    texto = re.sub(r' +', ' ', texto)
+    
+    # Agregar fuente
     texto += f"\n\nFuente: {fuente}."
     
     return texto
@@ -403,7 +438,6 @@ def generar_hashtags(noticia):
     texto = f"{noticia['titulo']} {noticia['descripcion']}".lower()
     hashtags = ['#Noticias', '#Actualidad']
     
-    # Detectar categoría
     if any(p in texto for p in ['política', 'gobierno', 'presidente']):
         hashtags.append('#Política')
     elif any(p in texto for p in ['economía', 'mercado', 'bolsa']):
@@ -415,7 +449,6 @@ def generar_hashtags(noticia):
     else:
         hashtags.append('#Internacional')
     
-    # Detectar país
     paises = {
         'españa': 'España', 'madrid': 'España', 'barcelona': 'España',
         'méxico': 'Mexico', 'argentina': 'Argentina', 'chile': 'Chile',
@@ -450,14 +483,11 @@ def descargar_imagen(url):
         
         img = Image.open(BytesIO(resp.content))
         
-        # Convertir a RGB si es necesario
         if img.mode in ('RGBA', 'P'):
             img = img.convert('RGB')
         
-        # Redimensionar
         img.thumbnail((1200, 1200))
         
-        # Guardar temporal
         temp_path = f'/tmp/noticia_{generar_hash(url)[:8]}.jpg'
         img.save(temp_path, 'JPEG', quality=85)
         
@@ -477,10 +507,8 @@ def publicar_en_facebook(titulo, texto, imagen_path, hashtags):
         log("Faltan credenciales de Facebook", 'error')
         return False
     
-    # Construir mensaje final
     mensaje = f"{texto}\n\n{hashtags}\n\n— Verdad Hoy: Noticias al minuto"
     
-    # Truncar si es muy largo
     if len(mensaje) > 2000:
         parrafos = texto.split('\n\n')
         texto_corto = '\n\n'.join(parrafos[:-1])
@@ -527,25 +555,21 @@ def main():
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
-    # Verificar credenciales
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         log("ERROR: Faltan credenciales de Facebook", 'error')
         return False
     
     log("Credenciales OK")
     
-    # Cargar estado y verificar tiempo
     estado = cargar_estado()
     puede_publicar, minutos_restantes = verificar_tiempo_ultima_publicacion(estado)
     
     if not puede_publicar:
         log(f"Esperando {minutos_restantes} minutos para siguiente publicación", 'advertencia')
-        return True  # No es error, solo no es hora
+        return True
     
-    # Cargar historial
     historial = cargar_historial()
     
-    # Buscar noticias
     log("Buscando noticias...")
     noticias = []
     noticias.extend(obtener_noticias_newsapi())
@@ -557,7 +581,6 @@ def main():
         log("No se encontraron noticias", 'error')
         return False
     
-    # Seleccionar noticia
     noticia = seleccionar_noticia(noticias, historial, estado)
     
     if not noticia:
@@ -567,16 +590,13 @@ def main():
     log(f"Seleccionada: {noticia['titulo'][:60]}...")
     log(f"Fuente: {noticia['fuente']} | Puntaje: {noticia['puntaje']}")
     
-    # Generar contenido
     texto = generar_texto_publicacion(noticia)
     hashtags = generar_hashtags(noticia)
     
-    # Descargar imagen
     log("Procesando imagen...")
     imagen_path = descargar_imagen(noticia.get('imagen'))
     
     if not imagen_path:
-        # Intentar buscar imagen en el contenido
         contenido = extraer_contenido_web(noticia['url'])
         if contenido:
             urls_img = re.findall(r'https?://[^\s"<>]+\.(?:jpg|jpeg|png)', contenido)
@@ -591,11 +611,9 @@ def main():
     
     log("Imagen lista")
     
-    # Publicar
     log("Publicando en Facebook...")
     exito = publicar_en_facebook(noticia['titulo'], texto, imagen_path, hashtags)
     
-    # Limpiar
     try:
         if imagen_path and os.path.exists(imagen_path):
             os.remove(imagen_path)
@@ -603,7 +621,6 @@ def main():
         pass
     
     if exito:
-        # Guardar historial y estado
         guardar_historial(historial, noticia['url'], noticia['titulo'])
         estado['ultima_publicacion'] = datetime.now().isoformat()
         estado['ultima_fuente'] = noticia['fuente']

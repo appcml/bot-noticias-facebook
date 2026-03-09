@@ -4,7 +4,7 @@ on:
   schedule:
     # Ejecutar cada 30 minutos
     - cron: '*/30 * * * *'
-  workflow_dispatch:  # Permite ejecución manual
+  workflow_dispatch:
 
 jobs:
   publicar:
@@ -24,13 +24,21 @@ jobs:
         python -m pip install --upgrade pip
         pip install requests feedparser beautifulsoup4 pillow
         
-    - name: Descargar historial y estado
+    - name: Crear directorio de datos
+      run: mkdir -p ./data
+      
+    - name: Descargar historial anterior
       uses: actions/download-artifact@v4
       with:
         name: bot-data
         path: ./data/
       continue-on-error: true
       
+    - name: Verificar archivos descargados
+      run: |
+        echo "Contenido de ./data:"
+        ls -la ./data/ || echo "Directorio vacío o no existe"
+        
     - name: Ejecutar bot de noticias
       env:
         NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
@@ -39,9 +47,12 @@ jobs:
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
         HISTORIAL_PATH: ./data/historial_publicaciones.json
         ESTADO_PATH: ./data/estado_bot.json
+      run: python bot_noticias.py
+        
+    - name: Verificar archivos generados
       run: |
-        mkdir -p ./data
-        python bot_noticias.py
+        echo "Contenido de ./data después de ejecutar:"
+        ls -la ./data/
         
     - name: Subir datos actualizados
       uses: actions/upload-artifact@v4
@@ -51,3 +62,4 @@ jobs:
           ./data/historial_publicaciones.json
           ./data/estado_bot.json
         retention-days: 90
+        overwrite: true

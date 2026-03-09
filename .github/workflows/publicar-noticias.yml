@@ -2,22 +2,21 @@ name: Bot de Noticias Facebook
 
 on:
   schedule:
-    # Ejecutar cada 30 minutos
     - cron: "*/30 * * * *"
-  workflow_dispatch:  # Permite ejecución manual
+  workflow_dispatch:
 
 jobs:
   publicar:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Descargar repositorio
+    - name: Checkout del código
       uses: actions/checkout@v4
       
-    - name: Instalar Python
-      uses: actions/setup-python@v5  # ← Actualizado a v5
+    - name: Setup Python
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.11'  # ← Python más reciente
+        python-version: '3.11'
         
     - name: Instalar dependencias
       run: |
@@ -30,21 +29,14 @@ jobs:
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
-      run: python bot_noticias.py
-      
-    - name: Guardar historial como artifact
+      run: |
+        echo "Iniciando bot..."
+        python bot_noticias.py
+        
+    - name: Guardar historial
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: historial-publicaciones-${{ github.run_id }}
+        name: historial-${{ github.run_id }}
         path: historial_publicaciones.json
         retention-days: 30
-        
-    - name: Commit historial a repo (opcional pero recomendado)
-      if: always()
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add historial_publicaciones.json || true
-        git diff --quiet && git diff --staged --quiet || git commit -m "Actualizar historial de publicaciones [skip ci]"
-        git push || true

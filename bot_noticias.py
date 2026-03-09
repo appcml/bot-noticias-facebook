@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import requests
 import feedparser
 import re
@@ -11,10 +10,7 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
 
-# ============================================================================
-# CONFIGURACION
-# ============================================================================
-
+# CONFIGURACIÓN
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
@@ -42,81 +38,81 @@ RSS_FEEDS = [
 
 # PALABRAS CLAVE VIRALES
 PALABRAS_VIRALES = [
-    'ultima hora', 'urgente', 'impactante', 'historico', 'crisis', 'grave', 'alerta',
-    'polemica', 'escandalo', 'revelan', 'confirmado', 'tension', 'sorpresa', 'inesperado',
-    'explota', 'controversia', 'acusacion', 'investigacion', 'denuncia', 'filtracion',
-    'advertencia', 'crisis politica', 'caos', 'conflicto', 'tension internacional',
+    'última hora', 'urgente', 'impactante', 'histórico', 'crisis', 'grave', 'alerta',
+    'polémica', 'escándalo', 'revelan', 'confirmado', 'tensión', 'sorpresa', 'inesperado',
+    'explota', 'controversia', 'acusación', 'investigación', 'denuncia', 'filtración',
+    'advertencia', 'crisis política', 'caos', 'conflicto', 'tensión internacional',
     'enfrentamiento', 'protesta masiva', 'revuelta', 'disturbios', 'crisis de gobierno',
-    'ataque', 'bombardeo', 'invasion', 'ofensiva', 'operacion militar', 'misil', 'batalla',
-    'conflicto armado', 'crisis economica', 'recesion', 'inflacion record', 'colapso',
-    'quiebra', 'perdidas millonarias', 'sube el dolar', 'crisis financiera', 'descubrimiento',
-    'hallazgo', 'cientificos revelan', 'nuevo estudio', 'innovacion', 'inteligencia artificial',
-    'avance tecnologico', 'ciberataque', 'hackeo', 'filtracion de datos', 'pandemia',
-    'epidemia', 'brote', 'alerta sanitaria', 'virus', 'vacuna', 'cambio climatico',
-    'huracan', 'incendio forestal', 'sequia', 'inundaciones', 'asesinato', 'crimen',
-    'narcotrafico', 'detenido', 'operativo policial', 'elecciones', 'gobierno', 'presidente',
-    'reforma', 'ley', 'empresa', 'inversion', 'economia', 'mercado', 'bolsa', 'banco',
-    'estrategia', 'decision clave', 'medida urgente', 'impacto global', 'debate internacional',
-    'preocupacion mundial'
+    'ataque', 'bombardeo', 'invasión', 'ofensiva', 'operación militar', 'misil', 'batalla',
+    'conflicto armado', 'crisis económica', 'recesión', 'inflación récord', 'colapso',
+    'quiebra', 'pérdidas millonarias', 'sube el dólar', 'crisis financiera', 'descubrimiento',
+    'hallazgo', 'científicos revelan', 'nuevo estudio', 'innovación', 'inteligencia artificial',
+    'avance tecnológico', 'ciberataque', 'hackeo', 'filtración de datos', 'pandemia',
+    'epidemia', 'brote', 'alerta sanitaria', 'virus', 'vacuna', 'cambio climático',
+    'huracán', 'incendio forestal', 'sequía', 'inundaciones', 'asesinato', 'crimen',
+    'narcotráfico', 'detenido', 'operativo policial', 'elecciones', 'gobierno', 'presidente',
+    'reforma', 'ley', 'empresa', 'inversión', 'economía', 'mercado', 'bolsa', 'banco',
+    'estrategia', 'decisión clave', 'medida urgente', 'impacto global', 'debate internacional',
+    'preocupación mundial'
 ]
 
-# CATEGORIAS CON PALABRAS CLAVE
+# CATEGORÍAS CON PALABRAS CLAVE
 CATEGORIAS = {
     'politica': ['gobierno', 'presidente', 'elecciones', 'congreso', 'senado', 'parlamento', 
-                 'ministro', 'ley', 'reforma', 'oposicion', 'partido', 'votacion', 'candidato'],
-    'economia': ['economia', 'mercado', 'bolsa', 'inversion', 'banco', 'inflacion', 
-                 'dolar', 'empresa', 'comercio', 'finanzas', 'perdidas', 'quiebra', 'recesion'],
-    'internacional': ['guerra', 'conflicto', 'ataque', 'bombardeo', 'invasion', 'misil', 
-                      'tension internacional', 'diplomacia', 'acuerdo', 'tratado', 'sanciones'],
-    'seguridad': ['crimen', 'asesinato', 'narcotrafico', 'detenido', 'operativo', 'policia',
-                  'investigacion', 'homicidio', 'robo', 'banda criminal'],
-    'tecnologia': ['inteligencia artificial', 'tecnologia', 'innovacion', 'ciberataque', 
+                 'ministro', 'ley', 'reforma', 'oposición', 'partido', 'votación', 'candidato'],
+    'economia': ['economía', 'mercado', 'bolsa', 'inversión', 'banco', 'inflación', 
+                 'dólar', 'empresa', 'comercio', 'finanzas', 'pérdidas', 'quiebra', 'recesión'],
+    'internacional': ['guerra', 'conflicto', 'ataque', 'bombardeo', 'invasión', 'misil', 
+                      'tensión internacional', 'diplomacia', 'acuerdo', 'tratado', 'sanciones'],
+    'seguridad': ['crimen', 'asesinato', 'narcotráfico', 'detenido', 'operativo', 'policía',
+                  'investigación', 'homicidio', 'robo', 'banda criminal'],
+    'tecnologia': ['inteligencia artificial', 'tecnología', 'innovación', 'ciberataque', 
                    'hackeo', 'digital', 'software', 'app', 'internet'],
     'salud': ['pandemia', 'epidemia', 'virus', 'vacuna', 'brote', 'hospital', 'medicina'],
-    'medio_ambiente': ['cambio climatico', 'huracan', 'incendio', 'sequia', 'inundacion',
+    'medio_ambiente': ['cambio climático', 'huracán', 'incendio', 'sequía', 'inundación',
                        'temperatura', 'calentamiento global'],
-    'ciencia': ['descubrimiento', 'hallazgo', 'cientificos', 'estudio', 'espacio', 
-                'astronomia', 'planeta', 'mision espacial']
+    'ciencia': ['descubrimiento', 'hallazgo', 'científicos', 'estudio', 'espacio', 
+                'astronomía', 'planeta', 'misión espacial']
 }
 
-# PAISES PARA HASHTAGS
+# PAÍSES PARA HASHTAGS
 PAISES = {
     'estados unidos': 'EstadosUnidos', 'usa': 'EstadosUnidos', 'ee.uu': 'EstadosUnidos',
-    'espana': 'Espana', 'madrid': 'Espana', 'barcelona': 'Espana',
-    'mexico': 'Mexico', 'cdmx': 'Mexico', 'ciudad de mexico': 'Mexico',
+    'españa': 'España', 'madrid': 'España', 'barcelona': 'España',
+    'méxico': 'Mexico', 'cdmx': 'Mexico', 'ciudad de méxico': 'Mexico',
     'argentina': 'Argentina', 'buenos aires': 'Argentina',
     'chile': 'Chile', 'santiago': 'Chile',
-    'colombia': 'Colombia', 'bogota': 'Colombia',
-    'peru': 'Peru', 'lima': 'Peru',
+    'colombia': 'Colombia', 'bogotá': 'Colombia',
+    'perú': 'Peru', 'lima': 'Peru',
     'venezuela': 'Venezuela', 'caracas': 'Venezuela',
     'brasil': 'Brasil', 'brasilia': 'Brasil', 'sao paulo': 'Brasil',
-    'francia': 'Francia', 'paris': 'Francia',
-    'alemania': 'Alemania', 'berlin': 'Alemania',
+    'francia': 'Francia', 'parís': 'Francia',
+    'alemania': 'Alemania', 'berlín': 'Alemania',
     'italia': 'Italia', 'roma': 'Italia',
     'reino unido': 'ReinoUnido', 'londres': 'ReinoUnido', 'uk': 'ReinoUnido',
-    'rusia': 'Rusia', 'moscu': 'Rusia', 'ucrania': 'Ucrania', 'kiev': 'Ucrania',
+    'rusia': 'Rusia', 'moscú': 'Rusia', 'ucrania': 'Ucrania', 'kiev': 'Ucrania',
     'china': 'China', 'pekin': 'China', 'shanghai': 'China',
-    'japon': 'Japon', 'tokio': 'Japon',
+    'japón': 'Japon', 'tokio': 'Japon',
     'israel': 'Israel', 'gaza': 'Israel', 'palestina': 'Palestina',
-    'iran': 'Iran', 'teheran': 'Iran',
+    'irán': 'Iran', 'teherán': 'Iran',
     'corea del norte': 'CoreaDelNorte', 'corea del sur': 'CoreaDelSur',
     'india': 'India', 'nueva delhi': 'India',
-    'australia': 'Australia', 'sidney': 'Australia',
-    'canada': 'Canada', 'toronto': 'Canada',
-    'turquia': 'Turquia', 'estambul': 'Turquia',
+    'australia': 'Australia', 'sídney': 'Australia',
+    'canadá': 'Canada', 'toronto': 'Canada',
+    'turquía': 'Turquia', 'estambul': 'Turquia',
     'siria': 'Siria', 'damasco': 'Siria',
     'libano': 'Libano', 'beirut': 'Libano',
     'arabia saudita': 'ArabiaSaudita', 'emiratos': 'EmiratosArabes',
     'qatar': 'Qatar', 'doha': 'Qatar',
     'egipto': 'Egipto', 'el cairo': 'Egipto',
-    'sudafrica': 'Sudafrica', 'ciudad del cabo': 'Sudafrica',
+    'sudáfrica': 'Sudafrica', 'ciudad del cabo': 'Sudafrica',
     'nigeria': 'Nigeria', 'lagos': 'Nigeria',
     'kenia': 'Kenia', 'nairobi': 'Kenia',
-    'etiopia': 'Etiopia', 'adis abeba': 'Etiopia',
+    'etiopía': 'Etiopia', 'adís abeba': 'Etiopia',
     'marruecos': 'Marruecos', 'casablanca': 'Marruecos',
-    'argelia': 'Argelia', 'tunez': 'Tunez',
-    'europa': 'Europa', 'asia': 'Asia', 'africa': 'Africa', 
-    'america latina': 'Latam', 'latinoamerica': 'Latam',
+    'argelia': 'Argelia', 'túnez': 'Tunez',
+    'europa': 'Europa', 'asia': 'Asia', 'áfrica': 'Africa', 
+    'américa latina': 'Latam', 'latinoamérica': 'Latam',
     'oriente medio': 'OrienteMedio', 'medio oriente': 'OrienteMedio'
 }
 
@@ -126,6 +122,7 @@ def cargar_historial():
         try:
             with open(HISTORIAL_FILE, 'r', encoding='utf-8') as f:
                 historial = json.load(f)
+                # Asegurar que todas las claves existan
                 historial.setdefault('urls', [])
                 historial.setdefault('titulos', [])
                 historial.setdefault('hashes', [])
@@ -133,11 +130,14 @@ def cargar_historial():
                 return historial
         except Exception as e:
             print(f"⚠️ Error cargando historial: {e}")
+            pass
     
+    # Retornar estructura vacía si no existe o hay error
     return {'urls': [], 'titulos': [], 'hashes': [], 'ultima_publicacion': None}
 
 def guardar_historial(historial, url, titulo):
     """Guarda una noticia en el historial"""
+    # Asegurar que las claves existan antes de usarlas
     if 'urls' not in historial:
         historial['urls'] = []
     if 'titulos' not in historial:
@@ -152,6 +152,7 @@ def guardar_historial(historial, url, titulo):
     historial['hashes'].append(url_hash)
     historial['ultima_publicacion'] = datetime.now().isoformat()
     
+    # Mantener solo las últimas 500 entradas
     historial['urls'] = historial['urls'][-500:]
     historial['titulos'] = historial['titulos'][-500:]
     historial['hashes'] = historial['hashes'][-500:]
@@ -167,12 +168,15 @@ def es_duplicado(historial, url, titulo):
     """Verifica si una noticia ya fue publicada"""
     url_hash = hashlib.md5(url.lower().strip().encode()).hexdigest()
     
+    # Verificar por hash de URL
     if url_hash in historial.get('hashes', []):
         return True
     
+    # Verificar por URL exacta
     if url in historial.get('urls', []):
         return True
     
+    # Verificar por similitud de título
     titulo_simple = re.sub(r'[^\w]', '', titulo.lower())[:40]
     for t in historial.get('titulos', []):
         t_simple = re.sub(r'[^\w]', '', t.lower())[:40]
@@ -184,14 +188,14 @@ def es_duplicado(historial, url, titulo):
     return False
 
 def detectar_pais(titulo, descripcion):
-    """Detecta el pais de la noticia para el hashtag"""
+    """Detecta el país de la noticia para el hashtag"""
     texto = f"{titulo} {descripcion}".lower()
     
     for pais, hashtag in PAISES.items():
         if pais in texto:
             return hashtag
     
-    if any(x in texto for x in ['union europea', 'ue', 'europeo', 'europea', 'bruselas']):
+    if any(x in texto for x in ['unión europea', 'ue', 'europeo', 'europea', 'bruselas']):
         return 'Europa'
     if any(x in texto for x in ['onu', 'naciones unidas', 'nueva york']):
         return 'ONU'
@@ -201,7 +205,7 @@ def detectar_pais(titulo, descripcion):
     return 'Mundo'
 
 def clasificar_categoria(titulo, descripcion):
-    """Clasifica la noticia en una categoria"""
+    """Clasifica la noticia en una categoría"""
     texto = f"{titulo} {descripcion}".lower()
     
     puntuaciones = {}
@@ -215,13 +219,13 @@ def clasificar_categoria(titulo, descripcion):
     return 'general'
 
 def calcular_puntaje_viral(titulo, descripcion):
-    """Calcula que tan viral es una noticia basado en palabras clave"""
+    """Calcula qué tan viral es una noticia basado en palabras clave"""
     texto = f"{titulo} {descripcion}".lower()
     puntaje = 0
     
     for palabra in PALABRAS_VIRALES:
         if palabra in texto:
-            if palabra in ['urgente', 'ultima hora', 'crisis', 'alerta', 'guerra', 'ataque']:
+            if palabra in ['urgente', 'última hora', 'crisis', 'alerta', 'guerra', 'ataque']:
                 puntaje += 3
             else:
                 puntaje += 1
@@ -229,7 +233,7 @@ def calcular_puntaje_viral(titulo, descripcion):
     return puntaje
 
 def asegurar_puntuacion(texto):
-    """Asegura que el texto termine con punto final y tenga puntuacion correcta"""
+    """Asegura que el texto termine con punto final y tenga puntuación correcta"""
     if not texto:
         return texto
     
@@ -245,7 +249,7 @@ def asegurar_puntuacion(texto):
     return texto
 
 def limpiar_texto_extraccion(texto):
-    """Limpia el texto extraido eliminando metadatos, fechas, horas y elementos no deseados"""
+    """Limpia el texto extraído eliminando metadatos, fechas, horas y elementos no deseados"""
     if not texto:
         return texto
     
@@ -260,8 +264,8 @@ def limpiar_texto_extraccion(texto):
         r'^actualizado\s+(el|la)?',
         r'^\d+\s*$',
         r'^[A-Z][a-z]+?\s*/\s*[A-Z]+$',
-        r'^ANALISIS$',
-        r'^OPINION$',
+        r'^ANÁLISIS$',
+        r'^OPINIÓN$',
         r'^REPORTAJE$',
         r'^ENTREVISTA$',
         r'^—\s*[A-Z]',
@@ -282,8 +286,8 @@ def limpiar_texto_extraccion(texto):
                 break
         
         palabras_menu = ['compartir', 'facebook', 'twitter', 'whatsapp', 'telegram', 
-                        'imprimir', 'guardar', 'enviar', 'suscribete', 'newsletter',
-                        'cookie', 'aviso legal', 'politica de privacidad', 'mapa web']
+                        'imprimir', 'guardar', 'enviar', 'suscríbete', 'newsletter',
+                        'cookie', 'aviso legal', 'política de privacidad', 'mapa web']
         if any(p in linea_strip.lower() for p in palabras_menu) and len(linea_strip) < 50:
             es_metadato = True
         
@@ -342,7 +346,7 @@ def extraer_texto_completo(url):
                     elem = soup.select_one(selector)
                     if elem and len(elem.get_text(strip=True)) > 300:
                         contenido = elem
-                        print(f"   ✅ Selector especifico para {dominio}")
+                        print(f"   ✅ Selector específico para {dominio}")
                         break
                 except:
                     continue
@@ -394,8 +398,8 @@ def extraer_texto_completo(url):
                 
                 if len(texto) < 40:
                     continue
-                if any(x in texto.lower() for x in ['publicidad', 'anuncio', 'suscribete', 
-                                                     'comparte en', 'siguenos en', 'mas informacion']):
+                if any(x in texto.lower() for x in ['publicidad', 'anuncio', 'suscríbete', 
+                                                     'comparte en', 'síguenos en', 'más información']):
                     continue
                 if texto.isupper() and len(texto) < 100:
                     continue
@@ -410,7 +414,7 @@ def extraer_texto_completo(url):
                 texto_final = texto_final[:6000].rsplit('.', 1)[0] + '.'
             
             if len(texto_final) > 300:
-                print(f"   ✅ Extraido: {len(texto_final)} caracteres, {len(parrafos)} parrafos")
+                print(f"   ✅ Extraído: {len(texto_final)} caracteres, {len(parrafos)} párrafos")
                 return texto_final
         
     except Exception as e:
@@ -419,8 +423,8 @@ def extraer_texto_completo(url):
     return None
 
 def generar_redaccion_profesional(titulo, texto_completo, descripcion_rss, fuente):
-    """Genera redaccion periodistica profesional usando IA con el texto COMPLETO limpio"""
-    print(f"   🤖 Generando redaccion profesional...")
+    """Genera redacción periodística profesional usando IA con el texto COMPLETO limpio"""
+    print(f"   🤖 Generando redacción profesional...")
     
     texto_para_ia = texto_completo[:5000] if len(texto_completo) > 5000 else texto_completo
     
@@ -429,43 +433,43 @@ def generar_redaccion_profesional(titulo, texto_completo, descripcion_rss, fuent
     
     prompt = f"""Eres un editor senior de agencia de noticias internacional.
 
-REDACTA UNA NOTICIA PROFESIONAL para publicar en Facebook usando esta informacion:
+REDACTA UNA NOTICIA PROFESIONAL para publicar en Facebook usando esta información:
 
-TITULO ORIGINAL: {titulo}
+TÍTULO ORIGINAL: {titulo}
 FUENTE: {fuente}
 
 TEXTO COMPLETO DE LA NOTICIA:
 {texto_para_ia}
 
-REGLAS DE REDACCION OBLIGATORIAS:
+REGLAS DE REDACCIÓN OBLIGATORIAS:
 
-1. Escribe en ESPANOL neutro y profesional
-2. Estructura EXACTA con parrafos separados por lineas en blanco:
+1. Escribe en ESPAÑOL neutro y profesional
+2. Estructura EXACTA con párrafos separados por líneas en blanco:
 
-PARRAFO 1 (Lead): Lo mas importante (quien, que, cuando, donde, por que). Minimo 2 oraciones, maximo 3. Debe terminar con PUNTO.
+PÁRRAFO 1 (Lead): Lo más importante (quién, qué, cuándo, dónde, por qué). Mínimo 2 oraciones, máximo 3. Debe terminar con PUNTO.
 
-PARRAFO 2: Contexto y antecedentes. Minimo 2 oraciones, maximo 3. Debe terminar con PUNTO.
+PÁRRAFO 2: Contexto y antecedentes. Mínimo 2 oraciones, máximo 3. Debe terminar con PUNTO.
 
-PARRAFO 3: Desarrollo y detalles clave. Minimo 2 oraciones, maximo 3. Debe terminar con PUNTO.
+PÁRRAFO 3: Desarrollo y detalles clave. Mínimo 2 oraciones, máximo 3. Debe terminar con PUNTO.
 
-PARRAFO 4: Consecuencias o proximos pasos. Minimo 2 oraciones, maximo 3. Debe terminar con PUNTO.
+PÁRRAFO 4: Consecuencias o próximos pasos. Mínimo 2 oraciones, máximo 3. Debe terminar con PUNTO.
 
-3. CADA parrafo DEBE terminar con punto (.)
-4. Entre parrafo y parrafo deja UNA linea en blanco exactamente
+3. CADA párrafo DEBE terminar con punto (.)
+4. Entre párrafo y párrafo deja UNA línea en blanco exactamente
 5. Longitud total: 600-1200 caracteres
-6. NO incluir: fechas de publicacion, horas, nombres de fotografos, "ANALISIS", etiquetas de seccion
+6. NO incluir: fechas de publicación, horas, nombres de fotógrafos, "ANÁLISIS", etiquetas de sección
 7. NO usar corchetes ni texto entre [ ]
 8. Terminar con: "Fuente: {fuente}."
 
 EJEMPLO DE FORMATO CORRECTO:
 
-El gobierno de Iran anuncio nuevas medidas de defensa ante los ataques recibidos. Las autoridades confirmaron que se reforzaran las instalaciones militares en todo el territorio.
+El gobierno de Irán anunció nuevas medidas de defensa ante los ataques recibidos. Las autoridades confirmaron que se reforzarán las instalaciones militares en todo el territorio.
 
-La tension en la region ha escalado desde el inicio del conflicto hace dos semanas. Diversos paises han expresado su preocupacion por la situacion y llamado al dialogo.
+La tensión en la región ha escalado desde el inicio del conflicto hace dos semanas. Diversos países han expresado su preocupación por la situación y llamado al diálogo.
 
-Los bombardeos han afectado principalmente zonas industriales y militares. Se reportan danos significativos en infraestructura critica del pais.
+Los bombardeos han afectado principalmente zonas industriales y militares. Se reportan daños significativos en infraestructura crítica del país.
 
-Las autoridades internacionales continuan monitoreando la situacion. Se esperan declaraciones oficiales en las proximas horas.
+Las autoridades internacionales continúan monitoreando la situación. Se esperan declaraciones oficiales en las próximas horas.
 
 Fuente: {fuente}
 
@@ -509,7 +513,7 @@ AHORA ESCRIBE LA NOTICIA:"""
                     contenido = asegurar_puntuacion_parrafos(contenido)
                     
                     if len(contenido) > 500 and '\n\n' in contenido:
-                        print(f"   ✅ Redaccion: {len(contenido)} caracteres")
+                        print(f"   ✅ Redacción: {len(contenido)} caracteres")
                         return contenido
                     else:
                         print(f"   ⚠️ Respuesta corta, probando otro modelo...")
@@ -521,7 +525,7 @@ AHORA ESCRIBE LA NOTICIA:"""
     return generar_redaccion_manual(titulo, texto_completo, descripcion_rss, fuente)
 
 def asegurar_puntuacion_parrafos(texto):
-    """Asegura que cada parrafo termine con punto final y esten separados por lineas en blanco"""
+    """Asegura que cada párrafo termine con punto final y estén separados por líneas en blanco"""
     if not texto:
         return texto
     
@@ -550,9 +554,9 @@ def limpiar_salida_ia(contenido):
     contenido = re.sub(r'\{.*?\}', '', contenido, flags=re.DOTALL)
     
     lineas_a_eliminar = [
-        r'^TITULO ATRACTIVO$',
-        r'^Parrafo \d+',
-        r'^PARRAFO \d+',
+        r'^TÍTULO ATRACTIVO$',
+        r'^Párrafo \d+',
+        r'^PÁRRAFO \d+',
         r'^\d+\.',
         r'^FORMATO',
         r'^REGLAS',
@@ -589,8 +593,8 @@ def limpiar_salida_ia(contenido):
     return contenido
 
 def generar_redaccion_manual(titulo, texto_completo, descripcion_rss, fuente):
-    """Genera redaccion manual ordenada con puntacion correcta y parrafos separados"""
-    print(f"   📝 Redaccion manual ordenada...")
+    """Genera redacción manual ordenada con puntación correcta y párrafos separados"""
+    print(f"   📝 Redacción manual ordenada...")
     
     oraciones = [s.strip() for s in re.split(r'[.!?]+', texto_completo) 
                  if len(s.strip()) > 30 and len(s.strip()) < 300]
@@ -612,23 +616,23 @@ def generar_redaccion_manual(titulo, texto_completo, descripcion_rss, fuente):
     if len(oraciones) >= 4:
         p = f"{oraciones[2]}. {oraciones[3]}."
     else:
-        p = "El hecho ha generado amplia repercusion en los medios de comunicacion y entre la opinion publica."
+        p = "El hecho ha generado amplia repercusión en los medios de comunicación y entre la opinión pública."
     parrafos.append(asegurar_puntuacion(p))
     
     if len(oraciones) >= 6:
         p = f"{oraciones[4]}. {oraciones[5]}."
     else:
-        p = "Las autoridades competentes continuan evaluando la situacion mientras se desarrollan los hechos."
+        p = "Las autoridades competentes continúan evaluando la situación mientras se desarrollan los hechos."
     parrafos.append(asegurar_puntuacion(p))
     
     if len(oraciones) >= 8:
         p = f"{oraciones[6]}. {oraciones[7]}."
     else:
-        p = "Se esperan actualizaciones oficiales en las proximas horas sobre el desarrollo de esta informacion."
+        p = "Se esperan actualizaciones oficiales en las próximas horas sobre el desarrollo de esta información."
     parrafos.append(asegurar_puntuacion(p))
     
     cuerpo = '\n\n'.join(parrafos)
-    cuerpo = re.sub(r'\.+', '.', cuerpo)
+    cuerpo = re.sub(r'\.\.+', '.', cuerpo)
     cuerpo = re.sub(r'\s+', ' ', cuerpo)
     
     parrafos_finales = cuerpo.split('. ')
@@ -648,12 +652,12 @@ def generar_redaccion_manual(titulo, texto_completo, descripcion_rss, fuente):
 def generar_hashtags(categoria, pais, titulo):
     """Genera hashtags relevantes"""
     hashtags_categoria = {
-        'politica': ['#Politica', '#Gobierno'],
-        'economia': ['#Economia', '#Finanzas'],
+        'politica': ['#Política', '#Gobierno'],
+        'economia': ['#Economía', '#Finanzas'],
         'internacional': ['#Internacional', '#Mundo'],
         'seguridad': ['#Seguridad', '#Justicia'],
-        'tecnologia': ['#Tecnologia', '#Innovacion'],
-        'ciencia': ['#Ciencia', '#Investigacion'],
+        'tecnologia': ['#Tecnología', '#Innovación'],
+        'ciencia': ['#Ciencia', '#Investigación'],
         'salud': ['#Salud', '#Medicina'],
         'medio_ambiente': ['#MedioAmbiente', '#Clima'],
         'general': ['#Actualidad', '#Noticias']
@@ -738,7 +742,7 @@ def descargar_imagen(url):
     return None
 
 def publicar_facebook(titulo, texto, imagen_path, hashtags):
-    """Publica en Facebook con formato limpio, parrafos separados y ordenado"""
+    """Publica en Facebook con formato limpio, párrafos separados y ordenado"""
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         print("❌ Faltan credenciales Facebook")
         return False
@@ -768,14 +772,14 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
 
 — Verdad Hoy: Noticias al minuto"""
     
-    print(f"\n   📝 Publicacion ({len(mensaje)} caracteres):")
+    print(f"\n   📝 Publicación ({len(mensaje)} caracteres):")
     print(f"   {'='*50}")
     lineas = mensaje.split('\n')
     for i, linea in enumerate(lineas[:12]):
         preview = linea[:55] + "..." if len(linea) > 55 else linea
         print(f"   {preview}")
     if len(lineas) > 12:
-        print(f"   ... ({len(lineas) - 12} lineas mas)")
+        print(f"   ... ({len(lineas) - 12} líneas más)")
     print(f"   {'='*50}")
     
     try:
@@ -814,8 +818,8 @@ def buscar_noticias():
     if NEWS_API_KEY:
         try:
             terminos = random.sample([
-                'urgente crisis', 'ultima hora', 'alerta internacional',
-                'guerra conflicto', 'economia crisis', 'politica elecciones'
+                'urgente crisis', 'última hora', 'alerta internacional',
+                'guerra conflicto', 'economía crisis', 'política elecciones'
             ], 2)
             
             for termino in terminos:
@@ -922,14 +926,14 @@ def filtrar_y_seleccionar(noticias, historial):
     else:
         desc_limpia = re.sub(r'<[^>]+>', '', seleccionada['descripcion'])
         seleccionada['texto_completo'] = limpiar_texto_extraccion(desc_limpia)
-        print(f"   ⚠️ Usando descripcion RSS: {len(seleccionada['texto_completo'])} caracteres")
+        print(f"   ⚠️ Usando descripción RSS: {len(seleccionada['texto_completo'])} caracteres")
     
     return seleccionada
 
 def main():
-    """Funcion principal que publica UNA noticia nueva"""
+    """Función principal que publica UNA noticia nueva"""
     print("\n" + "="*60)
-    print("INICIANDO PUBLICACION")
+    print("INICIANDO PUBLICACIÓN")
     print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
     print("="*60)
     
@@ -992,7 +996,7 @@ def main():
             pass
         
         print("\n" + "="*60)
-        print("✅ PUBLICACION EXITOSA")
+        print("✅ PUBLICACIÓN EXITOSA")
         print("="*60)
         return True
     else:
@@ -1002,32 +1006,8 @@ def main():
         except:
             pass
         
-        print("\n❌ Fallo la publicacion")
+        print("\n❌ Falló la publicación")
         return False
 
-# ============================================================================
-# EJECUCION PARA GITHUB ACTIONS (sin bucle infinito)
-# ============================================================================
-
 if __name__ == "__main__":
-    print("\n" + "="*60)
-    print("🤖 BOT DE NOTICIAS - EJECUCION UNICA")
-    print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print("="*60)
-    
-    try:
-        exito = main()
-        if exito:
-            print("\n" + "="*60)
-            print("✅ PUBLICACION EXITOSA")
-            print("="*60)
-        else:
-            print("\n" + "="*60)
-            print("⚠️ NO SE PUBLICO (sin noticias nuevas o error)")
-            print("="*60)
-            
-    except Exception as e:
-        print(f"\n❌ ERROR: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        exit(1)
+    main()

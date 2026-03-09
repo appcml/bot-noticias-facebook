@@ -931,26 +931,67 @@ def filtrar_y_seleccionar(noticias, historial):
     return seleccionada
 
 def main():
-    """Función principal que publica UNA noticia nueva"""
+    """Función principal que publica UNA noticia nueva con DEBUG completo"""
     print("\n" + "="*60)
-    print("INICIANDO PUBLICACIÓN")
+    print("INICIANDO PUBLICACIÓN - MODO DEBUG")
     print(f"⏰ {datetime.now().strftime('%H:%M:%S')}")
     print("="*60)
     
+    # DEBUG: Verificar credenciales
+    print(f"\n🔐 VERIFICANDO CREDENCIALES:")
+    print(f"   FB_PAGE_ID: {'✅ Configurado (' + FB_PAGE_ID[:10] + '...)' if FB_PAGE_ID else '❌ FALTA - No se puede publicar'}")
+    print(f"   FB_ACCESS_TOKEN: {'✅ Configurado (' + FB_ACCESS_TOKEN[:15] + '...)' if FB_ACCESS_TOKEN else '❌ FALTA - No se puede publicar'}")
+    print(f"   NEWS_API_KEY: {'✅ Configurado' if NEWS_API_KEY else '⚠️ No configurado (opcional)'}")
+    print(f"   OPENROUTER_API_KEY: {'✅ Configurado' if OPENROUTER_API_KEY else '⚠️ No configurado (opcional)'}")
+    
+    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
+        print("\n❌ ERROR CRÍTICO: Faltan credenciales de Facebook obligatorias")
+        print("   Revisa los secrets en GitHub: Settings > Secrets and variables > Actions")
+        return False
+    
+    # DEBUG: Cargar historial
     historial = cargar_historial()
-    print(f"📚 Historial: {len(historial.get('urls', []))} noticias previas")
+    print(f"\n📚 HISTORIAL CARGADO:")
+    print(f"   - URLs guardadas: {len(historial.get('urls', []))}")
+    print(f"   - Hashes guardados: {len(historial.get('hashes', []))}")
+    print(f"   - Última publicación: {historial.get('ultima_publicacion', 'Nunca')}")
     
+    # DEBUG: Buscar noticias
     noticias = buscar_noticias()
+    print(f"\n📰 RESULTADO BÚSQUEDA:")
+    print(f"   Total noticias encontradas: {len(noticias)}")
+    
     if not noticias:
-        print("\n❌ Sin noticias disponibles")
+        print("❌ ERROR: No se encontraron noticias en ninguna fuente RSS")
+        print("   Posibles causas:")
+        print("   - Problemas de conexión con las fuentes RSS")
+        print("   - Fuentes RSS caídas o cambiadas")
         return False
     
+    # DEBUG: Mostrar primeras noticias
+    print(f"\n📝 PRIMERAS 5 NOTICIAS ENCONTRADAS:")
+    for i, n in enumerate(noticias[:5]):
+        print(f"   {i+1}. [{n['puntaje_viral']}] {n['titulo'][:45]}...")
+    
+    # DEBUG: Filtrar
     seleccionada = filtrar_y_seleccionar(noticias, historial)
+    
     if not seleccionada:
-        print("\n❌ No se encontraron noticias nuevas para publicar")
+        print("\n⚠️ NO SE ENCONTRARON NOTICIAS NUEVAS PARA PUBLICAR")
+        print("   Razones posibles:")
+        print("   - Todas las noticias ya están en el historial")
+        print("   - Las noticias no tienen palabras clave virales")
+        print("   - Fuentes RSS no tienen contenido nuevo")
+        print("\n   💡 SOLUCIÓN: Borra el historial para forzar nueva publicación")
         return False
     
-    print(f"\n✍️ Redactando noticia...")
+    # DEBUG: Redacción
+    print(f"\n✍️ REDACTANDO NOTICIA:")
+    print(f"   Título: {seleccionada['titulo'][:60]}...")
+    print(f"   Fuente: {seleccionada['fuente']}")
+    print(f"   Categoría: {seleccionada['categoria']}")
+    print(f"   País: {seleccionada['pais']}")
+    
     redaccion = generar_redaccion_profesional(
         seleccionada['titulo'],
         seleccionada['texto_completo'],
@@ -958,27 +999,43 @@ def main():
         seleccionada['fuente']
     )
     
+    print(f"\n📄 REDACCIÓN GENERADA ({len(redaccion)} caracteres):")
+    print("   " + "="*50)
+    for linea in redaccion.split('\n')[:6]:
+        print(f"   {linea[:60]}...")
+    print("   " + "="*50)
+    
     hashtags = generar_hashtags(
         seleccionada['categoria'],
         seleccionada['pais'],
         seleccionada['titulo']
     )
     
-    print(f"\n🖼️ Descargando imagen...")
+    # DEBUG: Imagen
+    print(f"\n🖼️ PROCESANDO IMAGEN:")
+    print(f"   URL imagen RSS: {seleccionada['imagen'][:60] if seleccionada['imagen'] else 'No proporcionada'}...")
+    
     imagen_path = descargar_imagen(seleccionada['imagen'])
     
     if not imagen_path and seleccionada.get('texto_completo'):
         urls_img = re.findall(r'https?://[^\s"\']+\.(?:jpg|jpeg|png)', seleccionada['texto_completo'])
+        print(f"   Imágenes encontradas en texto: {len(urls_img)}")
         for url_img in urls_img[:2]:
+            print(f"   Intentando: {url_img[:50]}...")
             imagen_path = descargar_imagen(url_img)
             if imagen_path:
+                print(f"   ✅ Imagen descargada de texto")
                 break
     
     if not imagen_path:
-        print("❌ Sin imagen disponible")
+        print("❌ ERROR: No se pudo descargar ninguna imagen")
+        print("   La publicación en Facebook requiere una imagen")
         return False
     
-    print(f"\n📤 Publicando en Facebook...")
+    print(f"   ✅ Imagen lista: {imagen_path}")
+    
+    # DEBUG: Publicar
+    print(f"\n📤 PUBLICANDO EN FACEBOOK:")
     exito = publicar_facebook(
         seleccionada['titulo'],
         redaccion,
@@ -986,28 +1043,39 @@ def main():
         hashtags
     )
     
+    # Limpieza
+    try:
+        if os.path.exists(imagen_path):
+            os.remove(imagen_path)
+    except:
+        pass
+    
     if exito:
         guardar_historial(historial, seleccionada['url'], seleccionada['titulo'])
         
-        try:
-            if os.path.exists(imagen_path):
-                os.remove(imagen_path)
-        except:
-            pass
-        
         print("\n" + "="*60)
-        print("✅ PUBLICACIÓN EXITOSA")
+        print("✅ PUBLICACIÓN COMPLETADA EXITOSAMENTE")
         print("="*60)
         return True
     else:
-        try:
-            if os.path.exists(imagen_path):
-                os.remove(imagen_path)
-        except:
-            pass
-        
-        print("\n❌ Falló la publicación")
+        print("\n" + "="*60)
+        print("❌ FALLÓ LA PUBLICACIÓN EN FACEBOOK")
+        print("   Revisa:")
+        print("   - Token de acceso válido y no expirado")
+        print("   - Permisos de la app: pages_manage_posts")
+        print("   - ID de página correcto")
+        print("="*60)
         return False
 
 if __name__ == "__main__":
-    main()
+    try:
+        resultado = main()
+        exit(0 if resultado else 1)
+    except KeyboardInterrupt:
+        print("\n\n⚠️ Interrumpido por usuario")
+        exit(1)
+    except Exception as e:
+        print(f"\n💥 ERROR CRÍTICO NO ESPERADO: {e}")
+        import traceback
+        traceback.print_exc()
+        exit(1)

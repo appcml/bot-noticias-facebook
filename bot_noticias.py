@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias para Facebook - Prioriza Fuentes Alternativas (75-85%)
-- 75-85% de noticias de fuentes RSS alternativas (BBC, CNN, El País, etc.)
-- 15-25% de Google News solo como respaldo
+Bot de Noticias para Facebook - Prioriza Fuentes Alternativas (90%)
+- 90% de noticias de fuentes RSS alternativas (BBC, CNN, El País, etc.)
+- 10% máximo de Google News solo como respaldo
 - Extracción completa de contenido web para calidad profesional
 """
 
@@ -31,35 +31,95 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json')
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 
-# TIEMPO: Publicar cada 60 minutos (1 hora) para no saturar
-# Esto da 24 noticias al día, de las cuales:
-# - ~20 de fuentes alternativas (75-85%)
-# - ~4 de Google News (15-25%)
-TIEMPO_ENTRE_PUBLICACIONES = 60  # 60 minutos = 1 hora
+# TIEMPO: Publicar cada 30 minutos
+TIEMPO_ENTRE_PUBLICACIONES = 28  # 28 minutos para asegurar publicación cada 30 min
 
-# PORCENTAJE OBJETIVO: 80% fuentes alternativas, 20% Google News
-PORCENTAJE_ALTERNATIVAS = 0.80  # 80%
-PORCENTAJE_GOOGLE_NEWS = 0.20   # 20%
+# PORCENTAJE MÁXIMO DE GOOGLE NEWS: 10%
+# Esto significa 90% fuentes alternativas, 10% máximo Google News
+PORCENTAJE_MAX_GOOGLE_NEWS = 0.10  # 10% máximo
 
 # =============================================================================
-# FUENTES RSS SEPARADAS
+# FUENTES RSS SEPARADAS - AMPLIADAS
 # =============================================================================
 
-# FUENTES ALTERNATIVAS (Prioridad Alta - 75-85% de las publicaciones)
+# FUENTES ALTERNATIVAS (90% de las publicaciones) - 45+ FUENTES
 RSS_FEEDS_ALTERNATIVOS = [
+    # Internacionales
     'https://feeds.bbci.co.uk/news/world/rss.xml',
     'https://rss.cnn.com/rss/edition.rss',
     'https://www.france24.com/es/rss',
-    'https://www.eltiempo.com/rss/mundo.xml',
+    'https://www.dw.com/es/actualidad/s-30684/rss',
+    'https://feeds.skynews.com/feeds/rss/world.xml',
+    'https://www.reutersagency.com/feed/?best-topics=world',
+    
+    # España
+    'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
+    'https://e00-elmundo.uecdn.es/rss/portada.xml',
+    'https://www.eldiario.es/rss/',
+    'https://www.lavanguardia.com/mvc/feed/rss/home',
+    'https://www.abc.es/rss/feeds/abc_ultima.xml',
+    'https://www.publico.es/rss/',
+    'https://www.europapress.es/rss/',
+    'https://www.rtve.es/api/rss/noticias/',
+    'https://www.elconfidencial.com/rss/',
+    'https://www.20minutos.es/rss/',
+    
+    # México
+    'https://www.excelsior.com.mx/rss.xml',
+    'https://reforma.com/rss/portada.xml',
+    'https://www.sinembargo.mx/feed',
+    'https://www.24-horas.mx/feed',
+    'https://www.informador.mx/rss/mexico.xml',
+    'https://www.elfinanciero.com.mx/rss/portada.xml',
+    'https://www.debate.com.mx/rss.xml',
+    'https://www.razon.com.mx/rss.xml',
+    
+    # Argentina
     'https://www.clarin.com/rss/mundo/',
     'https://www.infobae.com/feeds/rss/',
-    'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/portada',
-    'https://elmundo.es/rss/portada.xml',
     'https://www.lanacion.com.ar/rss/',
+    'https://www.pagina12.com.ar/rss.xml',
+    
+    # Chile
+    'https://www.latercera.com/feed/',
+    'https://www.emol.com/rss.xml',
+    'https://www.df.cl/rss.xml',
+    
+    # Colombia
+    'https://www.eltiempo.com/rss/mundo.xml',
+    'https://www.elespectador.com/rss.xml',
+    'https://www.semana.com/rss.xml',
+    
+    # Perú
+    'https://elcomercio.pe/rss.xml',
+    'https://larepublica.pe/rss.xml',
+    
+    # Uruguay
+    'https://www.elobservador.com.uy/rss.xml',
+    
+    # Venezuela
+    'https://www.elnacional.com/rss.xml',
+    
+    # Ecuador
+    'https://www.eluniverso.com/rss.xml',
+    
+    # Bolivia
+    'https://www.lostiempos.com/rss.xml',
+    
+    # Tecnología y Economía
+    'https://www.xataka.com/rss.xml',
+    'https://feeds.weblogssl.com/genbeta',
+    'https://www.expansion.com/rss/portada.xml',
+    
+    # Deportes
+    'https://as.com/rss/tags/ultimas_noticias.xml',
+    'https://www.marca.com/rss/portada.xml',
+    
+    # Otros
     'https://www.eluniversal.com.mx/rss/mundo.xml',
 ]
 
-# GOOGLE NEWS (Respaldo - 15-25% de las publicaciones)
+# GOOGLE NEWS (Máximo 10% de las publicaciones) - SOLO 2 FEEDS
 RSS_FEEDS_GOOGLE = [
     'https://news.google.com/rss?hl=es&gl=ES&ceid=ES:es',
     'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=ES&ceid=ES:es',
@@ -69,6 +129,18 @@ PALABRAS_CLAVE = [
     'urgente', 'última hora', 'breaking', 'alerta', 'crisis', 'guerra', 'conflicto',
     'ataque', 'bombardeo', 'invasión', 'polémica', 'escándalo', 'revelan', 'confirmado',
     'histórico', 'sin precedentes', 'impactante', 'grave', 'tensión', 'protesta',
+    'gobierno', 'presidente', 'elecciones', 'economía', 'mercado', 'bolsa',
+    'pandemia', 'virus', 'vacuna', 'cambio climático', 'desastre', 'tragedia',
+    'muere', 'fallece', 'asesinato', 'detenido', 'operativo', 'rescate',
+    'acuerdo', 'tratado', 'sanciones', 'inflación', 'recesión', 'huelga',
+    'manifestación', 'violencia', 'ataque terrorista', 'golpe de estado',
+    'dimisión', 'renuncia', 'corrupción', 'fraude', 'investigación', 'juicio',
+    'sentencia', 'extradición', 'frontera', 'migración', 'refugiados',
+    'terremoto', 'huracán', 'inundación', 'incendio', 'accidente', 'avión',
+    'nuclear', 'arma', 'misil', 'dron', 'ciberataque', 'hackeo',
+    'descubrimiento', 'avance', 'innovación', 'record', 'máximo histórico',
+    'mínimo histórico', 'colapso', 'quiebra', 'rescate', 'ayuda',
+    'Trump', 'Biden', 'Putin', 'Zelensky', 'Maduro', 'Milei', 'Bukele',
 ]
 
 # =============================================================================
@@ -194,7 +266,7 @@ def guardar_estado(estado):
 def debe_usar_google_news(historial):
     """
     Decide si usar Google News basado en el porcentaje actual.
-    Retorna True si necesitamos usar Google News para mantener el equilibrio.
+    Retorna True SOLO si Google News está por DEBAJO del 10% objetivo.
     """
     stats = historial.get('estadisticas', {
         'total_alternativas': 0, 
@@ -205,28 +277,30 @@ def debe_usar_google_news(historial):
     total = stats.get('total_publicadas', 0)
     
     if total == 0:
-        # Primera publicación: usar alternativa
+        # Primera publicación: usar alternativa (no Google News)
         return False
     
     alternativas = stats.get('total_alternativas', 0)
     google = stats.get('total_google', 0)
     
-    porcentaje_alternativas = alternativas / total
-    porcentaje_google = google / total
+    porcentaje_google = google / total if total > 0 else 0
     
-    log(f"📊 Estadísticas actuales: {porcentaje_alternativas*100:.1f%} alternativas, {porcentaje_google*100:.1f%} Google News", 'debug')
+    log(f"📊 Estadísticas actuales: {alternativas} alternativas, {google} Google News ({porcentaje_google*100:.1f}%)", 'debug')
     
-    # Si tenemos menos del objetivo de alternativas, NO usar Google News
-    if porcentaje_alternativas < PORCENTAJE_ALTERNATIVAS:
-        log("📉 Por debajo del objetivo de alternativas, buscando otra fuente", 'debug')
-        return False
+    # SOLO usar Google News si estamos por DEBAJO del 10% máximo
+    # y solo para "rellenar" hasta el 10%, no más
+    if porcentaje_google < PORCENTAJE_MAX_GOOGLE_NEWS:
+        # Verificar si realmente necesitamos Google News o seguimos con alternativas
+        # Solo usar Google News si llevamos muchas publicaciones seguidas de alternativas
+        # para mantener el equilibrio del 10%
+        if alternativas > 0:
+            ratio = google / alternativas if alternativas > 0 else 0
+            # Si el ratio es menor a 0.11 (aprox 10%), podemos usar Google News
+            if ratio < 0.11:
+                log("📈 Toca publicar de Google News para mantener equilibrio del 10%", 'debug')
+                return True
     
-    # Si tenemos menos del objetivo de Google News, USAR Google News
-    if porcentaje_google < PORCENTAJE_GOOGLE_NEWS:
-        log("📈 Toca publicar de Google News para mantener equilibrio", 'debug')
-        return True
-    
-    # Por defecto, preferir alternativas
+    log("📉 Porcentaje de Google News adecuado o alto, buscando alternativa", 'debug')
     return False
 
 # =============================================================================
@@ -278,7 +352,7 @@ def procesar_feed_alternativo(feed_url):
                 'url': entry.get('link', ''),
                 'imagen': imagen,
                 'fuente': fuente,
-                'puntaje': calcular_puntaje(titulo, descripcion) + 1,  # Bonus por ser alternativa
+                'puntaje': calcular_puntaje(titulo, descripcion) + 2,  # Bonus por ser alternativa
                 'es_google_news': False
             })
     except Exception as e:
@@ -509,7 +583,7 @@ def main():
     print("\n" + "="*60)
     print("🤖 BOT DE NOTICIAS - FACEBOOK")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"🎯 Objetivo: {PORCENTAJE_ALTERNATIVAS*100:.0f}% alternativas, {PORCENTAJE_GOOGLE_NEWS*100:.0f}% Google News")
+    print(f"🎯 Objetivo: 90% alternativas, máximo 10% Google News")
     print("="*60)
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
@@ -525,7 +599,8 @@ def main():
     if total > 0:
         alt_pct = (stats.get('total_alternativas', 0) / total) * 100
         goog_pct = (stats.get('total_google', 0) / total) * 100
-        log(f"📊 Historial: {alt_pct:.1f%} alternativas ({stats['total_alternativas']}), {goog_pct:.1f%} Google ({stats['total_google']})")
+        # CORREGIDO: Error de formato aquí - usar .1f sin el % dentro
+        log(f"📊 Historial: {alt_pct:.1f}% alternativas ({stats['total_alternativas']}), {goog_pct:.1f}% Google ({stats['total_google']})")
     
     # DECIDIR FUENTE: ¿Usar Google News o alternativas?
     usar_google = debe_usar_google_news(historial)
@@ -533,15 +608,16 @@ def main():
     noticias = []
     
     if usar_google:
-        log("🔍 Buscando en Google News...", 'info')
+        log("🔍 Buscando en Google News (límite 10%)...", 'info')
         for feed in RSS_FEEDS_GOOGLE:
             noticias.extend(procesar_feed_google(feed))
     else:
-        log("🔍 Buscando en fuentes alternativas...", 'info')
+        log("🔍 Buscando en fuentes alternativas (90%)...", 'info')
         # Mezclar feeds alternativos para variedad
         feeds_alt = RSS_FEEDS_ALTERNATIVOS.copy()
         random.shuffle(feeds_alt)
-        for feed in feeds_alt[:6]:  # Consultar 6 feeds aleatorios
+        # Aumentado a 8 feeds para más variedad
+        for feed in feeds_alt[:8]:
             noticias.extend(procesar_feed_alternativo(feed))
     
     if not noticias:
@@ -549,12 +625,18 @@ def main():
         # Intentar la otra fuente como respaldo
         if usar_google:
             log("Intentando fuentes alternativas como respaldo...", 'info')
-            for feed in RSS_FEEDS_ALTERNATIVOS[:4]:
+            for feed in RSS_FEEDS_ALTERNATIVOS[:6]:
                 noticias.extend(procesar_feed_alternativo(feed))
         else:
-            log("Intentando Google News como respaldo...", 'info')
-            for feed in RSS_FEEDS_GOOGLE:
-                noticias.extend(procesar_feed_google(feed))
+            # Solo intentar Google News si realmente lo necesitamos (está por debajo del 10%)
+            stats = historial.get('estadisticas', {'total_alternativas': 0, 'total_google': 0, 'total_publicadas': 0})
+            total = stats.get('total_publicadas', 0)
+            if total > 0:
+                goog_pct = (stats.get('total_google', 0) / total) * 100
+                if goog_pct < PORCENTAJE_MAX_GOOGLE_NEWS * 100:
+                    log("Intentando Google News como respaldo...", 'info')
+                    for feed in RSS_FEEDS_GOOGLE:
+                        noticias.extend(procesar_feed_google(feed))
     
     if not noticias:
         log("No hay noticias disponibles", 'error')
@@ -619,12 +701,13 @@ def main():
         estado['ultima_fuente'] = noticia['fuente']
         guardar_estado(estado)
         
-        # Mostrar estadísticas actualizadas
+        # Mostrar estadísticas actualizadas - CORREGIDO
         stats = historial.get('estadisticas', {})
         total = stats.get('total_publicadas', 1)
         alt_pct = (stats.get('total_alternativas', 0) / total) * 100
         goog_pct = (stats.get('total_google', 0) / total) * 100
-        log(f"✅ PUBLICADO - Estadísticas: {alt_pct:.1f%} alt / {goog_pct:.1f%} goog", 'exito')
+        # CORREGIDO: Usar formato correcto sin % dentro del especificador
+        log(f"✅ PUBLICADO - Estadísticas: {alt_pct:.1f}% alt / {goog_pct:.1f}% goog", 'exito')
         return True
     
     return False

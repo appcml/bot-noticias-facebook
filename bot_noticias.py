@@ -3,6 +3,7 @@
 """
 Bot de Noticias para Facebook
 Publica noticias automáticamente cada 30 minutos
+Versión mejorada con Google News RSS y NewsData.io
 """
 
 import requests
@@ -14,14 +15,14 @@ import os
 import random
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 # =============================================================================
 # CONFIGURACIÓN
 # =============================================================================
 
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+NEWSDATA_API_KEY = os.getenv('NEWSDATA_API_KEY')  # ← NUEVO: NewsData.io
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 
@@ -29,13 +30,22 @@ HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json'
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 
 # Tiempo mínimo entre publicaciones (en minutos)
-TIEMPO_ENTRE_PUBLICACIONES = 28  # Reducido para asegurar que publique cada 30 min
+TIEMPO_ENTRE_PUBLICACIONES = 28
 
 # =============================================================================
 # FUENTES DE NOTICIAS
 # =============================================================================
 
 RSS_FEEDS = [
+    # === GOOGLE NEWS RSS (NUEVO) ===
+    'https://news.google.com/rss?hl=es&gl=ES&ceid=ES:es',  # Google News España
+    'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=ES&ceid=ES:es',  # Mundo
+    'https://news.google.com/rss/topics/CAAqIQgKIhtDQkFTRGdvSUwyMHZNRFZ4ZERBU0FtVnVLQUFQAQ?hl=es&gl=ES&ceid=ES:es',  # Tecnología
+    'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFp1ZEdvU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=ES&ceid=ES:es',  # Economía
+    'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNREpxYW5RU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=ES&ceid=ES:es',  # Deportes
+    'https://news.google.com/rss/search?q=noticias+urgentes+español&hl=es&gl=ES&ceid=ES:es',  # Búsqueda personalizada
+    
+    # Fuentes RSS existentes
     'https://feeds.bbci.co.uk/news/world/rss.xml',
     'https://rss.cnn.com/rss/edition.rss',
     'https://www.france24.com/es/rss',
@@ -206,8 +216,94 @@ def verificar_tiempo_ultima_publicacion(estado):
         return True, 0, 0
 
 # =============================================================================
-# BÚSQUEDA DE NOTICIAS
+# BÚSQUEDA DE NOTICIAS - NUEVAS FUNCIONES
 # =============================================================================
+
+def obtener_noticias_newsdata():
+    """
+    NUEVO: Obtiene noticias de NewsData.io
+    Documentación: https://newsdata.io/documentation
+    """
+    noticias = []
+    if not NEWSDATA_API_KEY:
+        log("NewsData.io no configurado", 'advertencia')
+        return noticias
+    
+    # Endpoints disponibles
+    endpoints = [
+        {
+            'url': 'https://newsdata.io/api/1/news',
+            'params': {
+                'apikey': NEWSDATA_API_KEY,
+                'language': 'es',
+                'country': 'es,mx,ar,co,cl,pe,ve',
+                'category': 'top',
+                'size': 10
+            }
+        },
+        {
+            'url': 'https://newsdata.io/api/1/news',
+            'params': {
+                'apikey': NEWSDATA_API_KEY,
+                'q': 'urgente OR última hora OR breaking',
+                'language': 'es',
+                'size': 10
+            }
+        }
+    ]
+    
+    for config in endpoints:
+        try:
+            log(f"Consultando NewsData.io: {config['params'].get('category', 'search')}", 'debug')
+            resp = requests.get(config['url'], params=config['params'], timeout=15)
+            data = resp.json()
+            
+            if data.get('status') == 'success':
+                for art in data.get('results', []):
+                    titulo = art.get('title', '')
+                    if not titulo or '[Removed]' in titulo:
+                        continue
+                    
+                    # NewsData.io a veces tiene enlaces de Google News que redirigen
+                    link = art.get('link', '')
+                    # Limpiar enlaces de Google News si es necesario
+                    if 'news.google.com/rss/articles' in link:
+                        link = limpiar_link_google_news(link)
+                    
+                    noticias.append({
+                        'titulo': titulo,
+                        'descripcion': limpiar_texto(art.get('description', art.get('content', ''))),
+                        'url': link,
+                        'imagen': art.get('image_url', ''),
+                        'fuente': art.get('source_id', 'NewsData.io').replace('-', ' ').title(),
+                        'puntaje': calcular_puntaje(titulo, art.get('description', '')) + 3,  # Bonus por ser nueva fuente
+                        'fecha': art.get('pubDate', '')
+                    })
+                    
+        except Exception as e:
+            log(f"Error NewsData.io: {str(e)[:50]}", 'advertencia')
+    
+    log(f"NewsData.io: {len(noticias)} noticias", 'info')
+    return noticias
+
+def limpiar_link_google_news(url):
+    """
+    NUEVO: Extrae el enlace real de los artículos de Google News RSS
+    Google News RSS usa enlaces tipo: https://news.google.com/rss/articles/XXXX
+    """
+    try:
+        # Si es un enlace directo de Google News, intentar resolverlo
+        if 'news.google.com/rss/articles' in url:
+            # Hacer una petición HEAD para seguir redirecciones
+            resp = requests.head(url, allow_redirects=True, timeout=10)
+            if resp.status_code == 200:
+                final_url = resp.url
+                # Limpiar parámetros de tracking
+                final_url = re.sub(r'\?.*$', '', final_url)
+                return final_url
+        return url
+    except:
+        return url
 
 def obtener_noticias_newsapi():
     """Obtiene noticias de NewsAPI"""
@@ -254,50 +350,119 @@ def obtener_noticias_newsapi():
     return noticias
 
 def obtener_noticias_rss():
-    """Obtiene noticias de feeds RSS"""
+    """
+    MEJORADO: Obtiene noticias de feeds RSS incluyendo Google News
+    """
     noticias = []
     feeds = RSS_FEEDS.copy()
     random.shuffle(feeds)
     
-    log(f"Consultando {len(feeds[:12])} feeds RSS...", 'debug')
+    # Priorizar Google News
+    google_feeds = [f for f in feeds if 'news.google.com' in f]
+    otros_feeds = [f for f in feeds if 'news.google.com' not in f]
     
-    for feed_url in feeds[:12]:
-        try:
-            feed = feedparser.parse(feed_url)
-            fuente = feed.feed.get('title', feed_url.split('/')[2])
+    # Procesar Google News primero (máximo 5)
+    log(f"Consultando {len(google_feeds[:5])} feeds de Google News...", 'debug')
+    for feed_url in google_feeds[:5]:
+        noticias.extend(procesar_feed_rss(feed_url, es_google_news=True))
+    
+    # Procesar otros feeds (máximo 10)
+    log(f"Consultando {len(otros_feeds[:10])} feeds RSS estándar...", 'debug')
+    for feed_url in otros_feeds[:10]:
+        noticias.extend(procesar_feed_rss(feed_url, es_google_news=False))
+    
+    log(f"RSS Total: {len(noticias)} noticias (Google News + otros feeds)")
+    return noticias
+
+def procesar_feed_rss(feed_url, es_google_news=False):
+    """
+    NUEVO: Procesa un feed RSS individual
+    """
+    noticias = []
+    try:
+        # Configurar headers especiales para Google News
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        # Para Google News, usar timeout mayor
+        timeout = 20 if es_google_news else 15
+        
+        feed = feedparser.parse(feed_url, request_headers=headers)
+        
+        if feed.bozo and es_google_news:
+            log(f"Advertencia al parsear Google News: {feed.get('bozo_exception', 'Error desconocido')}", 'advertencia')
+        
+        fuente = feed.feed.get('title', feed_url.split('/')[2])
+        
+        # Google News RSS tiene estructura diferente
+        entries = feed.entries[:5] if es_google_news else feed.entries[:3]
+        
+        for entry in entries:
+            titulo = entry.get('title', '')
+            if not titulo or len(titulo) < 10 or '[Removed]' in titulo:
+                continue
             
-            for entry in feed.entries[:3]:
-                titulo = entry.get('title', '')
-                if not titulo or len(titulo) < 10 or '[Removed]' in titulo:
-                    continue
-                
-                descripcion = limpiar_texto(entry.get('summary', entry.get('description', '')))
-                
-                noticias.append({
-                    'titulo': titulo,
-                    'descripcion': descripcion,
-                    'url': entry.get('link', ''),
-                    'imagen': extraer_imagen_rss(entry),
-                    'fuente': fuente,
-                    'puntaje': calcular_puntaje(titulo, descripcion)
-                })
-        except Exception as e:
-            continue
+            # Limpiar título de Google News (quita fuente al final)
+            if es_google_news and ' - ' in titulo:
+                titulo = titulo.rsplit(' - ', 1)[0]
+            
+            descripcion = limpiar_texto(entry.get('summary', entry.get('description', '')))
+            
+            # Extraer URL
+            link = entry.get('link', '')
+            
+            # Para Google News, limpiar el enlace
+            if es_google_news and 'news.google.com' in link:
+                link = limpiar_link_google_news(link)
+                fuente_limpia = 'Google News'
+            else:
+                fuente_limpia = fuente
+            
+            # Extraer imagen
+            imagen = extraer_imagen_rss(entry)
+            
+            # Bonus de puntaje para noticias de Google News (más relevantes)
+            puntaje_base = calcular_puntaje(titulo, descripcion)
+            puntaje_bonus = 2 if es_google_news else 0
+            
+            noticias.append({
+                'titulo': titulo,
+                'descripcion': descripcion,
+                'url': link,
+                'imagen': imagen,
+                'fuente': fuente_limpia,
+                'puntaje': puntaje_base + puntaje_bonus,
+                'es_google_news': es_google_news
+            })
+            
+    except Exception as e:
+        tipo = "Google News" if es_google_news else "RSS"
+        log(f"Error {tipo} ({feed_url[:50]}...): {str(e)[:50]}", 'advertencia' if not es_google_news else 'debug')
     
-    log(f"RSS: {len(noticias)} noticias")
     return noticias
 
 def extraer_imagen_rss(entry):
     """Extrae imagen de una entrada RSS"""
+    # Media content (usado por Google News)
     if hasattr(entry, 'media_content') and entry.media_content:
         for media in entry.media_content:
             if media.get('url'):
                 return media['url']
     
+    # Enclosures
     if hasattr(entry, 'enclosures') and entry.enclosures:
         for enc in entry.enclosures:
             if enc.get('href'):
                 return enc['href']
+    
+    # Buscar imagen en el contenido
+    if hasattr(entry, 'content'):
+        for content in entry.content:
+            if 'value' in content:
+                img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content['value'])
+                if img_match:
+                    return img_match.group(1)
     
     return None
 
@@ -343,7 +508,7 @@ def seleccionar_noticia(noticias, historial, estado):
     
     seleccionada = candidatas[0] if candidatas else None
     if seleccionada:
-        log(f"Seleccionada noticia de: {seleccionada['fuente']}", 'debug')
+        log(f"Seleccionada noticia de: {seleccionada['fuente']} (Puntaje: {seleccionada['puntaje']})", 'debug')
     
     return seleccionada
 
@@ -570,11 +735,20 @@ def main():
     print(f"⏱️  Tiempo mínimo entre publicaciones: {TIEMPO_ENTRE_PUBLICACIONES} minutos")
     print("="*60)
     
+    # Verificar credenciales
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         log("ERROR: Faltan credenciales de Facebook", 'error')
         return False
     
-    log("Credenciales OK")
+    # Verificar APIs de noticias
+    apis_configuradas = []
+    if NEWS_API_KEY:
+        apis_configuradas.append("NewsAPI")
+    if NEWSDATA_API_KEY:
+        apis_configuradas.append("NewsData.io")
+    
+    log(f"APIs configuradas: {', '.join(apis_configuradas) if apis_configuradas else 'Ninguna (solo RSS)'}")
+    log(f"Feeds RSS: {len(RSS_FEEDS)} configurados (incluyendo Google News)")
     
     # Cargar estado y verificar tiempo
     estado = cargar_estado()
@@ -585,23 +759,51 @@ def main():
         log(f"   Última publicación: hace {minutos_transcurridos:.1f} minutos", 'info')
         log(f"   Debe esperar: {minutos_faltantes:.1f} minutos más", 'info')
         log(f"   Próxima ejecución válida: en {minutos_faltantes:.0f} minutos", 'info')
-        return True  # No es error, solo no es hora
+        return True
     
     # Si llegamos aquí, podemos publicar
     log("✅ ES HORA DE PUBLICAR - Iniciando proceso", 'exito')
     
     historial = cargar_historial()
     
-    log("Buscando noticias...")
+    log("Buscando noticias de múltiples fuentes...")
     noticias = []
-    noticias.extend(obtener_noticias_newsapi())
-    noticias.extend(obtener_noticias_rss())
     
-    log(f"Total noticias encontradas: {len(noticias)}")
+    # 1. NewsData.io (NUEVO - prioridad alta)
+    if NEWSDATA_API_KEY:
+        log("🔍 Consultando NewsData.io...", 'info')
+        noticias_newsdata = obtener_noticias_newsdata()
+        noticias.extend(noticias_newsdata)
+        log(f"   → {len(noticias_newsdata)} noticias de NewsData.io", 'exito' if noticias_newsdata else 'advertencia')
+    
+    # 2. NewsAPI
+    if NEWS_API_KEY:
+        log("🔍 Consultando NewsAPI...", 'info')
+        noticias_newsapi = obtener_noticias_newsapi()
+        noticias.extend(noticias_newsapi)
+        log(f"   → {len(noticias_newsapi)} noticias de NewsAPI", 'exito' if noticias_newsapi else 'advertencia')
+    
+    # 3. RSS Feeds (incluyendo Google News)
+    log("🔍 Consultando feeds RSS (Google News + otros)...", 'info')
+    noticias_rss = obtener_noticias_rss()
+    noticias.extend(noticias_rss)
+    log(f"   → {len(noticias_rss)} noticias de RSS", 'exito' if noticias_rss else 'advertencia')
+    
+    log(f"\n📊 TOTAL NOTICIAS ENCONTRADAS: {len(noticias)}")
     
     if not noticias:
-        log("No se encontraron noticias", 'error')
+        log("No se encontraron noticias de ninguna fuente", 'error')
         return False
+    
+    # Mostrar desglose por fuente
+    fuentes = {}
+    for n in noticias:
+        fuente = n.get('fuente', 'Desconocida')
+        fuentes[fuente] = fuentes.get(fuente, 0) + 1
+    
+    log("Desglose por fuente:")
+    for fuente, count in sorted(fuentes.items(), key=lambda x: x[1], reverse=True)[:5]:
+        log(f"   • {fuente}: {count} noticias")
     
     noticia = seleccionar_noticia(noticias, historial, estado)
     
@@ -609,8 +811,12 @@ def main():
         log("No se pudo seleccionar noticia", 'error')
         return False
     
-    log(f"Seleccionada: {noticia['titulo'][:60]}...")
-    log(f"Fuente: {noticia['fuente']} | Puntaje: {noticia['puntaje']}")
+    log(f"\n📝 NOTICIA SELECCIONADA:")
+    log(f"   Título: {noticia['titulo'][:70]}...")
+    log(f"   Fuente: {noticia['fuente']}")
+    log(f"   Puntaje: {noticia['puntaje']}")
+    if noticia.get('es_google_news'):
+        log(f"   Origen: Google News RSS", 'exito')
     
     texto = generar_texto_publicacion(noticia)
     hashtags = generar_hashtags(noticia)

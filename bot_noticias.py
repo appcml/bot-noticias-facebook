@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias para Facebook - Versión Corregida
-- Elimina imagen genérica de Google News
-- Limpia caracteres HTML (&nbsp;, &quot;, etc.)
-- Mejora extracción de imágenes reales
+Bot de Noticias para Facebook - Versión GitHub Actions
+Publica noticias automáticamente cada 30 minutos
 """
 
 import requests
@@ -15,7 +13,6 @@ import json
 import os
 import random
 import base64
-import html as html_module  # ← NUEVO: Para limpiar entidades HTML
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, quote
@@ -33,8 +30,7 @@ HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json'
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 
 # Tiempo mínimo entre publicaciones (en minutos)
-# ← CAMBIAR A 0 PARA PRUEBAS INMEDIATAS, O 60 PARA 1 HORA
-TIEMPO_ENTRE_PUBLICACIONES = 0  # ← CORREGIDO: 0 para pruebas, 60 para producción
+TIEMPO_ENTRE_PUBLICACIONES = 28
 
 # =============================================================================
 # FUENTES DE NOTICIAS
@@ -108,11 +104,9 @@ def generar_hash(texto):
     return hashlib.md5(texto.lower().strip().encode()).hexdigest()
 
 def limpiar_texto(texto):
-    """Limpia texto de HTML y espacios extras - CORREGIDO"""
+    """Limpia texto de HTML y espacios extras"""
     if not texto:
         return ""
-    # ← NUEVO: Decodificar entidades HTML primero (&nbsp; → espacio, &quot; → ", etc.)
-    texto = html_module.unescape(texto)
     texto = re.sub(r'<[^>]+>', '', texto)
     texto = re.sub(r'\s+', ' ', texto)
     return texto.strip()
@@ -177,11 +171,6 @@ def guardar_estado(estado):
 
 def verificar_tiempo_ultima_publicacion(estado):
     """Verifica si ya pasó el tiempo mínimo entre publicaciones"""
-    # ← CORREGIDO: Si TIEMPO_ENTRE_PUBLICACIONES es 0, permitir siempre
-    if TIEMPO_ENTRE_PUBLICACIONES == 0:
-        log("Modo prueba: Sin restricción de tiempo", 'debug')
-        return True, 0, 0
-    
     if not estado.get('ultima_publicacion'):
         log("Primera ejecución - no hay historial de publicaciones", 'debug')
         return True, 0, 0
@@ -249,9 +238,6 @@ def obtener_noticias_newsdata():
                     if not titulo or '[Removed]' in titulo:
                         continue
                     
-                    # ← NUEVO: Limpiar entidades HTML del título
-                    titulo = html_module.unescape(titulo)
-                    
                     link = art.get('link', '')
                     if 'news.google.com/rss/articles' in link:
                         link = limpiar_link_google_news(link)
@@ -315,9 +301,6 @@ def obtener_noticias_newsapi():
                     if not titulo or '[Removed]' in titulo:
                         continue
                     
-                    # ← NUEVO: Limpiar entidades HTML del título
-                    titulo = html_module.unescape(titulo)
-                    
                     noticias.append({
                         'titulo': titulo,
                         'descripcion': limpiar_texto(art.get('description', '')),
@@ -353,7 +336,7 @@ def obtener_noticias_rss():
     return noticias
 
 def procesar_feed_rss(feed_url, es_google_news=False):
-    """Procesa un feed RSS individual - CORREGIDO"""
+    """Procesa un feed RSS individual"""
     noticias = []
     try:
         headers = {
@@ -371,9 +354,6 @@ def procesar_feed_rss(feed_url, es_google_news=False):
             if not titulo or len(titulo) < 10 or '[Removed]' in titulo:
                 continue
             
-            # ← NUEVO: Limpiar entidades HTML del título
-            titulo = html_module.unescape(titulo)
-            
             if es_google_news and ' - ' in titulo:
                 titulo = titulo.rsplit(' - ', 1)[0]
             
@@ -386,8 +366,7 @@ def procesar_feed_rss(feed_url, es_google_news=False):
             else:
                 fuente_limpia = fuente
             
-            # ← CORREGIDO: Pasar es_google_news para ignorar imágenes genéricas
-            imagen = extraer_imagen_rss(entry, es_google_news=es_google_news)
+            imagen = extraer_imagen_rss(entry)
             
             puntaje_base = calcular_puntaje(titulo, descripcion)
             puntaje_bonus = 2 if es_google_news else 0
@@ -396,7 +375,7 @@ def procesar_feed_rss(feed_url, es_google_news=False):
                 'titulo': titulo,
                 'descripcion': descripcion,
                 'url': link,
-                'imagen': imagen,  # Será None para Google News, se buscará después
+                'imagen': imagen,
                 'fuente': fuente_limpia,
                 'puntaje': puntaje_base + puntaje_bonus,
                 'es_google_news': es_google_news
@@ -408,27 +387,17 @@ def procesar_feed_rss(feed_url, es_google_news=False):
     
     return noticias
 
-def extraer_imagen_rss(entry, es_google_news=False):
-    """
-    Extrae imagen de una entrada RSS - CORREGIDO
-    Ignora imágenes de Google News (logos genéricos)
-    """
-    # ← CORREGIDO: Si es Google News, NO usar la imagen del feed (es el logo genérico)
-    if es_google_news:
-        return None  # Forzar búsqueda en el artículo original
-    
+def extraer_imagen_rss(entry):
+    """Extrae imagen de una entrada RSS"""
     if hasattr(entry, 'media_content') and entry.media_content:
         for media in entry.media_content:
-            url = media.get('url', '')
-            # Verificar que no sea logo de Google News
-            if url and 'google' not in url.lower() and 'gstatic' not in url.lower():
-                return url
+            if media.get('url'):
+                return media['url']
     
     if hasattr(entry, 'enclosures') and entry.enclosures:
         for enc in entry.enclosures:
-            url = enc.get('href', '')
-            if url and 'google' not in url.lower():
-                return url
+            if enc.get('href'):
+                return enc['href']
     
     # Buscar imagen en el contenido HTML
     if hasattr(entry, 'content'):
@@ -436,17 +405,13 @@ def extraer_imagen_rss(entry, es_google_news=False):
             if 'value' in content:
                 img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content['value'])
                 if img_match:
-                    url = img_match.group(1)
-                    if 'google' not in url.lower():
-                        return url
+                    return img_match.group(1)
     
     # Buscar en summary/description
     summary = entry.get('summary', '')
     img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', summary)
     if img_match:
-        url = img_match.group(1)
-        if 'google' not in url.lower():
-            return url
+        return img_match.group(1)
     
     return None
 
@@ -526,8 +491,6 @@ def extraer_contenido_web(url):
         for p in contenido.find_all(['p', 'h2', 'h3']):
             texto = p.get_text(separator=' ', strip=True)
             texto = re.sub(r'\s+', ' ', texto)
-            # ← NUEVO: Limpiar entidades HTML
-            texto = html_module.unescape(texto)
             if len(texto) > 40:
                 parrafos.append(texto)
         
@@ -539,8 +502,7 @@ def extraer_contenido_web(url):
 
 def extraer_imagen_de_articulo(url):
     """
-    Extrae imagen del artículo original - MEJORADO
-    Prioriza imágenes reales, ignora logos e iconos
+    NUEVO: Extrae imagen del artículo original haciendo web scraping
     """
     try:
         headers = {
@@ -549,85 +511,49 @@ def extraer_imagen_de_articulo(url):
         resp = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.content, 'html.parser')
         
-        # 1. Meta tag og:image (más confiable)
+        # Buscar meta tag og:image (Open Graph)
         og_image = soup.find('meta', property='og:image')
-        if og_image:
-            img_url = og_image.get('content', '')
-            # Filtrar logos e iconos comunes
-            if img_url and not any(x in img_url.lower() for x in [
-                'logo', 'icon', 'favicon', 'google', 'gstatic', 
-                'avatar', 'profile', 'user'
-            ]):
-                # Verificar que no sea imagen pequeña (icono)
-                if not any(img_url.endswith(ext) for ext in ['.ico', '.svg']):
-                    return img_url
+        if og_image and og_image.get('content'):
+            return og_image['content']
         
-        # 2. Meta tag twitter:image
+        # Buscar meta tag twitter:image
         twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
-        if twitter_image:
-            img_url = twitter_image.get('content', '')
-            if img_url and not any(x in img_url.lower() for x in ['logo', 'icon', 'google']):
-                return img_url
+        if twitter_image and twitter_image.get('content'):
+            return twitter_image['content']
         
-        # 3. Imagen principal del artículo (con filtros)
+        # Buscar imagen principal en el artículo
         img_selectores = [
             'article img',
             '.article-body img',
             '.entry-content img',
             'main img',
             '.content img',
-            'figure img',
-            '.post-thumbnail img'
+            'img[src*="upload"]',
+            'img[src*="wp-content"]',
+            'img[src*="media"]'
         ]
         
         for selector in img_selectores:
-            imgs = soup.select(selector)
-            for img in imgs:
-                src = img.get('src', '')
-                # Filtrar imágenes pequeñas o de logos
-                width = img.get('width', '')
-                if width and int(width) < 200:
-                    continue
-                
-                # Filtrar por nombre de archivo
-                if any(x in src.lower() for x in ['logo', 'icon', 'avatar', 'user', 'google']):
-                    continue
-                
+            img = soup.select_one(selector)
+            if img and img.get('src'):
+                src = img['src']
                 # Asegurar URL completa
                 if src.startswith('//'):
                     src = 'https:' + src
                 elif src.startswith('/'):
                     parsed = urlparse(url)
                     src = f"{parsed.scheme}://{parsed.netloc}{src}"
-                
-                # Verificar que sea URL válida
-                if src.startswith('http'):
-                    return src
-        
-        # 4. Primera imagen grande de la página (último recurso)
-        for img in soup.find_all('img'):
-            src = img.get('src', '')
-            width = img.get('width', '')
-            # Solo imágenes grandes (probablemente contenido, no iconos)
-            if width and int(width) >= 400:
-                if not any(x in src.lower() for x in ['logo', 'icon', 'google']):
-                    if src.startswith('//'):
-                        src = 'https:' + src
-                    elif src.startswith('/'):
-                        parsed = urlparse(url)
-                        src = f"{parsed.scheme}://{parsed.netloc}{src}"
-                    return src
+                return src
         
         return None
         
     except Exception as e:
-        log(f"Error extrayendo imagen: {str(e)[:50]}", 'advertencia')
+        log(f"Error extrayendo imagen del artículo: {str(e)[:50]}", 'advertencia')
         return None
 
 def generar_texto_publicacion(noticia):
-    """Genera el texto para publicar en Facebook - CORREGIDO"""
-    # ← NUEVO: Limpiar entidades HTML del título
-    titulo = html_module.unescape(noticia['titulo'])
+    """Genera el texto para publicar en Facebook"""
+    titulo = noticia['titulo']
     descripcion = noticia['descripcion']
     fuente = noticia['fuente']
     
@@ -635,8 +561,6 @@ def generar_texto_publicacion(noticia):
     if not contenido:
         contenido = descripcion
     
-    # ← NUEVO: Limpiar entidades HTML del contenido
-    contenido = html_module.unescape(contenido)
     contenido = re.sub(r'\s+', ' ', contenido).strip()
     
     oraciones_raw = re.split(r'[.!?]+', contenido)
@@ -760,7 +684,7 @@ def descargar_imagen(url):
 
 def crear_imagen_texto(titulo):
     """
-    Crea una imagen con el título si no hay imagen disponible
+    NUEVO: Crea una imagen con el título si no hay imagen disponible
     """
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -916,26 +840,22 @@ def main():
     texto = generar_texto_publicacion(noticia)
     hashtags = generar_hashtags(noticia)
     
-    # Obtener imagen (múltiples intentos) - CORREGIDO
+    # Obtener imagen (múltiples intentos)
     log("Procesando imagen...")
     imagen_path = None
     
-    # Intento 1: Imagen del feed RSS/NewsData/NewsAPI (solo si no es Google News)
-    if noticia.get('imagen') and not noticia.get('es_google_news'):
-        log(f"Intentando imagen del feed...", 'debug')
+    # Intento 1: Imagen del feed RSS/NewsData/NewsAPI
+    if noticia.get('imagen'):
+        log(f"Intentando imagen del feed: {noticia['imagen'][:50]}...", 'debug')
         imagen_path = descargar_imagen(noticia['imagen'])
-        if imagen_path:
-            log("Imagen del feed usada", 'exito')
     
-    # Intento 2: Extraer del artículo original (PRINCIPAL para Google News)
+    # Intento 2: Extraer del artículo original (web scraping)
     if not imagen_path:
         log("Extrayendo imagen del artículo original...", 'debug')
         img_url = extraer_imagen_de_articulo(noticia['url'])
         if img_url:
-            log(f"Imagen encontrada: {img_url[:60]}...", 'debug')
+            log(f"Imagen encontrada en artículo: {img_url[:50]}...", 'debug')
             imagen_path = descargar_imagen(img_url)
-            if imagen_path:
-                log("Imagen del artículo descargada", 'exito')
     
     # Intento 3: Buscar en el contenido extraído
     if not imagen_path:
@@ -957,6 +877,8 @@ def main():
     # Verificación final
     if not imagen_path:
         log("ERROR CRÍTICO: No se pudo obtener ni crear ninguna imagen", 'error')
+        # Opción: publicar solo texto (descomentar si quieres permitirlo)
+        # return publicar_texto_sin_imagen(noticia, texto, hashtags)
         return False
     
     log(f"Imagen lista: {imagen_path}", 'exito')

@@ -314,18 +314,17 @@ def extraer_creditos(soup):
             elem = soup.find(class_=lambda x: x and clase in x.lower())
             if elem:
                 creditos = elem.get_text(strip=True)
-                if creditos and len(creditos) < 200:  # Evitar bloques grandes
+                if creditos and len(creditos) < 200:
                     break
     
     # Buscar patrones de fecha/autor al inicio del artículo
     if not creditos:
-        # Buscar texto que coincida con patrones de autor/fecha
         patrones = [
-            r'([A-Z][a-z]+ [A-Z][a-z]+.*?)\d{1,2}/\d{1,2}/\d{4}',  # Nombre Apellido 10/03/2024
-            r'Por[: ]+([A-Z][^\n]{3,50}?)\n',  # Por: Nombre
-            r'^([A-Z][^\n]{2,30}?)\d{1,2} de [a-z]+ de \d{4}',  # Nombre 10 de marzo de 2024
+            r'([A-Z][a-z]+ [A-Z][a-z]+.*?)\d{1,2}/\d{1,2}/\d{4}',
+            r'Por[: ]+([A-Z][^\n]{3,50}?)\n',
+            r'^([A-Z][^\n]{2,30}?)\d{1,2} de [a-z]+ de \d{4}',
         ]
-        texto_completo = soup.get_text()[:500]  # Solo primeros 500 chars
+        texto_completo = soup.get_text()[:500]
         for patron in patrones:
             match = re.search(patron, texto_completo, re.IGNORECASE)
             if match:
@@ -333,9 +332,7 @@ def extraer_creditos(soup):
                 break
     
     if creditos:
-        # Limpiar créditos
         creditos = re.sub(r'\s+', ' ', creditos).strip()
-        # Limitar longitud
         if len(creditos) > 150:
             creditos = creditos[:150] + '...'
         log(f"   👤 Créditos encontrados: {creditos[:60]}...", 'debug')
@@ -347,10 +344,8 @@ def extraer_texto_y_creditos(elemento):
     if not elemento:
         return "", None
     
-    # Obtener texto
     texto_raw = elemento.get_text(separator='\n', strip=True)
     
-    # Buscar línea que parezca créditos (generalmente al inicio)
     lineas = texto_raw.split('\n')
     creditos = None
     lineas_contenido = []
@@ -358,17 +353,15 @@ def extraer_texto_y_creditos(elemento):
     for i, linea in enumerate(lineas):
         linea_limpia = linea.strip()
         
-        # Detectar si es línea de créditos (autor/fecha/lugar)
-        if i < 3 and not creditos:  # Solo revisar primeras 3 líneas
-            # Patrones de créditos
-            if (re.search(r'\d{1,2}/\d{1,2}/\d{4}', linea_limpia) or  # Fecha
-                re.search(r'\d{1,2} de [a-z]+ de \d{4}', linea_limpia, re.IGNORECASE) or  # Fecha larga
-                re.search(r'^[A-Z][a-z]+ [A-Z][a-z]+.*?(Córdoba|Madrid|Barcelona|Sevilla)', linea_limpia) or  # Nombre + ciudad
-                re.search(r'^[A-Z][a-z]+ [A-Z][a-z]+.*?[Aa]ctualizad', linea_limpia) or  # Nombre + Actualizado
+        if i < 3 and not creditos:
+            if (re.search(r'\d{1,2}/\d{1,2}/\d{4}', linea_limpia) or
+                re.search(r'\d{1,2} de [a-z]+ de \d{4}', linea_limpia, re.IGNORECASE) or
+                re.search(r'^[A-Z][a-z]+ [A-Z][a-z]+.*?(Córdoba|Madrid|Barcelona|Sevilla)', linea_limpia) or
+                re.search(r'^[A-Z][a-z]+ [A-Z][a-z]+.*?[Aa]ctualizad', linea_limpia) or
                 linea_limpia.startswith('Por:') or linea_limpia.startswith('Por ')):
                 
                 creditos = linea_limpia
-                continue  # No incluir en contenido
+                continue
         
         lineas_contenido.append(linea_limpia)
     
@@ -382,7 +375,6 @@ def limpiar_parrafo(texto):
     if not texto:
         return ""
     
-    # Eliminar líneas de publicidad/menú comunes
     lineas_bloqueadas = [
         'cookies', 'aceptar', 'publicidad', 'suscríbete', 'newsletter',
         'compartir', 'facebook', 'twitter', 'whatsapp', 'telegram',
@@ -412,14 +404,11 @@ def eliminar_frases_genericas(texto):
     texto_lower = texto.lower()
     
     for frase in FRASES_A_ELIMINAR:
-        # Eliminar la frase (case insensitive)
         patron = re.compile(re.escape(frase), re.IGNORECASE)
         texto = patron.sub('', texto)
     
-    # Limpiar espacios dobles que puedan quedar
     texto = re.sub(r'\s+', ' ', texto).strip()
     
-    # Asegurar que termine bien si se eliminó algo al final
     if texto and texto[-1] not in '.!?':
         texto += '.'
     
@@ -868,61 +857,108 @@ def generar_hashtags_internacional(titulo, descripcion):
     hashtags.append('#Mundo')
     return ' '.join(hashtags)
 
+def dividir_en_parrafos_coherentes(texto, max_oraciones_por_parrafo=3):
+    """
+    Divide el texto en párrafos coherentes de 2-3 oraciones cada uno.
+    Busca puntos de corte lógicos (después de citas, datos completos, etc.)
+    """
+    if not texto:
+        return []
+    
+    # Dividir en oraciones manteniendo la puntuación
+    oraciones = re.split(r'(?<=[.!?])\s+', texto)
+    oraciones = [o.strip() for o in oraciones if len(o.strip()) > 10]
+    
+    if not oraciones:
+        return [texto] if len(texto) > 20 else []
+    
+    parrafos = []
+    parrafo_actual = []
+    
+    for i, oracion in enumerate(oraciones):
+        parrafo_actual.append(oracion)
+        
+        # Decidir si cerrar el párrafo aquí
+        cerrar_parrafo = False
+        
+        # Si tenemos suficientes oraciones
+        if len(parrafo_actual) >= max_oraciones_por_parrafo:
+            cerrar_parrafo = True
+        
+        # Si la oración termina en cita o dato importante
+        if '"' in oracion or '«' in oracion or '»' in oracion:
+            if len(parrafo_actual) >= 2:
+                cerrar_parrafo = True
+        
+        # Si la siguiente oración empieza con conector de nuevo párrafo
+        if i < len(oraciones) - 1:
+            siguiente = oraciones[i + 1].lower()
+            conectores_nuevo = ['sin embargo', 'por otro lado', 'además', 'por su parte', 
+                              'en cuanto a', 'respecto a', 'por el contrario', 'asimismo',
+                              'por tanto', 'en consecuencia', 'no obstante', 'a su vez']
+            if any(siguiente.startswith(c) for c in conectores_nuevo):
+                cerrar_parrafo = True
+        
+        if cerrar_parrafo and parrafo_actual:
+            parrafos.append(' '.join(parrafo_actual))
+            parrafo_actual = []
+    
+    # Agregar último párrafo si quedó algo
+    if parrafo_actual:
+        parrafos.append(' '.join(parrafo_actual))
+    
+    return parrafos
+
 def construir_texto_publicacion(titulo, contenido_completo, creditos, fuente):
     """
-    Construye el texto de la publicación ordenado correctamente:
-    1. Título
-    2. Contenido de la noticia
-    3. Créditos (autor/fecha) si existen
-    4. Fuente de la información
+    Construye el texto de la publicación con formato mejorado y espaciado.
     """
     titulo_limpio = limpiar_texto(titulo)
     
-    # Procesar contenido
+    # Procesar contenido en párrafos coherentes
     if contenido_completo:
-        # Dividir en oraciones
-        oraciones = re.split(r'(?<=[.!?])\s+', contenido_completo)
-        
-        # Tomar primeras 5-7 oraciones para primer párrafo
-        num_oraciones = min(7, max(4, len(oraciones) // 2))
-        parrafo1 = ' '.join(oraciones[:num_oraciones])
-        
-        # Si hay más contenido, segundo párrafo
-        if len(oraciones) > num_oraciones:
-            parrafo2 = ' '.join(oraciones[num_oraciones:num_oraciones + 4])
-        else:
-            parrafo2 = None
+        parrafos = dividir_en_parrafos_coherentes(contenido_completo, max_oraciones_por_parrafo=3)
     else:
-        parrafo1 = "Información en desarrollo. Los detalles de esta noticia internacional están siendo verificados."
-        parrafo2 = None
+        parrafos = ["Información en desarrollo. Los detalles de esta noticia internacional están siendo verificados por nuestros corresponsales."]
     
-    # Construir líneas en orden correcto
+    # Limitar a máximo 4 párrafos para no hacerlo muy largo
+    if len(parrafos) > 4:
+        parrafos = parrafos[:4]
+    
+    # Construir líneas con espaciado adecuado
     lineas = []
+    
+    # Título destacado
     lineas.append(f"📰 ÚLTIMA HORA | {titulo_limpio}")
+    lineas.append("")  # Línea en blanco
+    
+    # Párrafos de contenido con separación
+    for i, parrafo in enumerate(parrafos):
+        lineas.append(parrafo)
+        if i < len(parrafos) - 1:  # No agregar línea extra después del último
+            lineas.append("")  # Línea en blanco entre párrafos
+    
+    # Línea separadora antes de metadatos
     lineas.append("")
-    lineas.append(parrafo1)
+    lineas.append("─" * 30)  # Separador visual
+    lineas.append("")
     
-    if parrafo2 and len(parrafo2) > 30:
-        lineas.append("")
-        lineas.append(parrafo2)
-    
-    # Créditos al final si existen
+    # Créditos si existen
     if creditos:
-        lineas.append("")
-        # Limpiar créditos de fechas repetidas si están en el texto
         creditos_limpio = re.sub(r'\d{1,2}/\d{1,2}/\d{4}.*$', '', creditos).strip()
+        creditos_limpio = re.sub(r'\d{1,2} de [a-z]+ de \d{4}.*$', '', creditos_limpio, flags=re.IGNORECASE).strip()
         if creditos_limpio:
-            lineas.append(f"✍️ {creditos_limpio}")
+            lineas.append(f"✍️ Autor: {creditos_limpio}")
+            lineas.append("")
     
-    # Fuente al final
-    lineas.append("")
+    # Fuente
     lineas.append(f"📎 Fuente: {fuente}")
     
     texto = '\n'.join(lineas)
     
     # Limpieza final
     texto = re.sub(r'https?://\S+', '', texto)
-    texto = re.sub(r'\n{3,}', '\n\n', texto)
+    texto = re.sub(r'\n{4,}', '\n\n\n', texto)  # Máximo 2 líneas en blanco seguidas
     
     return texto.strip()
 
@@ -931,24 +967,26 @@ def publicar_facebook(titulo, texto_completo, imagen_path, hashtags):
         log("Faltan credenciales Facebook", 'error')
         return False
     
+    # Construir mensaje final con espaciado
     mensaje = f"{texto_completo}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
     
-    # Verificar límite
+    # Verificar límite de caracteres
     if len(mensaje) > 1900:
-        partes = texto_completo.split('\n\n')
+        # Truncar manteniendo estructura
+        lineas = texto_completo.split('\n')
         texto_cortado = ""
-        for parte in partes:
-            if len(texto_cortado + parte + "\n\n") < 1500:
-                texto_cortado += parte + "\n\n"
+        for linea in lineas:
+            if len(texto_cortado + linea + "\n") < 1500:
+                texto_cortado += linea + "\n"
             else:
                 break
         
-        mensaje = f"{texto_cortado}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+        mensaje = f"{texto_cortado.rstrip()}\n\n[Continúa...]\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
     
     # Limpieza final
     mensaje = re.sub(r'https?://\S+', '', mensaje)
     mensaje = re.sub(r'www\.\S+', '', mensaje)
-    mensaje = re.sub(r'\n{3,}', '\n\n', mensaje)
+    mensaje = re.sub(r'\n{4,}', '\n\n\n', mensaje)
     mensaje = mensaje.strip()
     
     try:
@@ -1093,7 +1131,7 @@ def main():
     )
     
     log(f"   📄 Texto final ({len(texto_publicacion)} caracteres):", 'debug')
-    for i, linea in enumerate(texto_publicacion.split('\n')[:5]):
+    for i, linea in enumerate(texto_publicacion.split('\n')[:6]):
         log(f"      {linea[:70]}{'...' if len(linea) > 70 else ''}", 'debug')
     
     # Generar hashtags

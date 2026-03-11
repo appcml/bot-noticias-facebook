@@ -74,6 +74,24 @@ TERMINOS_EXCLUIR = [
     'partido local', 'equipo local', 'deporte local',
 ]
 
+# Frases a eliminar del contenido extraído
+FRASES_A_ELIMINAR = [
+    'se esperan más detalles en las próximas horas',
+    'se esperan mas detalles en las proximas horas',
+    'más detalles en las próximas horas',
+    'mas detalles en las proximas horas',
+    'en desarrollo',
+    'continúa en desarrollo',
+    'continua en desarrollo',
+    'información en desarrollo',
+    'informacion en desarrollo',
+    'actualización en curso',
+    'actualizacion en curso',
+    'noticia en desarrollo',
+    'esto es una información en desarrollo',
+    'esto es una informacion en desarrollo',
+]
+
 # =============================================================================
 # FUNCIONES DE UTILIDAD
 # =============================================================================
@@ -172,10 +190,10 @@ def calcular_puntaje_internacional(titulo, descripcion):
 def extraer_contenido_completo(url):
     """
     Extrae el contenido completo de la noticia desde la URL.
-    Intenta múltiples estrategias para obtener el texto principal.
+    Separa el cuerpo de la noticia de los créditos/autor.
     """
     if not url:
-        return None
+        return None, None
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -195,6 +213,10 @@ def extraer_contenido_completo(url):
             element.decompose()
         
         contenido = None
+        creditos = None
+        
+        # Buscar créditos/autor primero
+        creditos = extraer_creditos(soup)
         
         # Estrategia 1: Buscar article o main
         for tag in ['article', 'main', '[role="main"]']:
@@ -204,9 +226,11 @@ def extraer_contenido_completo(url):
                 elemento = soup.find(tag)
             
             if elemento:
-                texto = extraer_texto_limpio(elemento)
+                texto, creds = extraer_texto_y_creditos(elemento)
                 if len(texto) > 200:
                     contenido = texto
+                    if creds and not creditos:
+                        creditos = creds
                     log(f"   ✅ Extraído de <{tag}>: {len(contenido)} caracteres", 'debug')
                     break
         
@@ -222,9 +246,11 @@ def extraer_contenido_completo(url):
             for clase in clases_comunes:
                 elemento = soup.find(class_=lambda x: x and clase in x.lower())
                 if elemento:
-                    texto = extraer_texto_limpio(elemento)
+                    texto, creds = extraer_texto_y_creditos(elemento)
                     if len(texto) > 200:
                         contenido = texto
+                        if creds and not creditos:
+                            creditos = creds
                         log(f"   ✅ Extraído de clase '{clase}': {len(contenido)} caracteres", 'debug')
                         break
         
@@ -232,14 +258,16 @@ def extraer_contenido_completo(url):
         if not contenido:
             candidatos = []
             for div in soup.find_all(['div', 'section']):
-                texto = extraer_texto_limpio(div)
+                texto, creds = extraer_texto_y_creditos(div)
                 # Debe tener párrafos y longitud considerable
                 if len(texto) > 300 and texto.count('.') > 3:
-                    candidatos.append((len(texto), texto, div))
+                    candidatos.append((len(texto), texto, creds, div))
             
             if candidatos:
                 candidatos.sort(reverse=True)
                 contenido = candidatos[0][1]
+                if candidatos[0][2] and not creditos:
+                    creditos = candidatos[0][2]
                 log(f"   ✅ Extraído de div con más texto: {len(contenido)} caracteres", 'debug')
         
         # Estrategia 4: Extraer todos los párrafos del body
@@ -248,34 +276,111 @@ def extraer_contenido_completo(url):
             if body:
                 parrafos = []
                 for p in body.find_all('p'):
-                    texto = extraer_texto_limpio(p)
-                    if len(texto) > 50:  # Párrafos sustanciales
+                    texto = limpiar_parrafo(p.get_text())
+                    if len(texto) > 50:
                         parrafos.append(texto)
                 
                 if parrafos:
-                    contenido = ' '.join(parrafos[:10])  # Primeros 10 párrafos
+                    contenido = ' '.join(parrafos[:10])
                     log(f"   ✅ Extraído de párrafos sueltos: {len(contenido)} caracteres", 'debug')
         
         if contenido and len(contenido) > 100:
-            return contenido[:1500]  # Limitar a 1500 caracteres
+            # Limpiar frases genéricas del contenido
+            contenido = eliminar_frases_genericas(contenido)
+            return contenido[:1500], creditos
         
-        return None
+        return None, creditos
         
     except Exception as e:
         log(f"   ⚠️ Error extrayendo contenido: {e}", 'debug')
-        return None
+        return None, None
 
-def extraer_texto_limpio(elemento):
-    """Extrae texto limpio de un elemento BeautifulSoup."""
+def extraer_creditos(soup):
+    """Extrae el autor/fecha de la noticia."""
+    creditos = None
+    
+    # Buscar en metadatos
+    for meta in ['author', 'article:author', 'byline']:
+        tag = soup.find('meta', attrs={'name': meta}) or soup.find('meta', property=meta)
+        if tag:
+            creditos = tag.get('content', '').strip()
+            if creditos:
+                break
+    
+    # Buscar en elementos comunes de autor
+    if not creditos:
+        clases_autor = ['author', 'byline', 'autor', 'firma', 'creditos', 'article-author']
+        for clase in clases_autor:
+            elem = soup.find(class_=lambda x: x and clase in x.lower())
+            if elem:
+                creditos = elem.get_text(strip=True)
+                if creditos and len(creditos) < 200:  # Evitar bloques grandes
+                    break
+    
+    # Buscar patrones de fecha/autor al inicio del artículo
+    if not creditos:
+        # Buscar texto que coincida con patrones de autor/fecha
+        patrones = [
+            r'([A-Z][a-z]+ [A-Z][a-z]+.*?)\d{1,2}/\d{1,2}/\d{4}',  # Nombre Apellido 10/03/2024
+            r'Por[: ]+([A-Z][^\n]{3,50}?)\n',  # Por: Nombre
+            r'^([A-Z][^\n]{2,30}?)\d{1,2} de [a-z]+ de \d{4}',  # Nombre 10 de marzo de 2024
+        ]
+        texto_completo = soup.get_text()[:500]  # Solo primeros 500 chars
+        for patron in patrones:
+            match = re.search(patron, texto_completo, re.IGNORECASE)
+            if match:
+                creditos = match.group(1).strip()
+                break
+    
+    if creditos:
+        # Limpiar créditos
+        creditos = re.sub(r'\s+', ' ', creditos).strip()
+        # Limitar longitud
+        if len(creditos) > 150:
+            creditos = creditos[:150] + '...'
+        log(f"   👤 Créditos encontrados: {creditos[:60]}...", 'debug')
+    
+    return creditos
+
+def extraer_texto_y_creditos(elemento):
+    """Extrae texto limpio y busca créditos dentro del elemento."""
     if not elemento:
-        return ""
+        return "", None
     
     # Obtener texto
-    texto = elemento.get_text(separator=' ', strip=True)
+    texto_raw = elemento.get_text(separator='\n', strip=True)
     
-    # Limpiar
-    texto = re.sub(r'\s+', ' ', texto)
-    texto = re.sub(r'\n\s*\n', '\n', texto)
+    # Buscar línea que parezca créditos (generalmente al inicio)
+    lineas = texto_raw.split('\n')
+    creditos = None
+    lineas_contenido = []
+    
+    for i, linea in enumerate(lineas):
+        linea_limpia = linea.strip()
+        
+        # Detectar si es línea de créditos (autor/fecha/lugar)
+        if i < 3 and not creditos:  # Solo revisar primeras 3 líneas
+            # Patrones de créditos
+            if (re.search(r'\d{1,2}/\d{1,2}/\d{4}', linea_limpia) or  # Fecha
+                re.search(r'\d{1,2} de [a-z]+ de \d{4}', linea_limpia, re.IGNORECASE) or  # Fecha larga
+                re.search(r'^[A-Z][a-z]+ [A-Z][a-z]+.*?(Córdoba|Madrid|Barcelona|Sevilla)', linea_limpia) or  # Nombre + ciudad
+                re.search(r'^[A-Z][a-z]+ [A-Z][a-z]+.*?[Aa]ctualizad', linea_limpia) or  # Nombre + Actualizado
+                linea_limpia.startswith('Por:') or linea_limpia.startswith('Por ')):
+                
+                creditos = linea_limpia
+                continue  # No incluir en contenido
+        
+        lineas_contenido.append(linea_limpia)
+    
+    texto = '\n'.join(lineas_contenido)
+    texto = limpiar_parrafo(texto)
+    
+    return texto, creditos
+
+def limpiar_parrafo(texto):
+    """Limpia un párrafo de texto."""
+    if not texto:
+        return ""
     
     # Eliminar líneas de publicidad/menú comunes
     lineas_bloqueadas = [
@@ -283,7 +388,8 @@ def extraer_texto_limpio(elemento):
         'compartir', 'facebook', 'twitter', 'whatsapp', 'telegram',
         'relacionados', 'también te puede interesar', 'más noticias',
         'copyright', 'todos los derechos', 'política de privacidad',
-        'aviso legal', 'contacto', 'quiénes somos'
+        'aviso legal', 'contacto', 'quiénes somos', 'síguenos en',
+        'siguenos en', 'redes sociales', 'comentarios'
     ]
     
     lineas = texto.split('\n')
@@ -294,7 +400,30 @@ def extraer_texto_limpio(elemento):
             lineas_limpias.append(linea)
     
     texto = ' '.join(lineas_limpias)
+    texto = re.sub(r'\s+', ' ', texto).strip()
+    
     return limpiar_texto(texto)
+
+def eliminar_frases_genericas(texto):
+    """Elimina frases genéricas de desarrollo de la noticia."""
+    if not texto:
+        return texto
+    
+    texto_lower = texto.lower()
+    
+    for frase in FRASES_A_ELIMINAR:
+        # Eliminar la frase (case insensitive)
+        patron = re.compile(re.escape(frase), re.IGNORECASE)
+        texto = patron.sub('', texto)
+    
+    # Limpiar espacios dobles que puedan quedar
+    texto = re.sub(r'\s+', ' ', texto).strip()
+    
+    # Asegurar que termine bien si se eliminó algo al final
+    if texto and texto[-1] not in '.!?':
+        texto += '.'
+    
+    return texto
 
 # =============================================================================
 # GESTIÓN DE HISTORIAL
@@ -739,30 +868,35 @@ def generar_hashtags_internacional(titulo, descripcion):
     hashtags.append('#Mundo')
     return ' '.join(hashtags)
 
-def construir_texto_publicacion(titulo, contenido_completo, fuente):
+def construir_texto_publicacion(titulo, contenido_completo, creditos, fuente):
     """
-    Construye el texto de la publicación usando el contenido completo extraído.
+    Construye el texto de la publicación ordenado correctamente:
+    1. Título
+    2. Contenido de la noticia
+    3. Créditos (autor/fecha) si existen
+    4. Fuente de la información
     """
     titulo_limpio = limpiar_texto(titulo)
     
-    # Limitar contenido a 2-3 párrafos coherentes
+    # Procesar contenido
     if contenido_completo:
-        # Dividir en oraciones y reconstruir párrafos
+        # Dividir en oraciones
         oraciones = re.split(r'(?<=[.!?])\s+', contenido_completo)
         
-        # Tomar las primeras 4-5 oraciones completas para el primer párrafo
-        parrafo1 = ' '.join(oraciones[:5]) if len(oraciones) >= 3 else contenido_completo
+        # Tomar primeras 5-7 oraciones para primer párrafo
+        num_oraciones = min(7, max(4, len(oraciones) // 2))
+        parrafo1 = ' '.join(oraciones[:num_oraciones])
         
-        # Si hay más contenido, tomar 2-3 oraciones más para segundo párrafo
-        if len(oraciones) > 5:
-            parrafo2 = ' '.join(oraciones[5:8])
+        # Si hay más contenido, segundo párrafo
+        if len(oraciones) > num_oraciones:
+            parrafo2 = ' '.join(oraciones[num_oraciones:num_oraciones + 4])
         else:
             parrafo2 = None
     else:
-        parrafo1 = "Información en desarrollo. Los detalles de esta noticia internacional están siendo verificados por nuestros corresponsales."
+        parrafo1 = "Información en desarrollo. Los detalles de esta noticia internacional están siendo verificados."
         parrafo2 = None
     
-    # Construir texto
+    # Construir líneas en orden correcto
     lineas = []
     lineas.append(f"📰 ÚLTIMA HORA | {titulo_limpio}")
     lineas.append("")
@@ -772,10 +906,17 @@ def construir_texto_publicacion(titulo, contenido_completo, fuente):
         lineas.append("")
         lineas.append(parrafo2)
     
+    # Créditos al final si existen
+    if creditos:
+        lineas.append("")
+        # Limpiar créditos de fechas repetidas si están en el texto
+        creditos_limpio = re.sub(r'\d{1,2}/\d{1,2}/\d{4}.*$', '', creditos).strip()
+        if creditos_limpio:
+            lineas.append(f"✍️ {creditos_limpio}")
+    
+    # Fuente al final
     lineas.append("")
-    lineas.append("Se esperan más detalles en las próximas horas.")
-    lineas.append("")
-    lineas.append(f"📎 Información proporcionada por: {fuente}")
+    lineas.append(f"📎 Fuente: {fuente}")
     
     texto = '\n'.join(lineas)
     
@@ -802,7 +943,7 @@ def publicar_facebook(titulo, texto_completo, imagen_path, hashtags):
             else:
                 break
         
-        mensaje = f"{texto_cortado}[Información en desarrollo]\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+        mensaje = f"{texto_cortado}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
     
     # Limpieza final
     mensaje = re.sub(r'https?://\S+', '', mensaje)
@@ -929,11 +1070,12 @@ def main():
     # =================================================================
     
     log("🌐 Extrayendo contenido completo de la web...")
-    contenido_completo = extraer_contenido_completo(noticia_seleccionada['url'])
+    contenido_completo, creditos = extraer_contenido_completo(noticia_seleccionada['url'])
     
     if contenido_completo:
         log(f"   ✅ Contenido extraído: {len(contenido_completo)} caracteres", 'exito')
-        log(f"   📝 Primeros 100 chars: {contenido_completo[:100]}...", 'debug')
+        if creditos:
+            log(f"   👤 Créditos: {creditos[:60]}...", 'debug')
     else:
         log("   ⚠️ No se pudo extraer contenido completo, usando descripción de API", 'advertencia')
         contenido_completo = noticia_seleccionada.get('descripcion', '')
@@ -946,11 +1088,12 @@ def main():
     texto_publicacion = construir_texto_publicacion(
         noticia_seleccionada['titulo'],
         contenido_completo,
+        creditos,
         noticia_seleccionada['fuente']
     )
     
     log(f"   📄 Texto final ({len(texto_publicacion)} caracteres):", 'debug')
-    for i, linea in enumerate(texto_publicacion.split('\n')[:4]):
+    for i, linea in enumerate(texto_publicacion.split('\n')[:5]):
         log(f"      {linea[:70]}{'...' if len(linea) > 70 else ''}", 'debug')
     
     # Generar hashtags
@@ -966,24 +1109,16 @@ def main():
     log("🖼️  Procesando imagen...")
     imagen_path = None
     
-    # Primero intentar imagen de la API
     if noticia_seleccionada.get('imagen'):
         imagen_path = descargar_imagen(noticia_seleccionada['imagen'])
-        if imagen_path:
-            log("   ✅ Usando imagen de API", 'debug')
     
-    # Si no, extraer de la web
     if not imagen_path:
         img_url = extraer_imagen_web(noticia_seleccionada['url'])
         if img_url:
             imagen_path = descargar_imagen(img_url)
-            if imagen_path:
-                log("   ✅ Usando imagen extraída de web", 'debug')
     
-    # Si no hay imagen, crear una
     if not imagen_path:
         imagen_path = crear_imagen_titulo(noticia_seleccionada['titulo'])
-        log("   ✅ Usando imagen generada con título", 'debug')
     
     if not imagen_path:
         log("ERROR: No se pudo crear imagen", 'error')
@@ -1000,16 +1135,11 @@ def main():
         hashtags
     )
     
-    # Limpiar imagen temporal
     try:
         if os.path.exists(imagen_path):
             os.remove(imagen_path)
     except:
         pass
-    
-    # =================================================================
-    # GUARDAR ESTADO
-    # =================================================================
     
     if exito:
         guardar_historial(historial, noticia_seleccionada['url'], noticia_seleccionada['titulo'])

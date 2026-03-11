@@ -102,6 +102,15 @@ PLANTILLAS_CIERRE = [
     "Se recomienda seguir fuentes oficiales para información actualizada.",
 ]
 
+# Textos de relleno para cuando la descripción está cortada
+TEXTOS_COMPLEMENTO = [
+    "El análisis de este hecho continúa en curso por parte de las autoridades correspondientes.",
+    "Expertos internacionales evalúan las implicaciones de este acontecimiento.",
+    "La comunidad global observa atentamente los próximos pasos en esta situación.",
+    "Diversos sectores analizan el impacto de estos hechos en el escenario internacional.",
+    "Las reacciones de la comunidad internacional no se han hecho esperar ante esta información.",
+]
+
 # =============================================================================
 # FUNCIONES DE UTILIDAD
 # =============================================================================
@@ -173,6 +182,69 @@ def limpiar_texto(texto):
         texto += '.'
     
     return texto.strip()
+
+def detectar_texto_cortado(texto):
+    """
+    Detecta si un texto parece estar cortado abruptamente.
+    Retorna True si detecta signos de corte.
+    """
+    if not texto:
+        return True
+    
+    texto = texto.strip()
+    
+    # Si termina en palabra incompleta (sin punto final)
+    if texto and texto[-1] not in '.!?':
+        return True
+    
+    # Si termina con preposiciones o artículos (signo de corte)
+    palabras_incompletas = [' de', ' la', ' el', ' los', ' las', ' un', ' una', ' del', ' al', 
+                           ' y', ' o', ' que', ' con', ' por', ' para', ' en', ' a', ' su',
+                           ' se', ' ha', ' han', ' es', ' son', ' fue', ' fueron', ' fa', ' fab']
+    
+    texto_lower = texto.lower()
+    for palabra in palabras_incompletas:
+        if texto_lower.endswith(palabra):
+            return True
+    
+    # Si la última palabra es muy corta (probablemente truncada)
+    palabras = texto.split()
+    if palabras and len(palabras[-1]) < 3 and not palabras[-1].endswith(('.', '!', '?')):
+        return True
+    
+    return False
+
+def reparar_texto_cortado(texto):
+    """
+    Intenta reparar un texto cortado eliminando la última oración incompleta
+    y añadiendo un cierre profesional.
+    """
+    if not texto:
+        return ""
+    
+    # Dividir en oraciones
+    oraciones = re.split(r'(?<=[.!?])\s+', texto)
+    
+    # Filtrar solo oraciones que parecen completas
+    oraciones_completas = []
+    for oracion in oraciones:
+        oracion = oracion.strip()
+        if len(oracion) < 10:  # Oración muy corta, probablemente incompleta
+            continue
+        if detectar_texto_cortado(oracion):
+            continue
+        oraciones_completas.append(oracion)
+    
+    if oraciones_completas:
+        return ' '.join(oraciones_completas)
+    
+    # Si no quedó nada, devolver texto original truncado a último espacio
+    if len(texto) > 20:
+        ultimo_espacio = texto.rfind(' ', 0, len(texto) - 5)
+        if ultimo_espacio > 10:
+            return texto[:ultimo_espacio] + '.'
+    
+    return texto
 
 def es_noticia_excluible(titulo, descripcion=""):
     """Verifica si la noticia es local/no relevante internacionalmente"""
@@ -680,6 +752,11 @@ def redactar_texto_profesional(titulo, descripcion, fuente):
     titulo_limpio = limpiar_texto(titulo)
     desc_limpia = limpiar_texto(descripcion)
     
+    # Detectar si la descripción está cortada y repararla
+    if detectar_texto_cortado(desc_limpia):
+        log(f"   ⚠️ Texto cortado detectado, reparando...", 'debug')
+        desc_limpia = reparar_texto_cortado(desc_limpia)
+    
     # Seleccionar plantillas aleatorias para variedad
     apertura = random.choice(PLANTILLAS_APERTURA).format(titulo=titulo_limpio)
     
@@ -690,37 +767,20 @@ def redactar_texto_profesional(titulo, descripcion, fuente):
     parrafos.append(f"📰 {apertura}")
     parrafos.append("")  # Línea en blanco
     
-    # Segundo párrafo: Descripción procesada o contenido generado
-    if len(desc_limpia) > 50:
-        # Si tenemos descripción válida, la usamos con una plantilla de desarrollo
+    # Segundo párrafo: Descripción procesada
+    if len(desc_limpia) > 30:  # Reduje el mínimo para ser más permisivo
         plantilla_dev = random.choice(PLANTILLAS_DESARROLLO)
         
-        # Asegurar que la descripción no termine truncada
-        # Buscar la última oración completa (terminada en .!? y seguida de espacio o fin)
-        oraciones = re.split(r'(?<=[.!?])\s+', desc_limpia)
+        # Verificar nuevamente si después de reparar sigue cortado
+        if detectar_texto_cortado(desc_limpia):
+            # Si sigue cortado, usar solo lo que tenemos y añadir complemento
+            desc_limpia = desc_limpia.rstrip('.') + ". " + random.choice(TEXTOS_COMPLEMENTO)
         
-        # Filtrar oraciones muy cortas (probablemente truncadas) y reconstruir
-        oraciones_completas = []
-        for oracion in oraciones:
-            oracion = oracion.strip()
-            if len(oracion) > 20:  # Evitar fragmentos muy cortos
-                oraciones_completas.append(oracion)
-        
-        if oraciones_completas:
-            contenido = ' '.join(oraciones_completas)
-            # Asegurar que termine en punto
-            if contenido[-1] not in '.!?':
-                contenido += '.'
-            parrafos.append(plantilla_dev.format(contenido=contenido))
-        else:
-            # Si no hay oraciones completas, generar texto genérico profesional
-            parrafos.append(plantilla_dev.format(
-                contenido=f"se reportan desarrollos importantes relacionados con esta información internacional que está siendo seguida por medios de comunicación globales."
-            ))
+        parrafos.append(plantilla_dev.format(contenido=desc_limpia))
     else:
-        # Si no hay descripción, generar texto profesional genérico
+        # Si no hay descripción válida, generar texto profesional genérico
         parrafos.append(random.choice(PLANTILLAS_DESARROLLO).format(
-            contenido=f"medios internacionales están reportando este acontecimiento de relevancia global. Los detalles específicos están siendo verificados por corresponsales en la región."
+            contenido=f"medios internacionales están reportando este acontecimiento de relevancia global. {random.choice(TEXTOS_COMPLEMENTO)}"
         ))
     
     parrafos.append("")  # Línea en blanco
@@ -885,6 +945,10 @@ def main():
     log(f"   Puntaje: {noticia_seleccionada['puntaje']}")
     log(f"   Fuente: {noticia_seleccionada['fuente']}")
     
+    # Debug: mostrar descripción original
+    desc_original = noticia_seleccionada.get('descripcion', '')
+    log(f"   Desc original ({len(desc_original)} chars): {desc_original[:80]}...", 'debug')
+    
     # =================================================================
     # NUEVO SISTEMA DE REDACCIÓN PROFESIONAL SIN ENLACES
     # =================================================================
@@ -897,6 +961,11 @@ def main():
         noticia_seleccionada.get('descripcion', ''),
         noticia_seleccionada['fuente']
     )
+    
+    # Debug: mostrar resultado
+    log(f"   Texto generado ({len(texto_profesional)} chars):", 'debug')
+    for linea in texto_profesional.split('\n')[:3]:
+        log(f"      {linea[:70]}...", 'debug')
     
     # Generar hashtags
     hashtags = generar_hashtags_internacional(

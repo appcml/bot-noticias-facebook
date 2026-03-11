@@ -4,7 +4,7 @@
 Bot de Noticias Internacionales para Facebook
 - Prioridad: Conflictos bélicos, política global, economía mundial
 - Fuentes: NewsAPI, NewsData, GNews (todo internacional)
-- Anti-duplicados mejorado
+- Extracción de texto completo desde la web para evitar cortes
 """
 
 import requests
@@ -38,7 +38,6 @@ VENTANA_DUPLICADOS_HORAS = 24    # 24 horas de memoria de duplicados
 # PALABRAS CLAVE INTERNACIONALES PRIORITARIAS
 # =============================================================================
 
-# ALTA PRIORIDAD (Conflictos y crisis globales)
 PALABRAS_ALTA_PRIORIDAD = [
     'guerra', 'conflicto', 'bombardeo', 'ataque', 'invasión', 'invasion',
     'misil', 'dron', 'ataque aéreo', 'ataque aereo', 'ofensiva', 'combate',
@@ -53,7 +52,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     'pandemia', 'epidemia', 'virus', 'emergencia sanitaria',
 ]
 
-# PRIORIDAD MEDIA (Economía global y política internacional)
 PALABRAS_MEDIA_PRIORIDAD = [
     'economía mundial', 'economia mundial', 'mercados globales', 'crisis financiera',
     'recesión', 'recesion', 'inflación', 'inflacion', 'deuda', 'FMI', 'Banco Mundial',
@@ -69,46 +67,11 @@ PALABRAS_MEDIA_PRIORIDAD = [
     'Latinoamérica', 'latinoamerica', 'Sudamérica', 'sudamerica', 'Europa',
 ]
 
-# TÉRMINOS A EVITAR (Noticias locales no relevantes)
 TERMINOS_EXCLUIR = [
     'liga local', 'campeonato municipal', 'feria del pueblo', 
     'concurso de belleza local', 'festival regional', 'torneo de barrio',
     'elecciones municipales de', 'alcaldía de', 'alcalde de', 'gobernador de',
     'partido local', 'equipo local', 'deporte local',
-]
-
-# PLANTILLAS PROFESIONALES PARA NOTICIAS
-PLANTILLAS_APERTURA = [
-    "ÚLTIMA HORA | {titulo}",
-    "NOTICIA INTERNACIONAL | {titulo}",
-    "DESARROLLO | {titulo}",
-    "INFORMACIÓN EN PROGRESO | {titulo}",
-    "ALERTA MUNDIAL | {titulo}",
-]
-
-PLANTILLAS_DESARROLLO = [
-    "Según información preliminar, {contenido}",
-    "Fuentes internacionales reportan que {contenido}",
-    "Los primeros reportes indican que {contenido}",
-    "De acuerdo con agencias de noticias globales, {contenido}",
-    "Informes desde el lugar de los hechos señalan que {contenido}",
-]
-
-PLANTILLAS_CIERRE = [
-    "Se esperan más detalles en las próximas horas.",
-    "La situación continúa en desarrollo.",
-    "Estaremos actualizando conforme se conozcan más datos.",
-    "Las autoridades competentes aún no han emitido un comunicado oficial completo.",
-    "Se recomienda seguir fuentes oficiales para información actualizada.",
-]
-
-# Textos de relleno para cuando la descripción está cortada
-TEXTOS_COMPLEMENTO = [
-    "El análisis de este hecho continúa en curso por parte de las autoridades correspondientes.",
-    "Expertos internacionales evalúan las implicaciones de este acontecimiento.",
-    "La comunidad global observa atentamente los próximos pasos en esta situación.",
-    "Diversos sectores analizan el impacto de estos hechos en el escenario internacional.",
-    "Las reacciones de la comunidad internacional no se han hecho esperar ante esta información.",
 ]
 
 # =============================================================================
@@ -146,7 +109,6 @@ def guardar_json(ruta, datos):
         return False
 
 def generar_hash(texto):
-    """Genera hash único para identificar noticias"""
     if not texto:
         return ""
     texto_normalizado = re.sub(r'[^\w\s]', '', texto.lower().strip())
@@ -154,100 +116,23 @@ def generar_hash(texto):
     return hashlib.md5(texto_normalizado.encode()).hexdigest()[:16]
 
 def limpiar_texto(texto):
-    """Limpieza avanzada de texto para evitar cortes"""
     if not texto:
         return ""
     
-    # Decodificar HTML
     texto = html_module.unescape(texto)
-    
-    # Eliminar etiquetas HTML
     texto = re.sub(r'<[^>]+>', ' ', texto)
-    
-    # Normalizar espacios
     texto = re.sub(r'\s+', ' ', texto)
-    
-    # Eliminar caracteres de control y especiales que causan cortes
     texto = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', texto)
-    
-    # Eliminar URLs truncadas al final (causantes de cortes visuales)
-    texto = re.sub(r'https?://\S*$', '', texto)
-    
-    # Eliminar "..." o "…" sueltos al final que indican continuación truncada
+    texto = re.sub(r'https?://\S*', '', texto)
     texto = re.sub(r'[.…]{2,}\s*$', '.', texto)
     
-    # Asegurar que termine en puntuación completa
     texto = texto.strip()
     if texto and texto[-1] not in '.!?':
         texto += '.'
     
     return texto.strip()
 
-def detectar_texto_cortado(texto):
-    """
-    Detecta si un texto parece estar cortado abruptamente.
-    Retorna True si detecta signos de corte.
-    """
-    if not texto:
-        return True
-    
-    texto = texto.strip()
-    
-    # Si termina en palabra incompleta (sin punto final)
-    if texto and texto[-1] not in '.!?':
-        return True
-    
-    # Si termina con preposiciones o artículos (signo de corte)
-    palabras_incompletas = [' de', ' la', ' el', ' los', ' las', ' un', ' una', ' del', ' al', 
-                           ' y', ' o', ' que', ' con', ' por', ' para', ' en', ' a', ' su',
-                           ' se', ' ha', ' han', ' es', ' son', ' fue', ' fueron', ' fa', ' fab']
-    
-    texto_lower = texto.lower()
-    for palabra in palabras_incompletas:
-        if texto_lower.endswith(palabra):
-            return True
-    
-    # Si la última palabra es muy corta (probablemente truncada)
-    palabras = texto.split()
-    if palabras and len(palabras[-1]) < 3 and not palabras[-1].endswith(('.', '!', '?')):
-        return True
-    
-    return False
-
-def reparar_texto_cortado(texto):
-    """
-    Intenta reparar un texto cortado eliminando la última oración incompleta
-    y añadiendo un cierre profesional.
-    """
-    if not texto:
-        return ""
-    
-    # Dividir en oraciones
-    oraciones = re.split(r'(?<=[.!?])\s+', texto)
-    
-    # Filtrar solo oraciones que parecen completas
-    oraciones_completas = []
-    for oracion in oraciones:
-        oracion = oracion.strip()
-        if len(oracion) < 10:  # Oración muy corta, probablemente incompleta
-            continue
-        if detectar_texto_cortado(oracion):
-            continue
-        oraciones_completas.append(oracion)
-    
-    if oraciones_completas:
-        return ' '.join(oraciones_completas)
-    
-    # Si no quedó nada, devolver texto original truncado a último espacio
-    if len(texto) > 20:
-        ultimo_espacio = texto.rfind(' ', 0, len(texto) - 5)
-        if ultimo_espacio > 10:
-            return texto[:ultimo_espacio] + '.'
-    
-    return texto
-
 def es_noticia_excluible(titulo, descripcion=""):
-    """Verifica si la noticia es local/no relevante internacionalmente"""
     texto = f"{titulo} {descripcion}".lower()
     for termino in TERMINOS_EXCLUIR:
         if termino.lower() in texto:
@@ -255,43 +140,167 @@ def es_noticia_excluible(titulo, descripcion=""):
     return False
 
 def calcular_puntaje_internacional(titulo, descripcion):
-    """Calcula relevancia para noticias internacionales"""
     texto = f"{titulo} {descripcion}".lower()
     puntaje = 0
     
-    # Alta prioridad
     for palabra in PALABRAS_ALTA_PRIORIDAD:
         if palabra.lower() in texto:
             puntaje += 10
     
-    # Media prioridad
     for palabra in PALABRAS_MEDIA_PRIORIDAD:
         if palabra.lower() in texto:
             puntaje += 3
     
-    # Bonus por fuentes reconocidas
     fuentes_reconocidas = ['reuters', 'afp', 'ap ', 'associated press', 'bbc', 'cnn', 'al jazeera']
     for fuente in fuentes_reconocidas:
         if fuente in texto:
             puntaje += 2
             break
     
-    # Penalizar noticias locales
     if es_noticia_excluible(titulo, descripcion):
         puntaje -= 20
     
-    # Bonus por longitud adecuada
     if 50 <= len(titulo) <= 120:
         puntaje += 2
     
     return puntaje
 
 # =============================================================================
+# EXTRACCIÓN DE CONTENIDO COMPLETO DE LA WEB
+# =============================================================================
+
+def extraer_contenido_completo(url):
+    """
+    Extrae el contenido completo de la noticia desde la URL.
+    Intenta múltiples estrategias para obtener el texto principal.
+    """
+    if not url:
+        return None
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    }
+    
+    try:
+        log(f"   🔍 Extrayendo contenido de: {url[:60]}...", 'debug')
+        resp = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+        resp.raise_for_status()
+        
+        soup = BeautifulSoup(resp.content, 'html.parser')
+        
+        # Eliminar elementos no deseados
+        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form', 'button']):
+            element.decompose()
+        
+        contenido = None
+        
+        # Estrategia 1: Buscar article o main
+        for tag in ['article', 'main', '[role="main"]']:
+            if tag.startswith('['):
+                elemento = soup.select_one(tag)
+            else:
+                elemento = soup.find(tag)
+            
+            if elemento:
+                texto = extraer_texto_limpio(elemento)
+                if len(texto) > 200:
+                    contenido = texto
+                    log(f"   ✅ Extraído de <{tag}>: {len(contenido)} caracteres", 'debug')
+                    break
+        
+        # Estrategia 2: Buscar por clases comunes de contenido
+        if not contenido:
+            clases_comunes = [
+                'article-content', 'content', 'post-content', 'entry-content',
+                'article-body', 'story-body', 'news-body', 'text-content',
+                'cuerpo-noticia', 'cuerpo', 'articulo', 'noticia-texto',
+                'article__body', 'article-body-content', 'story-content'
+            ]
+            
+            for clase in clases_comunes:
+                elemento = soup.find(class_=lambda x: x and clase in x.lower())
+                if elemento:
+                    texto = extraer_texto_limpio(elemento)
+                    if len(texto) > 200:
+                        contenido = texto
+                        log(f"   ✅ Extraído de clase '{clase}': {len(contenido)} caracteres", 'debug')
+                        break
+        
+        # Estrategia 3: Buscar divs con mucho texto
+        if not contenido:
+            candidatos = []
+            for div in soup.find_all(['div', 'section']):
+                texto = extraer_texto_limpio(div)
+                # Debe tener párrafos y longitud considerable
+                if len(texto) > 300 and texto.count('.') > 3:
+                    candidatos.append((len(texto), texto, div))
+            
+            if candidatos:
+                candidatos.sort(reverse=True)
+                contenido = candidatos[0][1]
+                log(f"   ✅ Extraído de div con más texto: {len(contenido)} caracteres", 'debug')
+        
+        # Estrategia 4: Extraer todos los párrafos del body
+        if not contenido:
+            body = soup.find('body')
+            if body:
+                parrafos = []
+                for p in body.find_all('p'):
+                    texto = extraer_texto_limpio(p)
+                    if len(texto) > 50:  # Párrafos sustanciales
+                        parrafos.append(texto)
+                
+                if parrafos:
+                    contenido = ' '.join(parrafos[:10])  # Primeros 10 párrafos
+                    log(f"   ✅ Extraído de párrafos sueltos: {len(contenido)} caracteres", 'debug')
+        
+        if contenido and len(contenido) > 100:
+            return contenido[:1500]  # Limitar a 1500 caracteres
+        
+        return None
+        
+    except Exception as e:
+        log(f"   ⚠️ Error extrayendo contenido: {e}", 'debug')
+        return None
+
+def extraer_texto_limpio(elemento):
+    """Extrae texto limpio de un elemento BeautifulSoup."""
+    if not elemento:
+        return ""
+    
+    # Obtener texto
+    texto = elemento.get_text(separator=' ', strip=True)
+    
+    # Limpiar
+    texto = re.sub(r'\s+', ' ', texto)
+    texto = re.sub(r'\n\s*\n', '\n', texto)
+    
+    # Eliminar líneas de publicidad/menú comunes
+    lineas_bloqueadas = [
+        'cookies', 'aceptar', 'publicidad', 'suscríbete', 'newsletter',
+        'compartir', 'facebook', 'twitter', 'whatsapp', 'telegram',
+        'relacionados', 'también te puede interesar', 'más noticias',
+        'copyright', 'todos los derechos', 'política de privacidad',
+        'aviso legal', 'contacto', 'quiénes somos'
+    ]
+    
+    lineas = texto.split('\n')
+    lineas_limpias = []
+    for linea in lineas:
+        linea_lower = linea.lower().strip()
+        if not any(bloque in linea_lower for bloque in lineas_bloqueadas):
+            lineas_limpias.append(linea)
+    
+    texto = ' '.join(lineas_limpias)
+    return limpiar_texto(texto)
+
+# =============================================================================
 # GESTIÓN DE HISTORIAL
 # =============================================================================
 
 def cargar_historial():
-    """Carga historial con estructura garantizada"""
     default = {
         'urls': [], 
         'hashes': [],
@@ -310,7 +319,6 @@ def cargar_historial():
     return datos
 
 def limpiar_historial_antiguo(historial):
-    """Elimina entradas antiguas del historial"""
     if not historial or not isinstance(historial, dict):
         return {'urls': [], 'hashes': [], 'timestamps': [], 'estadisticas': {'total_publicadas': 0}}
     
@@ -351,7 +359,6 @@ def limpiar_historial_antiguo(historial):
     return nuevo_historial
 
 def noticia_ya_publicada(historial, url, titulo):
-    """Verifica si una noticia ya fue publicada"""
     if not historial or not isinstance(historial, dict):
         return False
     
@@ -388,7 +395,6 @@ def noticia_ya_publicada(historial, url, titulo):
     return False
 
 def guardar_historial(historial, url, titulo):
-    """Guarda noticia en historial"""
     historial = limpiar_historial_antiguo(historial)
     
     url_limpia = re.sub(r'\?.*$', '', url)
@@ -421,7 +427,6 @@ def guardar_estado(estado):
     guardar_json(ESTADO_PATH, estado)
 
 def verificar_tiempo():
-    """Verifica si debe publicar según tiempo configurado"""
     estado = cargar_estado()
     ultima = estado.get('ultima_publicacion')
     
@@ -443,7 +448,6 @@ def verificar_tiempo():
 # =============================================================================
 
 def obtener_newsapi_internacional():
-    """Obtiene noticias internacionales de NewsAPI"""
     if not NEWS_API_KEY:
         return []
     
@@ -506,7 +510,6 @@ def obtener_newsapi_internacional():
     return noticias_unicas
 
 def obtener_newsdata_internacional():
-    """Obtiene noticias de NewsData.io"""
     if not NEWSDATA_API_KEY:
         return []
     
@@ -550,7 +553,6 @@ def obtener_newsdata_internacional():
     return noticias
 
 def obtener_gnews_internacional():
-    """Obtiene noticias de GNews"""
     if not GNEWS_API_KEY:
         return []
     
@@ -593,7 +595,6 @@ def obtener_gnews_internacional():
     return noticias
 
 def obtener_google_news_rss():
-    """Obtiene noticias de Google News RSS (internacional)"""
     feeds = [
         'https://news.google.com/rss?hl=es&gl=US&ceid=US:es',
         'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=US&ceid=US:es',
@@ -641,11 +642,10 @@ def obtener_google_news_rss():
     return noticias
 
 # =============================================================================
-# PROCESAMIENTO Y PUBLICACIÓN MEJORADOS
+# PROCESAMIENTO Y PUBLICACIÓN
 # =============================================================================
 
 def extraer_imagen_web(url):
-    """Intenta extraer imagen de la URL"""
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
         resp = requests.get(url, headers=headers, timeout=10)
@@ -668,7 +668,6 @@ def extraer_imagen_web(url):
     return None
 
 def descargar_imagen(url):
-    """Descarga y optimiza imagen"""
     if not url or not url.startswith('http'):
         return None
     try:
@@ -692,7 +691,6 @@ def descargar_imagen(url):
         return None
 
 def crear_imagen_titulo(titulo):
-    """Crea imagen con el título"""
     try:
         from PIL import Image, ImageDraw, ImageFont
         import textwrap
@@ -719,7 +717,6 @@ def crear_imagen_titulo(titulo):
         return None
 
 def generar_hashtags_internacional(titulo, descripcion):
-    """Genera hashtags relevantes para noticias internacionales"""
     texto = f"{titulo} {descripcion}".lower()
     hashtags = ['#NoticiasInternacionales', '#ÚltimaHora']
     
@@ -742,80 +739,61 @@ def generar_hashtags_internacional(titulo, descripcion):
     hashtags.append('#Mundo')
     return ' '.join(hashtags)
 
-def redactar_texto_profesional(titulo, descripcion, fuente):
+def construir_texto_publicacion(titulo, contenido_completo, fuente):
     """
-    Genera un texto completo y profesional para la publicación.
-    Evita cortes abruptos y mantiene tono informativo de agencia de noticias.
-    SIN ENLACES NI URLs.
+    Construye el texto de la publicación usando el contenido completo extraído.
     """
-    # Limpiar y preparar el contenido base
     titulo_limpio = limpiar_texto(titulo)
-    desc_limpia = limpiar_texto(descripcion)
     
-    # Detectar si la descripción está cortada y repararla
-    if detectar_texto_cortado(desc_limpia):
-        log(f"   ⚠️ Texto cortado detectado, reparando...", 'debug')
-        desc_limpia = reparar_texto_cortado(desc_limpia)
-    
-    # Seleccionar plantillas aleatorias para variedad
-    apertura = random.choice(PLANTILLAS_APERTURA).format(titulo=titulo_limpio)
-    
-    # Construir el cuerpo del texto
-    parrafos = []
-    
-    # Primer párrafo: Introducción con el título como gancho
-    parrafos.append(f"📰 {apertura}")
-    parrafos.append("")  # Línea en blanco
-    
-    # Segundo párrafo: Descripción procesada
-    if len(desc_limpia) > 30:  # Reduje el mínimo para ser más permisivo
-        plantilla_dev = random.choice(PLANTILLAS_DESARROLLO)
+    # Limitar contenido a 2-3 párrafos coherentes
+    if contenido_completo:
+        # Dividir en oraciones y reconstruir párrafos
+        oraciones = re.split(r'(?<=[.!?])\s+', contenido_completo)
         
-        # Verificar nuevamente si después de reparar sigue cortado
-        if detectar_texto_cortado(desc_limpia):
-            # Si sigue cortado, usar solo lo que tenemos y añadir complemento
-            desc_limpia = desc_limpia.rstrip('.') + ". " + random.choice(TEXTOS_COMPLEMENTO)
+        # Tomar las primeras 4-5 oraciones completas para el primer párrafo
+        parrafo1 = ' '.join(oraciones[:5]) if len(oraciones) >= 3 else contenido_completo
         
-        parrafos.append(plantilla_dev.format(contenido=desc_limpia))
+        # Si hay más contenido, tomar 2-3 oraciones más para segundo párrafo
+        if len(oraciones) > 5:
+            parrafo2 = ' '.join(oraciones[5:8])
+        else:
+            parrafo2 = None
     else:
-        # Si no hay descripción válida, generar texto profesional genérico
-        parrafos.append(random.choice(PLANTILLAS_DESARROLLO).format(
-            contenido=f"medios internacionales están reportando este acontecimiento de relevancia global. {random.choice(TEXTOS_COMPLEMENTO)}"
-        ))
+        parrafo1 = "Información en desarrollo. Los detalles de esta noticia internacional están siendo verificados por nuestros corresponsales."
+        parrafo2 = None
     
-    parrafos.append("")  # Línea en blanco
+    # Construir texto
+    lineas = []
+    lineas.append(f"📰 ÚLTIMA HORA | {titulo_limpio}")
+    lineas.append("")
+    lineas.append(parrafo1)
     
-    # Tercer párrafo: Contexto o cierre
-    parrafos.append(random.choice(PLANTILLAS_CIERRE))
+    if parrafo2 and len(parrafo2) > 30:
+        lineas.append("")
+        lineas.append(parrafo2)
     
-    # Cuarto párrafo: Solo mención de fuente, sin enlace
-    parrafos.append("")
-    parrafos.append(f"📎 Información proporcionada por: {fuente}")
+    lineas.append("")
+    lineas.append("Se esperan más detalles en las próximas horas.")
+    lineas.append("")
+    lineas.append(f"📎 Información proporcionada por: {fuente}")
     
-    # Unir todo con saltos de línea apropiados
-    texto_completo = '\n'.join(parrafos)
+    texto = '\n'.join(lineas)
     
-    # Verificación final: eliminar cualquier URL residual
-    texto_completo = re.sub(r'https?://\S+', '', texto_completo)
-    texto_completo = re.sub(r'www\.\S+', '', texto_completo)
+    # Limpieza final
+    texto = re.sub(r'https?://\S+', '', texto)
+    texto = re.sub(r'\n{3,}', '\n\n', texto)
     
-    # Eliminar líneas vacías múltiples
-    texto_completo = re.sub(r'\n{3,}', '\n\n', texto_completo)
-    
-    return texto_completo.strip()
+    return texto.strip()
 
 def publicar_facebook(titulo, texto_completo, imagen_path, hashtags):
-    """Publica en Facebook con texto profesional completo SIN ENLACES"""
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         log("Faltan credenciales Facebook", 'error')
         return False
     
-    # Construir mensaje final sin ningún enlace
     mensaje = f"{texto_completo}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
     
-    # Verificar límite de caracteres de Facebook (aproximadamente 2000 para posts con imagen)
+    # Verificar límite
     if len(mensaje) > 1900:
-        # Truncar inteligentemente manteniendo coherencia
         partes = texto_completo.split('\n\n')
         texto_cortado = ""
         for parte in partes:
@@ -826,7 +804,7 @@ def publicar_facebook(titulo, texto_completo, imagen_path, hashtags):
         
         mensaje = f"{texto_cortado}[Información en desarrollo]\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
     
-    # Limpieza final: asegurar que no quedó ningún enlace
+    # Limpieza final
     mensaje = re.sub(r'https?://\S+', '', mensaje)
     mensaje = re.sub(r'www\.\S+', '', mensaje)
     mensaje = re.sub(r'\n{3,}', '\n\n', mensaje)
@@ -944,67 +922,94 @@ def main():
     log(f"   Título: {noticia_seleccionada['titulo']}")
     log(f"   Puntaje: {noticia_seleccionada['puntaje']}")
     log(f"   Fuente: {noticia_seleccionada['fuente']}")
-    
-    # Debug: mostrar descripción original
-    desc_original = noticia_seleccionada.get('descripcion', '')
-    log(f"   Desc original ({len(desc_original)} chars): {desc_original[:80]}...", 'debug')
+    log(f"   URL: {noticia_seleccionada['url'][:70]}...")
     
     # =================================================================
-    # NUEVO SISTEMA DE REDACCIÓN PROFESIONAL SIN ENLACES
+    # EXTRACCIÓN DE CONTENIDO COMPLETO
     # =================================================================
     
-    log("📝 Redactando texto profesional...")
+    log("🌐 Extrayendo contenido completo de la web...")
+    contenido_completo = extraer_contenido_completo(noticia_seleccionada['url'])
     
-    # Generar texto completo y profesional
-    texto_profesional = redactar_texto_profesional(
+    if contenido_completo:
+        log(f"   ✅ Contenido extraído: {len(contenido_completo)} caracteres", 'exito')
+        log(f"   📝 Primeros 100 chars: {contenido_completo[:100]}...", 'debug')
+    else:
+        log("   ⚠️ No se pudo extraer contenido completo, usando descripción de API", 'advertencia')
+        contenido_completo = noticia_seleccionada.get('descripcion', '')
+    
+    # =================================================================
+    # CONSTRUIR TEXTO DE PUBLICACIÓN
+    # =================================================================
+    
+    log("📝 Construyendo texto de publicación...")
+    texto_publicacion = construir_texto_publicacion(
         noticia_seleccionada['titulo'],
-        noticia_seleccionada.get('descripcion', ''),
+        contenido_completo,
         noticia_seleccionada['fuente']
     )
     
-    # Debug: mostrar resultado
-    log(f"   Texto generado ({len(texto_profesional)} chars):", 'debug')
-    for linea in texto_profesional.split('\n')[:3]:
-        log(f"      {linea[:70]}...", 'debug')
+    log(f"   📄 Texto final ({len(texto_publicacion)} caracteres):", 'debug')
+    for i, linea in enumerate(texto_publicacion.split('\n')[:4]):
+        log(f"      {linea[:70]}{'...' if len(linea) > 70 else ''}", 'debug')
     
     # Generar hashtags
     hashtags = generar_hashtags_internacional(
         noticia_seleccionada['titulo'], 
-        noticia_seleccionada.get('descripcion', '')
+        contenido_completo or noticia_seleccionada.get('descripcion', '')
     )
     
-    # Obtener imagen
+    # =================================================================
+    # PROCESAR IMAGEN
+    # =================================================================
+    
     log("🖼️  Procesando imagen...")
     imagen_path = None
     
+    # Primero intentar imagen de la API
     if noticia_seleccionada.get('imagen'):
         imagen_path = descargar_imagen(noticia_seleccionada['imagen'])
+        if imagen_path:
+            log("   ✅ Usando imagen de API", 'debug')
     
+    # Si no, extraer de la web
     if not imagen_path:
         img_url = extraer_imagen_web(noticia_seleccionada['url'])
         if img_url:
             imagen_path = descargar_imagen(img_url)
+            if imagen_path:
+                log("   ✅ Usando imagen extraída de web", 'debug')
     
+    # Si no hay imagen, crear una
     if not imagen_path:
         imagen_path = crear_imagen_titulo(noticia_seleccionada['titulo'])
+        log("   ✅ Usando imagen generada con título", 'debug')
     
     if not imagen_path:
         log("ERROR: No se pudo crear imagen", 'error')
         return False
     
-    # Publicar con el nuevo texto profesional sin enlaces
+    # =================================================================
+    # PUBLICAR
+    # =================================================================
+    
     exito = publicar_facebook(
         noticia_seleccionada['titulo'],
-        texto_profesional,
+        texto_publicacion,
         imagen_path,
         hashtags
     )
     
+    # Limpiar imagen temporal
     try:
         if os.path.exists(imagen_path):
             os.remove(imagen_path)
     except:
         pass
+    
+    # =================================================================
+    # GUARDAR ESTADO
+    # =================================================================
     
     if exito:
         guardar_historial(historial, noticia_seleccionada['url'], noticia_seleccionada['titulo'])

@@ -674,6 +674,7 @@ def redactar_texto_profesional(titulo, descripcion, fuente):
     """
     Genera un texto completo y profesional para la publicación.
     Evita cortes abruptos y mantiene tono informativo de agencia de noticias.
+    SIN ENLACES NI URLs.
     """
     # Limpiar y preparar el contenido base
     titulo_limpio = limpiar_texto(titulo)
@@ -727,50 +728,49 @@ def redactar_texto_profesional(titulo, descripcion, fuente):
     # Tercer párrafo: Contexto o cierre
     parrafos.append(random.choice(PLANTILLAS_CIERRE))
     
-    # Cuarto párrafo: Llamada a la acción profesional
+    # Cuarto párrafo: Solo mención de fuente, sin enlace
     parrafos.append("")
-    parrafos.append(f"📎 Fuente: {fuente}")
-    parrafos.append("🔗 Consulta el enlace para información completa y actualizaciones en tiempo real.")
+    parrafos.append(f"📎 Información proporcionada por: {fuente}")
     
     # Unir todo con saltos de línea apropiados
     texto_completo = '\n'.join(parrafos)
     
-    # Verificación final: asegurar que no hay cortes extraños
-    # Eliminar líneas que parezcan URLs truncadas
-    lineas = texto_completo.split('\n')
-    lineas_limpias = []
-    for linea in lineas:
-        # Si la línea parece una URL truncada (termina en ... o dominio incompleto)
-        if re.search(r'https?://\S+\.\.\.$', linea.strip()):
-            continue
-        if re.search(r'\w+\.(com|org|net|es|info)[^\s]*$', linea.strip()) and '...' in linea:
-            continue
-        lineas_limpias.append(linea)
+    # Verificación final: eliminar cualquier URL residual
+    texto_completo = re.sub(r'https?://\S+', '', texto_completo)
+    texto_completo = re.sub(r'www\.\S+', '', texto_completo)
     
-    return '\n'.join(lineas_limpias)
+    # Eliminar líneas vacías múltiples
+    texto_completo = re.sub(r'\n{3,}', '\n\n', texto_completo)
+    
+    return texto_completo.strip()
 
 def publicar_facebook(titulo, texto_completo, imagen_path, hashtags):
-    """Publica en Facebook con texto profesional completo"""
+    """Publica en Facebook con texto profesional completo SIN ENLACES"""
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         log("Faltan credenciales Facebook", 'error')
         return False
     
-    # Construir mensaje final
+    # Construir mensaje final sin ningún enlace
     mensaje = f"{texto_completo}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
     
     # Verificar límite de caracteres de Facebook (aproximadamente 2000 para posts con imagen)
     if len(mensaje) > 1900:
         # Truncar inteligentemente manteniendo coherencia
-        # Buscar el último párrafo completo que quepa
         partes = texto_completo.split('\n\n')
         texto_cortado = ""
         for parte in partes:
-            if len(texto_cortado + parte + "\n\n") < 1500:  # Dejar espacio para hashtags y firma
+            if len(texto_cortado + parte + "\n\n") < 1500:
                 texto_cortado += parte + "\n\n"
             else:
                 break
         
-        mensaje = f"{texto_cortado}[Continúa en el enlace adjunto]\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+        mensaje = f"{texto_cortado}[Información en desarrollo]\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+    
+    # Limpieza final: asegurar que no quedó ningún enlace
+    mensaje = re.sub(r'https?://\S+', '', mensaje)
+    mensaje = re.sub(r'www\.\S+', '', mensaje)
+    mensaje = re.sub(r'\n{3,}', '\n\n', mensaje)
+    mensaje = mensaje.strip()
     
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
@@ -886,7 +886,7 @@ def main():
     log(f"   Fuente: {noticia_seleccionada['fuente']}")
     
     # =================================================================
-    # NUEVO SISTEMA DE REDACCIÓN PROFESIONAL
+    # NUEVO SISTEMA DE REDACCIÓN PROFESIONAL SIN ENLACES
     # =================================================================
     
     log("📝 Redactando texto profesional...")
@@ -923,7 +923,7 @@ def main():
         log("ERROR: No se pudo crear imagen", 'error')
         return False
     
-    # Publicar con el nuevo texto profesional
+    # Publicar con el nuevo texto profesional sin enlaces
     exito = publicar_facebook(
         noticia_seleccionada['titulo'],
         texto_profesional,

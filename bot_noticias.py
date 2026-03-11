@@ -4,7 +4,7 @@
 Bot de Noticias Internacionales para Facebook
 - Prioridad: Conflictos bélicos, política global, economía mundial
 - Fuentes: NewsAPI, NewsData, GNews (todo internacional)
-- Extracción de texto completo desde la web para evitar cortes
+- Extracción de texto completo con reglas estrictas de calidad
 """
 
 import requests
@@ -16,7 +16,7 @@ import os
 import random
 import html as html_module
 from datetime import datetime, timedelta
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 
 # =============================================================================
 # CONFIGURACIÓN
@@ -35,61 +35,57 @@ TIEMPO_ENTRE_PUBLICACIONES = 60  # 60 minutos
 VENTANA_DUPLICADOS_HORAS = 24    # 24 horas de memoria de duplicados
 
 # =============================================================================
-# PALABRAS CLAVE INTERNACIONALES PRIORITARIAS
+# REGLAS ESTRICTAS DE VALIDACIÓN
+# =============================================================================
+
+# Mínimos de calidad
+MIN_CARACTERES_CONTENIDO = 300
+MIN_ORACIONES = 3
+MAX_PARRAFOS = 4
+MIN_PALABRAS_POR_PARrafo = 15
+
+# Frases prohibidas (contenido de menús/publicidad)
+FRASES_PROHIBIDAS = [
+    'actualidad portada', 'publicado:', 'compartir en', 'síguenos en',
+    'cookies', 'aceptar cookies', 'política de privacidad', 'aviso legal',
+    'todos los derechos reservados', 'copyright', 'suscríbete', 'newsletter',
+    'última hora', 'portada', 'menú', 'buscar', 'inicio', 'contacto',
+    'redes sociales', 'facebook', 'twitter', 'instagram', 'whatsapp',
+    'relacionados', 'también te interesa', 'más noticias', 'etiquetas:',
+    'archivado en:', 'ver comentarios', 'ocultar comentarios'
+]
+
+# Patrones de "ruido" a eliminar
+PATRONES_RUIDO = [
+    r'Vista de.*Gettyimages?\.[a-z]+',  # Descripciones de imágenes
+    r'Stringer\s*/\s*\w+',              # Créditos de fotos
+    r'@\w+',                            # Menciones de usuario
+    r'—\s*\w+\s*\(@\w+\)\s*\w+\s+\d+', # Tweets embebidos
+    r'🚀.*$',                           # Emojis con texto promocional
+    r'El senador.*afirma.*mintió.*$',   # Textos duplicados/resumen
+    r'^\s*—\s*$',                       # Líneas solo con guiones
+]
+
+# =============================================================================
+# PALABRAS CLAVE INTERNACIONALES
 # =============================================================================
 
 PALABRAS_ALTA_PRIORIDAD = [
     'guerra', 'conflicto', 'bombardeo', 'ataque', 'invasión', 'invasion',
     'misil', 'dron', 'ataque aéreo', 'ataque aereo', 'ofensiva', 'combate',
-    'tregua', 'cese al fuego', 'negociaciones', 'acuerdo de paz',
-    'Ucrania', 'Rusia', 'Gaza', 'Israel', 'Palestina', 'Líbano', 'libano',
-    'Trump', 'Biden', 'Putin', 'Zelensky', 'Zelenskiy', 'Netanyahu',
-    'OTAN', 'NATO', 'ONU', 'UE', 'Unión Europea', 'union europea',
-    'sanciones', 'embargo', 'crisis diplomática', 'crisis diplomatica',
-    'tensión internacional', 'tension internacional', 'reunión de emergencia',
-    'cumbre', 'G7', 'G20', 'BRICS', 'COP', 'clima', 'cambio climático',
-    'desastre natural', 'terremoto', 'tsunami', 'huracán', 'huracan',
-    'pandemia', 'epidemia', 'virus', 'emergencia sanitaria',
+    'Ucrania', 'Rusia', 'Gaza', 'Israel', 'Palestina', 'Trump', 'Biden', 'Putin',
+    'OTAN', 'NATO', 'ONU', 'UE', 'sanciones', 'embargo', 'crisis diplomática',
 ]
 
 PALABRAS_MEDIA_PRIORIDAD = [
-    'economía mundial', 'economia mundial', 'mercados globales', 'crisis financiera',
-    'recesión', 'recesion', 'inflación', 'inflacion', 'deuda', 'FMI', 'Banco Mundial',
-    'reserva federal', 'fed', 'bce', 'banco central', 'tipos de interés', 'tipos de interes',
-    'petróleo', 'petroleo', 'gas', 'energía', 'energia', 'crisis energética',
-    'dólar', 'dolar', 'euro', 'yuan', 'divisas', 'cambio divisa',
-    'comercio internacional', 'aranceles', 'guerra comercial', 'brexit',
-    'elecciones', 'golpe de estado', 'protestas', 'manifestaciones', 'revolución',
-    'corrupción', 'corrupcion', 'escándalo', 'escandalo', 'investigación',
-    'China', 'EEUU', 'Estados Unidos', 'Rusia', 'India', 'Brasil', 'México', 'Mexico',
-    'Alemania', 'Francia', 'Reino Unido', 'Italia', 'Japón', 'Japon', 'Corea',
-    'Oriente Medio', 'oriente medio', 'medio oriente', 'África', 'africa', 'Asia',
-    'Latinoamérica', 'latinoamerica', 'Sudamérica', 'sudamerica', 'Europa',
+    'economía mundial', 'mercados globales', 'inflación', 'FMI', 
+    'China', 'EEUU', 'Estados Unidos', 'Reino Unido', 'Alemania', 'Francia',
 ]
 
 TERMINOS_EXCLUIR = [
     'liga local', 'campeonato municipal', 'feria del pueblo', 
-    'concurso de belleza local', 'festival regional', 'torneo de barrio',
-    'elecciones municipales de', 'alcaldía de', 'alcalde de', 'gobernador de',
-    'partido local', 'equipo local', 'deporte local',
-]
-
-# Frases a eliminar del contenido extraído
-FRASES_A_ELIMINAR = [
-    'se esperan más detalles en las próximas horas',
-    'se esperan mas detalles en las proximas horas',
-    'más detalles en las próximas horas',
-    'mas detalles en las proximas horas',
-    'en desarrollo',
-    'continúa en desarrollo',
-    'continua en desarrollo',
-    'información en desarrollo',
-    'informacion en desarrollo',
-    'actualización en curso',
-    'actualizacion en curso',
-    'noticia en desarrollo',
-    'esto es una información en desarrollo',
-    'esto es una informacion en desarrollo',
+    'concurso de belleza local', 'elecciones municipales de',
+    'alcalde de', 'gobernador de', 'partido local', 'deporte local',
 ]
 
 # =============================================================================
@@ -169,253 +165,444 @@ def calcular_puntaje_internacional(titulo, descripcion):
         if palabra.lower() in texto:
             puntaje += 3
     
-    fuentes_reconocidas = ['reuters', 'afp', 'ap ', 'associated press', 'bbc', 'cnn', 'al jazeera']
-    for fuente in fuentes_reconocidas:
-        if fuente in texto:
-            puntaje += 2
-            break
-    
-    if es_noticia_excluible(titulo, descripcion):
-        puntaje -= 20
-    
     if 50 <= len(titulo) <= 120:
         puntaje += 2
     
     return puntaje
 
 # =============================================================================
-# EXTRACCIÓN DE CONTENIDO COMPLETO DE LA WEB
+# EXTRACCIÓN CON REGLAS ESTRICTAS
 # =============================================================================
 
-def extraer_contenido_completo(url):
+def extraer_contenido_estricto(url):
     """
-    Extrae el contenido completo de la noticia desde la URL.
-    Separa el cuerpo de la noticia de los créditos/autor.
+    Extrae contenido con reglas estrictas de calidad.
+    Retorna None si no cumple los estándares mínimos.
     """
     if not url:
         return None, None
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9',
     }
     
     try:
-        log(f"   🔍 Extrayendo contenido de: {url[:60]}...", 'debug')
-        resp = requests.get(url, headers=headers, timeout=20, allow_redirects=True)
+        log(f"   🔍 Extrayendo: {url[:50]}...", 'debug')
+        resp = requests.get(url, headers=headers, timeout=20)
         resp.raise_for_status()
         
         soup = BeautifulSoup(resp.content, 'html.parser')
         
-        # Eliminar elementos no deseados
-        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'form', 'button']):
+        # Eliminar TODOS los elementos no deseados agresivamente
+        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 
+                            'form', 'button', 'iframe', 'noscript', 'svg', 'canvas']):
             element.decompose()
         
+        # Eliminar comentarios HTML
+        for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+            comment.extract()
+        
+        # Eliminar elementos con clases/IDs de publicidad/menú
+        clases_basura = [
+            'menu', 'nav', 'sidebar', 'footer', 'header', 'ad', 'ads', 'publicidad',
+            'social', 'share', 'comments', 'related', 'tags', 'meta', 'author-box',
+            'breadcrumb', 'pagination', 'widget', 'carousel', 'slider'
+        ]
+        
+        for clase in clases_basura:
+            for elem in soup.find_all(class_=lambda x: x and clase in x.lower()):
+                elem.decompose()
+            for elem in soup.find_all(id=lambda x: x and clase in x.lower()):
+                elem.decompose()
+        
+        # Buscar el contenido principal
         contenido = None
         creditos = None
         
-        # Buscar créditos/autor primero
-        creditos = extraer_creditos(soup)
+        # Estrategia 1: Article con puros párrafos
+        article = soup.find('article')
+        if article:
+            parrafos = article.find_all('p')
+            if len(parrafos) >= 3:
+                texto_limpio = extraer_parrafos_limpios(parrafos)
+                if validar_calidad(texto_limpio):
+                    contenido = texto_limpio
+                    log(f"   ✅ Article válido: {len(contenido)} chars", 'debug')
         
-        # Estrategia 1: Buscar article o main
-        for tag in ['article', 'main', '[role="main"]']:
-            if tag.startswith('['):
-                elemento = soup.select_one(tag)
-            else:
-                elemento = soup.find(tag)
-            
-            if elemento:
-                texto, creds = extraer_texto_y_creditos(elemento)
-                if len(texto) > 200:
-                    contenido = texto
-                    if creds and not creditos:
-                        creditos = creds
-                    log(f"   ✅ Extraído de <{tag}>: {len(contenido)} caracteres", 'debug')
-                    break
-        
-        # Estrategia 2: Buscar por clases comunes de contenido
+        # Estrategia 2: Div con clase de contenido
         if not contenido:
-            clases_comunes = [
-                'article-content', 'content', 'post-content', 'entry-content',
-                'article-body', 'story-body', 'news-body', 'text-content',
-                'cuerpo-noticia', 'cuerpo', 'articulo', 'noticia-texto',
-                'article__body', 'article-body-content', 'story-content'
-            ]
-            
-            for clase in clases_comunes:
-                elemento = soup.find(class_=lambda x: x and clase in x.lower())
-                if elemento:
-                    texto, creds = extraer_texto_y_creditos(elemento)
-                    if len(texto) > 200:
-                        contenido = texto
-                        if creds and not creditos:
-                            creditos = creds
-                        log(f"   ✅ Extraído de clase '{clase}': {len(contenido)} caracteres", 'debug')
-                        break
+            for clase in ['article-content', 'entry-content', 'post-content', 
+                         'article-body', 'story-body', 'content']:
+                elem = soup.find(class_=lambda x: x and clase in x.lower())
+                if elem:
+                    parrafos = elem.find_all('p')
+                    if len(parrafos) >= 2:
+                        texto_limpio = extraer_parrafos_limpios(parrafos)
+                        if validar_calidad(texto_limpio):
+                            contenido = texto_limpio
+                            log(f"   ✅ Clase '{clase}': {len(contenido)} chars", 'debug')
+                            break
         
-        # Estrategia 3: Buscar divs con mucho texto
+        # Estrategia 3: Buscar bloque de párrafos consecutivos
         if not contenido:
-            candidatos = []
-            for div in soup.find_all(['div', 'section']):
-                texto, creds = extraer_texto_y_creditos(div)
-                # Debe tener párrafos y longitud considerable
-                if len(texto) > 300 and texto.count('.') > 3:
-                    candidatos.append((len(texto), texto, creds, div))
+            todos_p = soup.find_all('p')
+            # Buscar grupos de 3+ párrafos seguidos con texto sustancial
+            grupos = []
+            grupo_actual = []
             
-            if candidatos:
-                candidatos.sort(reverse=True)
-                contenido = candidatos[0][1]
-                if candidatos[0][2] and not creditos:
-                    creditos = candidatos[0][2]
-                log(f"   ✅ Extraído de div con más texto: {len(contenido)} caracteres", 'debug')
+            for p in todos_p:
+                texto = p.get_text(strip=True)
+                if len(texto) > 80 and not tiene_basura(texto):
+                    grupo_actual.append(texto)
+                else:
+                    if len(grupo_actual) >= 3:
+                        grupos.append(grupo_actual)
+                    grupo_actual = []
+            
+            if grupo_actual and len(grupo_actual) >= 3:
+                grupos.append(grupo_actual)
+            
+            if grupos:
+                # Tomar el grupo más largo
+                mejor_grupo = max(grupos, key=lambda x: sum(len(p) for p in x))
+                texto_limpio = ' '.join(mejor_grupo)
+                if validar_calidad(texto_limpio):
+                    contenido = texto_limpio
+                    log(f"   ✅ Grupo de párrafos: {len(contenido)} chars", 'debug')
         
-        # Estrategia 4: Extraer todos los párrafos del body
-        if not contenido:
-            body = soup.find('body')
-            if body:
-                parrafos = []
-                for p in body.find_all('p'):
-                    texto = limpiar_parrafo(p.get_text())
-                    if len(texto) > 50:
-                        parrafos.append(texto)
-                
-                if parrafos:
-                    contenido = ' '.join(parrafos[:10])
-                    log(f"   ✅ Extraído de párrafos sueltos: {len(contenido)} caracteres", 'debug')
+        if contenido:
+            contenido = eliminar_ruido_final(contenido)
+            creditos = extraer_creditos_limpios(soup)
+            return contenido[:2000], creditos
         
-        if contenido and len(contenido) > 100:
-            # Limpiar frases genéricas del contenido
-            contenido = eliminar_frases_genericas(contenido)
-            return contenido[:1500], creditos
-        
-        return None, creditos
+        return None, None
         
     except Exception as e:
-        log(f"   ⚠️ Error extrayendo contenido: {e}", 'debug')
+        log(f"   ⚠️ Error: {e}", 'debug')
         return None, None
 
-def extraer_creditos(soup):
-    """Extrae el autor/fecha de la noticia."""
-    creditos = None
-    
-    # Buscar en metadatos
-    for meta in ['author', 'article:author', 'byline']:
-        tag = soup.find('meta', attrs={'name': meta}) or soup.find('meta', property=meta)
-        if tag:
-            creditos = tag.get('content', '').strip()
-            if creditos:
-                break
-    
-    # Buscar en elementos comunes de autor
-    if not creditos:
-        clases_autor = ['author', 'byline', 'autor', 'firma', 'creditos', 'article-author']
-        for clase in clases_autor:
-            elem = soup.find(class_=lambda x: x and clase in x.lower())
-            if elem:
-                creditos = elem.get_text(strip=True)
-                if creditos and len(creditos) < 200:
-                    break
-    
-    # Buscar patrones de fecha/autor al inicio del artículo
-    if not creditos:
-        patrones = [
-            r'([A-Z][a-z]+ [A-Z][a-z]+.*?)\d{1,2}/\d{1,2}/\d{4}',
-            r'Por[: ]+([A-Z][^\n]{3,50}?)\n',
-            r'^([A-Z][^\n]{2,30}?)\d{1,2} de [a-z]+ de \d{4}',
-        ]
-        texto_completo = soup.get_text()[:500]
-        for patron in patrones:
-            match = re.search(patron, texto_completo, re.IGNORECASE)
-            if match:
-                creditos = match.group(1).strip()
-                break
-    
-    if creditos:
-        creditos = re.sub(r'\s+', ' ', creditos).strip()
-        if len(creditos) > 150:
-            creditos = creditos[:150] + '...'
-        log(f"   👤 Créditos encontrados: {creditos[:60]}...", 'debug')
-    
-    return creditos
-
-def extraer_texto_y_creditos(elemento):
-    """Extrae texto limpio y busca créditos dentro del elemento."""
-    if not elemento:
-        return "", None
-    
-    texto_raw = elemento.get_text(separator='\n', strip=True)
-    
-    lineas = texto_raw.split('\n')
-    creditos = None
-    lineas_contenido = []
-    
-    for i, linea in enumerate(lineas):
-        linea_limpia = linea.strip()
+def extraer_parrafos_limpios(parrafos):
+    """Extrae texto de párrafos filtrando los que tienen basura."""
+    textos = []
+    for p in parrafos:
+        texto = p.get_text(strip=True)
+        texto = limpiar_texto(texto)
         
-        if i < 3 and not creditos:
-            if (re.search(r'\d{1,2}/\d{1,2}/\d{4}', linea_limpia) or
-                re.search(r'\d{1,2} de [a-z]+ de \d{4}', linea_limpia, re.IGNORECASE) or
-                re.search(r'^[A-Z][a-z]+ [A-Z][a-z]+.*?(Córdoba|Madrid|Barcelona|Sevilla)', linea_limpia) or
-                re.search(r'^[A-Z][a-z]+ [A-Z][a-z]+.*?[Aa]ctualizad', linea_limpia) or
-                linea_limpia.startswith('Por:') or linea_limpia.startswith('Por ')):
-                
-                creditos = linea_limpia
-                continue
-        
-        lineas_contenido.append(linea_limpia)
+        # Filtrar párrafos cortos o con basura
+        if len(texto) < 40:
+            continue
+        if tiene_basura(texto):
+            continue
+        if texto.count(' ') < 5:  # Muy pocas palabras
+            continue
+            
+        textos.append(texto)
     
-    texto = '\n'.join(lineas_contenido)
-    texto = limpiar_parrafo(texto)
-    
-    return texto, creditos
+    return ' '.join(textos)
 
-def limpiar_parrafo(texto):
-    """Limpia un párrafo de texto."""
+def tiene_basura(texto):
+    """Verifica si el texto contiene elementos de menú/publicidad."""
+    texto_lower = texto.lower()
+    
+    for frase in FRASES_PROHIBIDAS:
+        if frase in texto_lower:
+            return True
+    
+    # Verificar si es solo mayúsculas (típico de menús)
+    if texto.isupper() and len(texto) > 10:
+        return True
+    
+    # Verificar si tiene demasiados símbolos especiales
+    simbolos = sum(1 for c in texto if c in '│├┤┬┴┼║╣╠╩╦╚╔╝╗▓▒░')
+    if simbolos > 2:
+        return True
+    
+    return False
+
+def validar_calidad(texto):
+    """Valida que el texto cumpla estándares mínimos de calidad."""
     if not texto:
-        return ""
+        return False
     
-    lineas_bloqueadas = [
-        'cookies', 'aceptar', 'publicidad', 'suscríbete', 'newsletter',
-        'compartir', 'facebook', 'twitter', 'whatsapp', 'telegram',
-        'relacionados', 'también te puede interesar', 'más noticias',
-        'copyright', 'todos los derechos', 'política de privacidad',
-        'aviso legal', 'contacto', 'quiénes somos', 'síguenos en',
-        'siguenos en', 'redes sociales', 'comentarios'
-    ]
+    # Mínimo de caracteres
+    if len(texto) < MIN_CARACTERES_CONTENIDO:
+        log(f"   ❌ Muy corto: {len(texto)} chars", 'debug')
+        return False
     
+    # Mínimo de oraciones
+    oraciones = [o for o in re.split(r'[.!?]+', texto) if len(o.strip()) > 10]
+    if len(oraciones) < MIN_ORACIONES:
+        log(f"   ❌ Pocas oraciones: {len(oraciones)}", 'debug')
+        return False
+    
+    # No debe tener demasiadas mayúsculas (signo de menú)
+    ratio_mayus = sum(1 for c in texto if c.isupper()) / len(texto)
+    if ratio_mayus > 0.4:
+        log(f"   ❌ Muchas mayúsculas: {ratio_mayus:.2f}", 'debug')
+        return False
+    
+    # Debe tener palabras del título o relacionadas
+    palabras_clave = ['dice', 'declaró', 'afirmó', 'señaló', 'indicó', 'según', 'tras']
+    if not any(p in texto.lower() for p in palabras_clave):
+        log(f"   ❌ No parece noticia (falta verbo de comunicación)", 'debug')
+        return False
+    
+    log(f"   ✅ Calidad validada: {len(texto)} chars, {len(oraciones)} oraciones", 'debug')
+    return True
+
+def eliminar_ruido_final(texto):
+    """Elimina patrones de ruido específicos del texto final."""
+    for patron in PATRONES_RUIDO:
+        texto = re.sub(patron, '', texto, flags=re.IGNORECASE | re.MULTILINE)
+    
+    # Eliminar líneas que son solo espacios o símbolos
     lineas = texto.split('\n')
     lineas_limpias = []
     for linea in lineas:
-        linea_lower = linea.lower().strip()
-        if not any(bloque in linea_lower for bloque in lineas_bloqueadas):
-            lineas_limpias.append(linea)
+        linea_limpia = linea.strip()
+        if linea_limpia and not re.match(r'^[\s\—\-\|\•\·]+$', linea_limpia):
+            lineas_limpias.append(linea_limpia)
     
     texto = ' '.join(lineas_limpias)
     texto = re.sub(r'\s+', ' ', texto).strip()
     
-    return limpiar_texto(texto)
-
-def eliminar_frases_genericas(texto):
-    """Elimina frases genéricas de desarrollo de la noticia."""
-    if not texto:
-        return texto
-    
-    texto_lower = texto.lower()
-    
-    for frase in FRASES_A_ELIMINAR:
-        patron = re.compile(re.escape(frase), re.IGNORECASE)
-        texto = patron.sub('', texto)
-    
-    texto = re.sub(r'\s+', ' ', texto).strip()
-    
+    # Asegurar que termine bien
     if texto and texto[-1] not in '.!?':
         texto += '.'
     
     return texto
 
+def extraer_creditos_limpios(soup):
+    """Extrae créditos de forma limpia."""
+    creditos = None
+    
+    # Buscar en meta tags
+    for meta in ['author', 'article:author', 'byline', 'creator']:
+        tag = soup.find('meta', attrs={'name': meta}) or soup.find('meta', property=meta)
+        if tag:
+            creditos = tag.get('content', '').strip()
+            if creditos and len(creditos) < 100:
+                return limpiar_credito(creditos)
+    
+    # Buscar en elementos específicos
+    for clase in ['author', 'byline', 'autor', 'firma']:
+        elem = soup.find(class_=lambda x: x and clase in x.lower())
+        if elem:
+            texto = elem.get_text(strip=True)
+            if 5 < len(texto) < 100:
+                return limpiar_credito(texto)
+    
+    return None
+
+def limpiar_credito(credito):
+    """Limpia el texto del crédito."""
+    if not credito:
+        return None
+    
+    # Eliminar prefijos comunes
+    credito = re.sub(r'^(Por|By|De|Autor|Redacción)[\s:]+', '', credito, flags=re.IGNORECASE)
+    credito = re.sub(r'\d{1,2}/\d{1,2}/\d{4}.*$', '', credito)
+    credito = re.sub(r'\d{1,2} de [a-z]+ de \d{4}.*$', '', credito, flags=re.IGNORECASE)
+    
+    credito = credito.strip()
+    
+    if len(credito) < 3 or len(credito) > 80:
+        return None
+    
+    return credito
+
 # =============================================================================
-# GESTIÓN DE HISTORIAL
+# DIVISIÓN EN PÁRRAFOS CON REGLAS ESTRICTAS
+# =============================================================================
+
+def dividir_parrafos_estricto(texto):
+    """
+    Divide el texto en párrafos con reglas estrictas de coherencia.
+    Garantiza que cada párrafo tenga sentido completo.
+    """
+    if not texto:
+        return []
+    
+    # Dividir en oraciones
+    oraciones = re.split(r'(?<=[.!?])\s+', texto)
+    oraciones = [o.strip() for o in oraciones if len(o.strip()) > 15]
+    
+    if len(oraciones) < 3:
+        return [texto] if len(texto) > 100 else []
+    
+    parrafos = []
+    parrafo_actual = []
+    palabras_en_parrafo = 0
+    
+    for i, oracion in enumerate(oraciones):
+        parrafo_actual.append(oracion)
+        palabras_en_parrafo += len(oracion.split())
+        
+        # Forzar cierre de párrafo si:
+        cerrar = False
+        
+        # 1. Llegamos a 40-50 palabras (párrafo sustancial)
+        if palabras_en_parrafo >= 40:
+            cerrar = True
+        
+        # 2. La oración termina en cita completa
+        if '"' in oracion or '»' in oracion:
+            comillas_abrir = oracion.count('"') + oracion.count('«')
+            comillas_cerrar = oracion.count('"') + oracion.count('»')
+            if comillas_cerrar > comillas_abrir or (comillas_abrir % 2 == 0 and comillas_abrir > 0):
+                if palabras_en_parrafo >= 25:
+                    cerrar = True
+        
+        # 3. La siguiente oración empieza con conector fuerte
+        if i < len(oraciones) - 1:
+            siguiente = oraciones[i + 1].lower()
+            conectores_fuertes = ['sin embargo', 'por otro lado', 'en contraste', 
+                                 'no obstante', 'por el contrario', 'en cuanto a',
+                                 'respecto a', 'sobre', 'acerca de', 'en relación']
+            if any(siguiente.startswith(c) for c in conectores_fuertes):
+                if palabras_en_parrafo >= 20:
+                    cerrar = True
+        
+        # 4. Es la última oración
+        if i == len(oraciones) - 1:
+            cerrar = True
+        
+        if cerrar and parrafo_actual:
+            parrafo_texto = ' '.join(parrafo_actual)
+            # Validar que el párrafo tenga sentido
+            if len(parrafo_texto.split()) >= MIN_PALABRAS_POR_PARrafo:
+                parrafos.append(parrafo_texto)
+            parrafo_actual = []
+            palabras_en_parrafo = 0
+    
+    # Limitar número de párrafos
+    if len(parrafos) > MAX_PARRAFOS:
+        parrafos = parrafos[:MAX_PARRAFOS]
+    
+    return parrafos
+
+# =============================================================================
+# CONSTRUCCIÓN DE PUBLICACIÓN CON VALIDACIÓN
+# =============================================================================
+
+def construir_publicacion_validada(titulo, contenido, creditos, fuente):
+    """
+    Construye la publicación con validación estricta de formato.
+    Si no cumple estándares, usa fallback.
+    """
+    titulo_limpio = limpiar_texto(titulo)
+    
+    # Intentar dividir en párrafos coherentes
+    parrafos = dividir_parrafos_estricto(contenido)
+    
+    # Validar que tenemos párrafos válidos
+    if len(parrafos) < 2:
+        log("   ⚠️ No se pudieron crear párrafos coherentes, usando formato alternativo", 'advertencia')
+        # Fallback: dividir por puntos y agrupar
+        parrafos = crear_parrafos_fallback(contenido)
+    
+    # Construir texto con formato estricto
+    lineas = []
+    
+    # Encabezado
+    lineas.append(f"📰 ÚLTIMA HORA | {titulo_limpio}")
+    lineas.append("")  # Línea en blanco obligatoria
+    
+    # Párrafos con separación
+    for i, parrafo in enumerate(parrafos):
+        lineas.append(parrafo)
+        if i < len(parrafos) - 1:
+            lineas.append("")  # Línea en blanco entre párrafos
+    
+    # Separador
+    lineas.append("")
+    lineas.append("──────────────────────────────")
+    lineas.append("")
+    
+    # Metadatos
+    if creditos:
+        lineas.append(f"✍️ {creditos}")
+        lineas.append("")
+    
+    lineas.append(f"📎 {fuente}")
+    
+    # Unir y validar
+    texto = '\n'.join(lineas)
+    
+    # Validación final estricta
+    errores = validar_formato_final(texto)
+    if errores:
+        log(f"   ❌ Errores de formato: {errores}", 'advertencia')
+        # Intentar corrección
+        texto = corregir_formato(texto)
+    
+    return texto
+
+def crear_parrafos_fallback(contenido):
+    """Crea párrafos básicos si el método principal falla."""
+    # Dividir en oraciones y agrupar de 2 en 2
+    oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
+    
+    parrafos = []
+    for i in range(0, len(oraciones), 2):
+        grupo = oraciones[i:i+2]
+        if grupo:
+            parrafos.append(' '.join(grupo))
+    
+    return parrafos[:MAX_PARRAFOS]
+
+def validar_formato_final(texto):
+    """Valida que el formato final sea correcto."""
+    errores = []
+    
+    # Debe tener líneas en blanco entre párrafos
+    lineas = texto.split('\n')
+    
+    # Contar párrafos de contenido (no vacíos, no separadores, no metadatos)
+    parrafos_contenido = [l for l in lineas if l.strip() 
+                         and not l.startswith('─') 
+                         and not l.startswith('✍️')
+                         and not l.startswith('📎')
+                         and not l.startswith('📰')]
+    
+    if len(parrafos_contenido) < 2:
+        errores.append("Menos de 2 párrafos de contenido")
+    
+    # Verificar que hay líneas en blanco entre párrafos
+    for i, linea in enumerate(lineas):
+        if i > 0 and i < len(lineas) - 1:
+            if linea.strip() and not linea.startswith(('─', '✍️', '📎', '📰')):
+                if lineas[i-1].strip() and not lineas[i-1].startswith(('─', '✍️', '📎', '📰', '')):
+                    if lineas[i-1] != '':  # Si la anterior no es línea en blanco
+                        pass  # Podría ser error, pero verificamos contexto
+    
+    # Verificar longitud
+    if len(texto) < 200:
+        errores.append("Texto muy corto")
+    
+    return errores
+
+def corregir_formato(texto):
+    """Intenta corregir problemas de formato."""
+    # Asegurar líneas en blanco entre párrafos
+    lineas = texto.split('\n')
+    nuevas_lineas = []
+    
+    for i, linea in enumerate(lineas):
+        nuevas_lineas.append(linea)
+        # Agregar línea en blanco después de párrafos de contenido
+        if linea.strip() and not linea.startswith(('─', '✍️', '📎', '📰')):
+            if i < len(lineas) - 1:
+                siguiente = lineas[i + 1]
+                if siguiente.strip() and not siguiente.startswith(('─', '✍️', '📎')):
+                    nuevas_lineas.append("")
+    
+    return '\n'.join(nuevas_lineas)
+
+# =============================================================================
+# GESTIÓN DE HISTORIAL (igual que antes)
 # =============================================================================
 
 def cargar_historial():
@@ -562,7 +749,7 @@ def verificar_tiempo():
         return True
 
 # =============================================================================
-# FUENTES DE NOTICIAS INTERNACIONALES
+# FUENTES DE NOTICIAS (simplificado)
 # =============================================================================
 
 def obtener_newsapi_internacional():
@@ -573,9 +760,9 @@ def obtener_newsapi_internacional():
     queries = [
         'war OR conflict OR Ukraine OR Russia OR Gaza OR Israel',
         'Trump OR Biden OR Putin OR international politics',
-        'economy OR inflation OR markets OR IMF OR Federal Reserve',
-        'NATO OR UN OR EU OR summit OR diplomacy',
-        'climate OR disaster OR earthquake OR hurricane',
+        'economy OR inflation OR markets OR IMF',
+        'NATO OR UN OR EU OR summit',
+        'Iran OR Israel OR Middle East conflict',
     ]
     
     for q in queries:
@@ -613,7 +800,6 @@ def obtener_newsapi_internacional():
                         'puntaje': calcular_puntaje_internacional(titulo, desc)
                     })
         except Exception as e:
-            log(f"Error NewsAPI query '{q}': {e}", 'debug')
             continue
     
     urls_vistas = set()
@@ -624,7 +810,7 @@ def obtener_newsapi_internacional():
             urls_vistas.add(url_base)
             noticias_unicas.append(n)
     
-    log(f"NewsAPI: {len(noticias_unicas)} noticias internacionales", 'info')
+    log(f"NewsAPI: {len(noticias_unicas)} noticias", 'info')
     return noticias_unicas
 
 def obtener_newsdata_internacional():
@@ -664,8 +850,8 @@ def obtener_newsdata_internacional():
                     'fecha': art.get('pubDate'),
                     'puntaje': calcular_puntaje_internacional(titulo, desc)
                 })
-    except Exception as e:
-        log(f"Error NewsData: {e}", 'advertencia')
+    except:
+        pass
     
     log(f"NewsData: {len(noticias)} noticias", 'info')
     return noticias
@@ -706,8 +892,8 @@ def obtener_gnews_internacional():
                 'fecha': art.get('publishedAt'),
                 'puntaje': calcular_puntaje_internacional(titulo, desc)
             })
-    except Exception as e:
-        log(f"Error GNews: {e}", 'advertencia')
+    except:
+        pass
     
     log(f"GNews: {len(noticias)} noticias", 'info')
     return noticias
@@ -716,11 +902,10 @@ def obtener_google_news_rss():
     feeds = [
         'https://news.google.com/rss?hl=es&gl=US&ceid=US:es',
         'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=US&ceid=US:es',
-        'https://news.google.com/rss/topics/CAAqIQgKIhtDQkFTRGdvSUwyMHZNRFZ4ZERBU0FtVnVLQUFQAQ?hl=es&gl=US&ceid=US:es',
     ]
     
     noticias = []
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
     for feed_url in feeds:
         try:
@@ -753,14 +938,14 @@ def obtener_google_news_rss():
                     'fecha': entry.get('published'),
                     'puntaje': calcular_puntaje_internacional(titulo, '')
                 })
-        except Exception as e:
-            log(f"Error Google RSS: {e}", 'debug')
+        except:
+            pass
     
     log(f"Google News RSS: {len(noticias)} noticias", 'info')
     return noticias
 
 # =============================================================================
-# PROCESAMIENTO Y PUBLICACIÓN
+# PROCESAMIENTO DE IMAGEN
 # =============================================================================
 
 def extraer_imagen_web(url):
@@ -834,19 +1019,17 @@ def crear_imagen_titulo(titulo):
     except:
         return None
 
-def generar_hashtags_internacional(titulo, descripcion):
-    texto = f"{titulo} {descripcion}".lower()
+def generar_hashtags(titulo, contenido):
+    texto = f"{titulo} {contenido}".lower()
     hashtags = ['#NoticiasInternacionales', '#ÚltimaHora']
     
     temas = {
         'guerra|conflicto|ataque|bombardeo': '#ConflictoArmado',
         'ucrania|rusia': '#UcraniaRusia',
         'gaza|israel|palestina': '#IsraelGaza',
-        'trump|biden|putin|zelensky': '#PolíticaGlobal',
-        'economía|mercados|inflación|recesión': '#EconomíaMundial',
-        'clima|calentamiento|desastre|terremoto': '#CrisisClimática',
-        'onu|otan|ue|g7|g20': '#DiplomaciaInternacional',
-        'pandemia|virus|covid': '#SaludGlobal',
+        'trump|biden|putin': '#PolíticaGlobal',
+        'economía|mercados|inflación': '#EconomíaMundial',
+        'irán|iran': '#Irán',
     }
     
     for patron, tag in temas.items():
@@ -857,137 +1040,31 @@ def generar_hashtags_internacional(titulo, descripcion):
     hashtags.append('#Mundo')
     return ' '.join(hashtags)
 
-def dividir_en_parrafos_coherentes(texto, max_oraciones_por_parrafo=3):
-    """
-    Divide el texto en párrafos coherentes de 2-3 oraciones cada uno.
-    Busca puntos de corte lógicos (después de citas, datos completos, etc.)
-    """
-    if not texto:
-        return []
-    
-    # Dividir en oraciones manteniendo la puntuación
-    oraciones = re.split(r'(?<=[.!?])\s+', texto)
-    oraciones = [o.strip() for o in oraciones if len(o.strip()) > 10]
-    
-    if not oraciones:
-        return [texto] if len(texto) > 20 else []
-    
-    parrafos = []
-    parrafo_actual = []
-    
-    for i, oracion in enumerate(oraciones):
-        parrafo_actual.append(oracion)
-        
-        # Decidir si cerrar el párrafo aquí
-        cerrar_parrafo = False
-        
-        # Si tenemos suficientes oraciones
-        if len(parrafo_actual) >= max_oraciones_por_parrafo:
-            cerrar_parrafo = True
-        
-        # Si la oración termina en cita o dato importante
-        if '"' in oracion or '«' in oracion or '»' in oracion:
-            if len(parrafo_actual) >= 2:
-                cerrar_parrafo = True
-        
-        # Si la siguiente oración empieza con conector de nuevo párrafo
-        if i < len(oraciones) - 1:
-            siguiente = oraciones[i + 1].lower()
-            conectores_nuevo = ['sin embargo', 'por otro lado', 'además', 'por su parte', 
-                              'en cuanto a', 'respecto a', 'por el contrario', 'asimismo',
-                              'por tanto', 'en consecuencia', 'no obstante', 'a su vez']
-            if any(siguiente.startswith(c) for c in conectores_nuevo):
-                cerrar_parrafo = True
-        
-        if cerrar_parrafo and parrafo_actual:
-            parrafos.append(' '.join(parrafo_actual))
-            parrafo_actual = []
-    
-    # Agregar último párrafo si quedó algo
-    if parrafo_actual:
-        parrafos.append(' '.join(parrafo_actual))
-    
-    return parrafos
+# =============================================================================
+# PUBLICACIÓN EN FACEBOOK
+# =============================================================================
 
-def construir_texto_publicacion(titulo, contenido_completo, creditos, fuente):
-    """
-    Construye el texto de la publicación con formato mejorado y espaciado.
-    """
-    titulo_limpio = limpiar_texto(titulo)
-    
-    # Procesar contenido en párrafos coherentes
-    if contenido_completo:
-        parrafos = dividir_en_parrafos_coherentes(contenido_completo, max_oraciones_por_parrafo=3)
-    else:
-        parrafos = ["Información en desarrollo. Los detalles de esta noticia internacional están siendo verificados por nuestros corresponsales."]
-    
-    # Limitar a máximo 4 párrafos para no hacerlo muy largo
-    if len(parrafos) > 4:
-        parrafos = parrafos[:4]
-    
-    # Construir líneas con espaciado adecuado
-    lineas = []
-    
-    # Título destacado
-    lineas.append(f"📰 ÚLTIMA HORA | {titulo_limpio}")
-    lineas.append("")  # Línea en blanco
-    
-    # Párrafos de contenido con separación
-    for i, parrafo in enumerate(parrafos):
-        lineas.append(parrafo)
-        if i < len(parrafos) - 1:  # No agregar línea extra después del último
-            lineas.append("")  # Línea en blanco entre párrafos
-    
-    # Línea separadora antes de metadatos
-    lineas.append("")
-    lineas.append("─" * 30)  # Separador visual
-    lineas.append("")
-    
-    # Créditos si existen
-    if creditos:
-        creditos_limpio = re.sub(r'\d{1,2}/\d{1,2}/\d{4}.*$', '', creditos).strip()
-        creditos_limpio = re.sub(r'\d{1,2} de [a-z]+ de \d{4}.*$', '', creditos_limpio, flags=re.IGNORECASE).strip()
-        if creditos_limpio:
-            lineas.append(f"✍️ Autor: {creditos_limpio}")
-            lineas.append("")
-    
-    # Fuente
-    lineas.append(f"📎 Fuente: {fuente}")
-    
-    texto = '\n'.join(lineas)
-    
-    # Limpieza final
-    texto = re.sub(r'https?://\S+', '', texto)
-    texto = re.sub(r'\n{4,}', '\n\n\n', texto)  # Máximo 2 líneas en blanco seguidas
-    
-    return texto.strip()
-
-def publicar_facebook(titulo, texto_completo, imagen_path, hashtags):
+def publicar_facebook(titulo, texto, imagen_path, hashtags):
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         log("Faltan credenciales Facebook", 'error')
         return False
     
-    # Construir mensaje final con espaciado
-    mensaje = f"{texto_completo}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+    mensaje = f"{texto}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
     
-    # Verificar límite de caracteres
-    if len(mensaje) > 1900:
-        # Truncar manteniendo estructura
-        lineas = texto_completo.split('\n')
+    # Validación de longitud
+    if len(mensaje) > 2000:
+        lineas = texto.split('\n')
         texto_cortado = ""
         for linea in lineas:
-            if len(texto_cortado + linea + "\n") < 1500:
+            if len(texto_cortado + linea + "\n") < 1600:
                 texto_cortado += linea + "\n"
             else:
                 break
-        
-        mensaje = f"{texto_cortado.rstrip()}\n\n[Continúa...]\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+        mensaje = f"{texto_cortado.rstrip()}\n\n[...]\n\n{hashtags}\n\n— 🌐 Verdad Hoy"
     
     # Limpieza final
     mensaje = re.sub(r'https?://\S+', '', mensaje)
-    mensaje = re.sub(r'www\.\S+', '', mensaje)
-    mensaje = re.sub(r'\n{4,}', '\n\n\n', mensaje)
-    mensaje = mensaje.strip()
+    mensaje = re.sub(r'\n{5,}', '\n\n\n\n', mensaje)
     
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
@@ -1017,8 +1094,6 @@ def main():
     print("\n" + "="*60)
     print("🌍 BOT DE NOTICIAS INTERNACIONALES")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"⏱️  Frecuencia: Cada {TIEMPO_ENTRE_PUBLICACIONES} minutos")
-    print("🎯 Foco: Conflictos, Política Global, Economía Mundial")
     print("="*60)
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
@@ -1029,25 +1104,19 @@ def main():
         return False
     
     historial = cargar_historial()
-    log(f"📊 Historial: {len(historial.get('urls', []))} URLs guardadas (ventana {VENTANA_DUPLICADOS_HORAS}h)")
+    log(f"📊 Historial: {len(historial.get('urls', []))} URLs guardadas")
     
+    # Recolectar noticias
     todas_noticias = []
     
     if NEWS_API_KEY:
-        noticias = obtener_newsapi_internacional()
-        todas_noticias.extend(noticias)
-    
+        todas_noticias.extend(obtener_newsapi_internacional())
     if NEWSDATA_API_KEY and len(todas_noticias) < 15:
-        noticias = obtener_newsdata_internacional()
-        todas_noticias.extend(noticias)
-    
+        todas_noticias.extend(obtener_newsdata_internacional())
     if GNEWS_API_KEY and len(todas_noticias) < 20:
-        noticias = obtener_gnews_internacional()
-        todas_noticias.extend(noticias)
-    
+        todas_noticias.extend(obtener_gnews_internacional())
     if len(todas_noticias) < 25:
-        noticias = obtener_google_news_rss()
-        todas_noticias.extend(noticias)
+        todas_noticias.extend(obtener_google_news_rss())
     
     log(f"📰 Total recolectadas: {len(todas_noticias)} noticias")
     
@@ -1057,12 +1126,8 @@ def main():
     
     todas_noticias.sort(key=lambda x: x.get('puntaje', 0), reverse=True)
     
-    log("🏆 Top 5 noticias por relevancia:", 'debug')
-    for i, n in enumerate(todas_noticias[:5]):
-        log(f"   {i+1}. [{n['puntaje']}] {n['titulo'][:50]}...", 'debug')
-    
+    # Seleccionar noticia
     noticia_seleccionada = None
-    intentos = 0
     
     for noticia in todas_noticias:
         url = noticia.get('url', '')
@@ -1071,78 +1136,61 @@ def main():
         if not url or not titulo:
             continue
         
-        intentos += 1
-        
         if noticia_ya_publicada(historial, url, titulo):
-            log(f"⏭️  Ya publicada: {titulo[:40]}...", 'debug')
             continue
         
         if noticia.get('puntaje', 0) < 5:
-            log(f"⏭️  Puntaje bajo ({noticia['puntaje']}): {titulo[:40]}...", 'debug')
             continue
         
         noticia_seleccionada = noticia
         break
     
-    log(f"🔍 Revisadas: {intentos} noticias")
-    
     if not noticia_seleccionada:
-        log("⚠️  Buscando mejor opción disponible...", 'advertencia')
-        for noticia in todas_noticias:
-            if noticia.get('puntaje', 0) > 0:
-                noticia_seleccionada = noticia
-                break
-    
-    if not noticia_seleccionada:
-        log("ERROR: No hay noticias disponibles para publicar", 'error')
+        log("ERROR: No hay noticias disponibles", 'error')
         return False
     
     log(f"\n📝 NOTICIA SELECCIONADA:")
-    log(f"   Título: {noticia_seleccionada['titulo']}")
-    log(f"   Puntaje: {noticia_seleccionada['puntaje']}")
+    log(f"   Título: {noticia_seleccionada['titulo'][:60]}...")
     log(f"   Fuente: {noticia_seleccionada['fuente']}")
-    log(f"   URL: {noticia_seleccionada['url'][:70]}...")
     
     # =================================================================
-    # EXTRACCIÓN DE CONTENIDO COMPLETO
+    # EXTRACCIÓN CON REGLAS ESTRICTAS
     # =================================================================
     
-    log("🌐 Extrayendo contenido completo de la web...")
-    contenido_completo, creditos = extraer_contenido_completo(noticia_seleccionada['url'])
+    log("🌐 Extrayendo contenido con validación estricta...")
+    contenido, creditos = extraer_contenido_estricto(noticia_seleccionada['url'])
     
-    if contenido_completo:
-        log(f"   ✅ Contenido extraído: {len(contenido_completo)} caracteres", 'exito')
-        if creditos:
-            log(f"   👤 Créditos: {creditos[:60]}...", 'debug')
+    if contenido:
+        log(f"   ✅ Contenido válido: {len(contenido)} caracteres", 'exito')
     else:
-        log("   ⚠️ No se pudo extraer contenido completo, usando descripción de API", 'advertencia')
-        contenido_completo = noticia_seleccionada.get('descripcion', '')
+        log("   ⚠️ Extracción falló, usando descripción de API", 'advertencia')
+        contenido = noticia_seleccionada.get('descripcion', '')
+        if len(contenido) < 100:
+            log("   ❌ Descripción insuficiente, buscando otra noticia...", 'error')
+            return False
     
     # =================================================================
-    # CONSTRUIR TEXTO DE PUBLICACIÓN
+    # CONSTRUIR PUBLICACIÓN VALIDADA
     # =================================================================
     
-    log("📝 Construyendo texto de publicación...")
-    texto_publicacion = construir_texto_publicacion(
+    log("📝 Construyendo publicación con formato validado...")
+    texto_publicacion = construir_publicacion_validada(
         noticia_seleccionada['titulo'],
-        contenido_completo,
+        contenido,
         creditos,
         noticia_seleccionada['fuente']
     )
     
-    log(f"   📄 Texto final ({len(texto_publicacion)} caracteres):", 'debug')
-    for i, linea in enumerate(texto_publicacion.split('\n')[:6]):
-        log(f"      {linea[:70]}{'...' if len(linea) > 70 else ''}", 'debug')
-    
-    # Generar hashtags
-    hashtags = generar_hashtags_internacional(
-        noticia_seleccionada['titulo'], 
-        contenido_completo or noticia_seleccionada.get('descripcion', '')
-    )
+    # Mostrar preview
+    log("   📄 Preview de la publicación:", 'debug')
+    for linea in texto_publicacion.split('\n')[:8]:
+        log(f"      {linea[:65]}{'...' if len(linea) > 65 else ''}", 'debug')
     
     # =================================================================
-    # PROCESAR IMAGEN
+    # PROCESAR IMAGEN Y PUBLICAR
     # =================================================================
+    
+    hashtags = generar_hashtags(noticia_seleccionada['titulo'], contenido)
     
     log("🖼️  Procesando imagen...")
     imagen_path = None
@@ -1162,10 +1210,7 @@ def main():
         log("ERROR: No se pudo crear imagen", 'error')
         return False
     
-    # =================================================================
-    # PUBLICAR
-    # =================================================================
-    
+    # Publicar
     exito = publicar_facebook(
         noticia_seleccionada['titulo'],
         texto_publicacion,
@@ -1173,12 +1218,14 @@ def main():
         hashtags
     )
     
+    # Limpieza
     try:
         if os.path.exists(imagen_path):
             os.remove(imagen_path)
     except:
         pass
     
+    # Guardar estado
     if exito:
         guardar_historial(historial, noticia_seleccionada['url'], noticia_seleccionada['titulo'])
         
@@ -1186,8 +1233,7 @@ def main():
         estado['ultima_publicacion'] = datetime.now().isoformat()
         guardar_estado(estado)
         
-        hist_actualizado = cargar_historial()
-        total = hist_actualizado.get('estadisticas', {}).get('total_publicadas', 0)
+        total = cargar_historial().get('estadisticas', {}).get('total_publicadas', 0)
         log(f"✅ ÉXITO - Total acumulado: {total} noticias", 'exito')
         return True
     

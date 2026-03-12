@@ -15,6 +15,7 @@ import json
 import os
 import random
 import html as html_module
+import time
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup, Comment
 
@@ -34,6 +35,9 @@ ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 TIEMPO_ENTRE_PUBLICACIONES = 60  # 60 minutos
 VENTANA_DUPLICADOS_HORAS = 24    # 24 horas de memoria de duplicados
 
+# Límite de caracteres para Facebook (con margen de seguridad)
+LIMITE_CARACTERES_FACEBOOK = 5000
+
 # =============================================================================
 # REGLAS ESTRICTAS DE VALIDACIÓN
 # =============================================================================
@@ -41,7 +45,7 @@ VENTANA_DUPLICADOS_HORAS = 24    # 24 horas de memoria de duplicados
 # Mínimos de calidad
 MIN_CARACTERES_CONTENIDO = 300
 MIN_ORACIONES = 3
-MAX_PARRAFOS = 4
+MAX_PARRAFOS = 6  # Aumentado de 4 a 6 para más contenido
 MIN_PALABRAS_POR_PARrafo = 15
 
 # Frases prohibidas (contenido de menús/publicidad)
@@ -95,7 +99,7 @@ TERMINOS_EXCLUIR = [
 def log(mensaje, tipo='info'):
     iconos = {'info': 'ℹ️', 'exito': '✅', 'error': '❌', 'advertencia': '⚠️', 'debug': '🔍'}
     icono = iconos.get(tipo, 'ℹ️')
-    timestamp = datetime.now().strftime('%H:%M:%S')
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print(f"[{timestamp}] {icono} {mensaje}")
 
 def cargar_json(ruta, default=None):
@@ -275,7 +279,7 @@ def extraer_contenido_estricto(url):
         if contenido:
             contenido = eliminar_ruido_final(contenido)
             creditos = extraer_creditos_limpios(soup)
-            return contenido[:2000], creditos
+            return contenido[:3000], creditos  # Aumentado de 2000 a 3000
         
         return None, None
         
@@ -477,9 +481,12 @@ def dividir_parrafos_estricto(texto):
             parrafo_actual = []
             palabras_en_parrafo = 0
     
-    # Limitar número de párrafos
+    # Limitar número de párrafos (pero mantener todo el contenido en ellos)
     if len(parrafos) > MAX_PARRAFOS:
-        parrafos = parrafos[:MAX_PARRAFOS]
+        # En lugar de cortar, combinar los últimos párrafos
+        if len(parrafos) > MAX_PARRAFOS:
+            ultimos_combinados = ' '.join(parrafos[MAX_PARRAFOS-1:])
+            parrafos = parrafos[:MAX_PARRAFOS-1] + [ultimos_combinados]
     
     return parrafos
 
@@ -489,32 +496,30 @@ def dividir_parrafos_estricto(texto):
 
 def construir_publicacion_validada(titulo, contenido, creditos, fuente):
     """
-    Construye la publicación con validación estricta de formato.
-    Si no cumple estándares, usa fallback.
+    Construye la publicación con TODO el contenido disponible.
     """
     titulo_limpio = limpiar_texto(titulo)
     
     # Intentar dividir en párrafos coherentes
     parrafos = dividir_parrafos_estricto(contenido)
     
-    # Validar que tenemos párrafos válidos
+    # Si no hay párrafos válidos, usar el contenido completo como un solo bloque
     if len(parrafos) < 2:
-        log("   ⚠️ No se pudieron crear párrafos coherentes, usando formato alternativo", 'advertencia')
-        # Fallback: dividir por puntos y agrupar
-        parrafos = crear_parrafos_fallback(contenido)
+        log("   ⚠️ Usando formato de párrafo único", 'advertencia')
+        parrafos = [contenido] if len(contenido) > 100 else []
     
-    # Construir texto con formato estricto
+    # Construir texto
     lineas = []
     
     # Encabezado
     lineas.append(f"📰 ÚLTIMA HORA | {titulo_limpio}")
-    lineas.append("")  # Línea en blanco obligatoria
+    lineas.append("")
     
-    # Párrafos con separación
+    # TODOS los párrafos disponibles (no limitar aquí, ya se limitó en dividir_parrafos)
     for i, parrafo in enumerate(parrafos):
         lineas.append(parrafo)
         if i < len(parrafos) - 1:
-            lineas.append("")  # Línea en blanco entre párrafos
+            lineas.append("")
     
     # Separador
     lineas.append("")
@@ -528,17 +533,7 @@ def construir_publicacion_validada(titulo, contenido, creditos, fuente):
     
     lineas.append(f"📎 {fuente}")
     
-    # Unir y validar
-    texto = '\n'.join(lineas)
-    
-    # Validación final estricta
-    errores = validar_formato_final(texto)
-    if errores:
-        log(f"   ❌ Errores de formato: {errores}", 'advertencia')
-        # Intentar corrección
-        texto = corregir_formato(texto)
-    
-    return texto
+    return '\n'.join(lineas)
 
 def crear_parrafos_fallback(contenido):
     """Crea párrafos básicos si el método principal falla."""
@@ -570,14 +565,6 @@ def validar_formato_final(texto):
     if len(parrafos_contenido) < 2:
         errores.append("Menos de 2 párrafos de contenido")
     
-    # Verificar que hay líneas en blanco entre párrafos
-    for i, linea in enumerate(lineas):
-        if i > 0 and i < len(lineas) - 1:
-            if linea.strip() and not linea.startswith(('─', '✍️', '📎', '📰')):
-                if lineas[i-1].strip() and not lineas[i-1].startswith(('─', '✍️', '📎', '📰', '')):
-                    if lineas[i-1] != '':  # Si la anterior no es línea en blanco
-                        pass  # Podría ser error, pero verificamos contexto
-    
     # Verificar longitud
     if len(texto) < 200:
         errores.append("Texto muy corto")
@@ -602,7 +589,7 @@ def corregir_formato(texto):
     return '\n'.join(nuevas_lineas)
 
 # =============================================================================
-# GESTIÓN DE HISTORIAL (igual que antes)
+# GESTIÓN DE HISTORIAL
 # =============================================================================
 
 def cargar_historial():
@@ -736,24 +723,28 @@ def verificar_tiempo():
     ultima = estado.get('ultima_publicacion')
     
     if not ultima:
+        log("🆕 Primera ejecución o sin historial", 'info')
         return True
     
     try:
         ultima_dt = datetime.fromisoformat(ultima)
         minutos = (datetime.now() - ultima_dt).total_seconds() / 60
         if minutos < TIEMPO_ENTRE_PUBLICACIONES:
-            log(f"⏱️ Esperando... Última hace {minutos:.0f} min", 'info')
+            log(f"⏱️ Esperando... Última hace {minutos:.0f} min (faltan {TIEMPO_ENTRE_PUBLICACIONES - minutos:.0f} min)", 'info')
             return False
+        log(f"✅ Tiempo cumplido: {minutos:.0f} minutos desde última publicación", 'info')
         return True
-    except:
+    except Exception as e:
+        log(f"⚠️ Error parseando fecha, permitiendo ejecución: {e}", 'advertencia')
         return True
 
 # =============================================================================
-# FUENTES DE NOTICIAS (simplificado)
+# FUENTES DE NOTICIAS
 # =============================================================================
 
 def obtener_newsapi_internacional():
     if not NEWS_API_KEY:
+        log("NewsAPI: Sin API key", 'advertencia')
         return []
     
     noticias = []
@@ -800,6 +791,7 @@ def obtener_newsapi_internacional():
                         'puntaje': calcular_puntaje_internacional(titulo, desc)
                     })
         except Exception as e:
+            log(f"NewsAPI error en query '{q[:20]}...': {e}", 'debug')
             continue
     
     urls_vistas = set()
@@ -815,6 +807,7 @@ def obtener_newsapi_internacional():
 
 def obtener_newsdata_internacional():
     if not NEWSDATA_API_KEY:
+        log("NewsData: Sin API key", 'advertencia')
         return []
     
     noticias = []
@@ -850,14 +843,15 @@ def obtener_newsdata_internacional():
                     'fecha': art.get('pubDate'),
                     'puntaje': calcular_puntaje_internacional(titulo, desc)
                 })
-    except:
-        pass
+    except Exception as e:
+        log(f"NewsData error: {e}", 'debug')
     
     log(f"NewsData: {len(noticias)} noticias", 'info')
     return noticias
 
 def obtener_gnews_internacional():
     if not GNEWS_API_KEY:
+        log("GNews: Sin API key", 'advertencia')
         return []
     
     noticias = []
@@ -892,8 +886,8 @@ def obtener_gnews_internacional():
                 'fecha': art.get('publishedAt'),
                 'puntaje': calcular_puntaje_internacional(titulo, desc)
             })
-    except:
-        pass
+    except Exception as e:
+        log(f"GNews error: {e}", 'debug')
     
     log(f"GNews: {len(noticias)} noticias", 'info')
     return noticias
@@ -938,8 +932,8 @@ def obtener_google_news_rss():
                     'fecha': entry.get('published'),
                     'puntaje': calcular_puntaje_internacional(titulo, '')
                 })
-        except:
-            pass
+        except Exception as e:
+            log(f"Google News RSS error: {e}", 'debug')
     
     log(f"Google News RSS: {len(noticias)} noticias", 'info')
     return noticias
@@ -966,8 +960,8 @@ def extraer_imagen_web(url):
             src = img.get('src', '')
             if src and src.startswith('http'):
                 return src
-    except:
-        pass
+    except Exception as e:
+        log(f"Error extrayendo imagen web: {e}", 'debug')
     return None
 
 def descargar_imagen(url):
@@ -990,7 +984,8 @@ def descargar_imagen(url):
         temp_path = f'/tmp/noticia_{generar_hash(url)}.jpg'
         img.save(temp_path, 'JPEG', quality=85)
         return temp_path
-    except:
+    except Exception as e:
+        log(f"Error descargando imagen: {e}", 'debug')
         return None
 
 def crear_imagen_titulo(titulo):
@@ -1016,7 +1011,8 @@ def crear_imagen_titulo(titulo):
         temp_path = f'/tmp/noticia_gen_{generar_hash(titulo)}.jpg'
         img.save(temp_path, 'JPEG', quality=85)
         return temp_path
-    except:
+    except Exception as e:
+        log(f"Error creando imagen: {e}", 'debug')
         return None
 
 def generar_hashtags(titulo, contenido):
@@ -1041,38 +1037,75 @@ def generar_hashtags(titulo, contenido):
     return ' '.join(hashtags)
 
 # =============================================================================
-# PUBLICACIÓN EN FACEBOOK
+# PUBLICACIÓN EN FACEBOOK (CORREGIDO - SIN CORTAR TEXTO)
 # =============================================================================
 
 def publicar_facebook(titulo, texto, imagen_path, hashtags):
+    """
+    Publica en Facebook SIN CORTAR el texto.
+    Usa un límite de 5000 caracteres y corta inteligentemente al final de oraciones.
+    """
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         log("Faltan credenciales Facebook", 'error')
         return False
     
-    mensaje = f"{texto}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+    # Construir mensaje completo
+    firma = f"\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+    mensaje = texto + firma
     
-    # Validación de longitud
-    if len(mensaje) > 2000:
-        lineas = texto.split('\n')
-        texto_cortado = ""
-        for linea in lineas:
-            if len(texto_cortado + linea + "\n") < 1600:
-                texto_cortado += linea + "\n"
+    log(f"   📊 Longitud total: {len(mensaje)} caracteres", 'debug')
+    
+    # Solo cortar si excede el límite de Facebook (5000 chars)
+    if len(mensaje) > LIMITE_CARACTERES_FACEBOOK:
+        log(f"   ✂️ Texto excede {LIMITE_CARACTERES_FACEBOOK} chars, cortando inteligentemente...", 'advertencia')
+        
+        # Reservar espacio para firma y mensaje de continuación
+        espacio_reservado = len(firma) + 50
+        limite_contenido = LIMITE_CARACTERES_FACEBOOK - espacio_reservado
+        
+        texto_cortar = mensaje[:limite_contenido]
+        
+        # Buscar último punto seguido de espacio o final (corte inteligente)
+        puntos_busqueda = [
+            texto_cortar.rfind('. '),
+            texto_cortar.rfind('.\n'),
+            texto_cortar.rfind('!"'),
+            texto_cortar.rfind('?"'),
+            texto_cortar.rfind('."')
+        ]
+        ultimo_punto = max(puntos_busqueda)
+        
+        if ultimo_punto > len(texto_cortar) * 0.5:  # Si encontramos punto después del 50%
+            mensaje = texto_cortar[:ultimo_punto + 1] + "\n\n[Continúa en el enlace de la noticia...]" + firma
+            log(f"   ✅ Cortado en punto final ({ultimo_punto})", 'debug')
+        else:
+            # Si no hay punto claro, buscar último párrafo completo
+            ultimo_salto = texto_cortar.rfind('\n\n')
+            if ultimo_salto > len(texto_cortar) * 0.3:
+                mensaje = texto_cortar[:ultimo_salto] + "\n\n[Continúa en el enlace de la noticia...]" + firma
+                log(f"   ✅ Cortado en párrafo ({ultimo_salto})", 'debug')
             else:
-                break
-        mensaje = f"{texto_cortado.rstrip()}\n\n[...]\n\n{hashtags}\n\n— 🌐 Verdad Hoy"
+                # Último recurso: cortar con puntos suspensivos
+                mensaje = texto_cortar.rstrip() + "...\n\n[Continúa en el enlace...]" + firma
+                log(f"   ⚠️ Corte forzado con puntos suspensivos", 'advertencia')
     
     # Limpieza final
-    mensaje = re.sub(r'https?://\S+', '', mensaje)
-    mensaje = re.sub(r'\n{5,}', '\n\n\n\n', mensaje)
+    mensaje = re.sub(r'https?://\S+', '', mensaje)  # Quitar URLs del texto (van en el botón)
+    mensaje = re.sub(r'\n{5,}', '\n\n\n', mensaje)  # Normalizar saltos de línea
+    
+    log(f"   📄 Longitud final: {len(mensaje)} caracteres", 'debug')
     
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
         
         with open(imagen_path, 'rb') as f:
             files = {'file': ('imagen.jpg', f, 'image/jpeg')}
-            data = {'message': mensaje, 'access_token': FB_ACCESS_TOKEN}
+            data = {
+                'message': mensaje, 
+                'access_token': FB_ACCESS_TOKEN
+            }
             
+            log(f"   📤 Enviando a Facebook...", 'info')
             resp = requests.post(url, files=files, data=data, timeout=60)
             result = resp.json()
         
@@ -1080,14 +1113,20 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
             log(f"✅ Publicado ID: {result['id']}", 'exito')
             return True
         else:
-            log(f"Error FB: {result.get('error', {}).get('message', 'Unknown')}", 'error')
+            error_msg = result.get('error', {}).get('message', 'Unknown')
+            error_code = result.get('error', {}).get('code', 'N/A')
+            log(f"❌ Error FB {error_code}: {error_msg}", 'error')
+            
+            # Si es error de longitud, loggear para debug
+            if 'length' in error_msg.lower() or 'character' in error_msg.lower():
+                log(f"   Mensaje que falló ({len(mensaje)} chars): {mensaje[:200]}...", 'debug')
             return False
     except Exception as e:
-        log(f"Error publicando: {e}", 'error')
+        log(f"❌ Error publicando: {e}", 'error')
         return False
 
 # =============================================================================
-# FUNCIÓN PRINCIPAL
+# FUNCIÓN PRINCIPAL (MEJORADA CON REINTENTOS)
 # =============================================================================
 
 def main():
@@ -1096,10 +1135,15 @@ def main():
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
+    # Verificar credenciales
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
-        log("ERROR: Faltan credenciales de Facebook", 'error')
+        log("❌ ERROR: Faltan credenciales de Facebook (FB_PAGE_ID o FB_ACCESS_TOKEN)", 'error')
         return False
     
+    log(f"🔧 Configuración: {TIEMPO_ENTRE_PUBLICACIONES}min entre posts, {VENTANA_DUPLICADOS_HORAS}h ventana duplicados")
+    log(f"🔑 APIs: NewsAPI={'✅' if NEWS_API_KEY else '❌'} | NewsData={'✅' if NEWSDATA_API_KEY else '❌'} | GNews={'✅' if GNEWS_API_KEY else '❌'}")
+    
+    # Verificar tiempo
     if not verificar_tiempo():
         return False
     
@@ -1121,93 +1165,123 @@ def main():
     log(f"📰 Total recolectadas: {len(todas_noticias)} noticias")
     
     if not todas_noticias:
-        log("ERROR: No se encontraron noticias", 'error')
+        log("❌ ERROR: No se encontraron noticias de ninguna fuente", 'error')
         return False
     
     todas_noticias.sort(key=lambda x: x.get('puntaje', 0), reverse=True)
     
-    # Seleccionar noticia
-    noticia_seleccionada = None
+    # Mostrar top 5 para debug
+    log("🏆 Top 5 noticias por puntaje:", 'debug')
+    for i, n in enumerate(todas_noticias[:5]):
+        log(f"   {i+1}. [{n.get('puntaje', 0)}] {n.get('titulo', '')[:50]}...", 'debug')
     
-    for noticia in todas_noticias:
+    # =================================================================
+    # SELECCIONAR NOTICIA CON REINTENTOS (MEJORADO)
+    # =================================================================
+    
+    noticia_seleccionada = None
+    contenido_final = None
+    creditos_final = None
+    
+    # Intentar con las top 10 noticias, no solo la primera
+    MAX_INTENTOS = 10
+    
+    for intento, noticia in enumerate(todas_noticias[:MAX_INTENTOS]):
         url = noticia.get('url', '')
         titulo = noticia.get('titulo', '')
         
         if not url or not titulo:
+            log(f"   ⚠️ Intento {intento+1}: Noticia sin URL o título", 'debug')
             continue
         
         if noticia_ya_publicada(historial, url, titulo):
+            log(f"   ⚠️ Intento {intento+1}: Ya publicada - {titulo[:40]}...", 'debug')
             continue
         
         if noticia.get('puntaje', 0) < 5:
+            log(f"   ⚠️ Intento {intento+1}: Puntaje bajo ({noticia.get('puntaje', 0)}) - {titulo[:40]}...", 'debug')
             continue
         
-        noticia_seleccionada = noticia
-        break
+        log(f"\n📝 Intento {intento+1}: {titulo[:60]}...")
+        log(f"   Fuente: {noticia['fuente']} | Puntaje: {noticia.get('puntaje', 0)}")
+        
+        # =================================================================
+        # EXTRACCIÓN CON REGLAS ESTRICTAS
+        # =================================================================
+        
+        log("   🌐 Extrayendo contenido...")
+        contenido, creditos = extraer_contenido_estricto(url)
+        
+        if contenido and len(contenido) >= 200:
+            log(f"   ✅ Contenido válido: {len(contenido)} caracteres", 'exito')
+            noticia_seleccionada = noticia
+            contenido_final = contenido
+            creditos_final = creditos
+            break
+        else:
+            # Fallback: usar descripción de API
+            contenido = noticia.get('descripcion', '')
+            if len(contenido) >= 150:
+                log(f"   ⚠️ Usando descripción de API: {len(contenido)} caracteres", 'advertencia')
+                noticia_seleccionada = noticia
+                contenido_final = contenido
+                creditos_final = creditos
+                break
+            else:
+                log(f"   ❌ Contenido insuficiente ({len(contenido) if contenido else 0} chars), probando siguiente...", 'error')
+                continue
     
     if not noticia_seleccionada:
-        log("ERROR: No hay noticias disponibles", 'error')
+        log(f"❌ ERROR: Ninguna de las {MAX_INTENTOS} noticias candidatas tenía contenido válido", 'error')
         return False
-    
-    log(f"\n📝 NOTICIA SELECCIONADA:")
-    log(f"   Título: {noticia_seleccionada['titulo'][:60]}...")
-    log(f"   Fuente: {noticia_seleccionada['fuente']}")
-    
-    # =================================================================
-    # EXTRACCIÓN CON REGLAS ESTRICTAS
-    # =================================================================
-    
-    log("🌐 Extrayendo contenido con validación estricta...")
-    contenido, creditos = extraer_contenido_estricto(noticia_seleccionada['url'])
-    
-    if contenido:
-        log(f"   ✅ Contenido válido: {len(contenido)} caracteres", 'exito')
-    else:
-        log("   ⚠️ Extracción falló, usando descripción de API", 'advertencia')
-        contenido = noticia_seleccionada.get('descripcion', '')
-        if len(contenido) < 100:
-            log("   ❌ Descripción insuficiente, buscando otra noticia...", 'error')
-            return False
     
     # =================================================================
     # CONSTRUIR PUBLICACIÓN VALIDADA
     # =================================================================
     
-    log("📝 Construyendo publicación con formato validado...")
+    log("📝 Construyendo publicación...")
     texto_publicacion = construir_publicacion_validada(
         noticia_seleccionada['titulo'],
-        contenido,
-        creditos,
+        contenido_final,
+        creditos_final,
         noticia_seleccionada['fuente']
     )
     
     # Mostrar preview
-    log("   📄 Preview de la publicación:", 'debug')
-    for linea in texto_publicacion.split('\n')[:8]:
-        log(f"      {linea[:65]}{'...' if len(linea) > 65 else ''}", 'debug')
+    log("   📄 Preview:", 'debug')
+    for i, linea in enumerate(texto_publicacion.split('\n')[:10]):
+        log(f"      {linea[:70]}{'...' if len(linea) > 70 else ''}", 'debug')
+    if len(texto_publicacion.split('\n')) > 10:
+        log(f"      ... y {len(texto_publicacion.split('\n')) - 10} líneas más", 'debug')
     
     # =================================================================
     # PROCESAR IMAGEN Y PUBLICAR
     # =================================================================
     
-    hashtags = generar_hashtags(noticia_seleccionada['titulo'], contenido)
+    hashtags = generar_hashtags(noticia_seleccionada['titulo'], contenido_final)
     
     log("🖼️  Procesando imagen...")
     imagen_path = None
     
     if noticia_seleccionada.get('imagen'):
         imagen_path = descargar_imagen(noticia_seleccionada['imagen'])
+        if imagen_path:
+            log(f"   ✅ Imagen de API descargada", 'debug')
     
     if not imagen_path:
         img_url = extraer_imagen_web(noticia_seleccionada['url'])
         if img_url:
             imagen_path = descargar_imagen(img_url)
+            if imagen_path:
+                log(f"   ✅ Imagen extraída de web", 'debug')
     
     if not imagen_path:
         imagen_path = crear_imagen_titulo(noticia_seleccionada['titulo'])
+        if imagen_path:
+            log(f"   ✅ Imagen de título generada", 'debug')
     
     if not imagen_path:
-        log("ERROR: No se pudo crear imagen", 'error')
+        log("❌ ERROR: No se pudo crear/obtener imagen", 'error')
         return False
     
     # Publicar
@@ -1222,6 +1296,7 @@ def main():
     try:
         if os.path.exists(imagen_path):
             os.remove(imagen_path)
+            log(f"   🗑️ Imagen temporal eliminada", 'debug')
     except:
         pass
     
@@ -1233,17 +1308,72 @@ def main():
         estado['ultima_publicacion'] = datetime.now().isoformat()
         guardar_estado(estado)
         
-        total = cargar_historial().get('estadisticas', {}).get('total_publicadas', 0)
-        log(f"✅ ÉXITO - Total acumulado: {total} noticias", 'exito')
+        # Recargar historial para obtener estadísticas actualizadas
+        historial_actualizado = cargar_historial()
+        total = historial_actualizado.get('estadisticas', {}).get('total_publicadas', 0)
+        log(f"✅ ÉXITO - Total acumulado: {total} noticias publicadas", 'exito')
         return True
+    else:
+        log("❌ Fallo al publicar en Facebook", 'error')
+        return False
+
+# =============================================================================
+# MODO AUTOMÁTICO (NUEVO) - PARA CORRER EN BACKGROUND
+# =============================================================================
+
+def run_scheduler():
+    """
+    Ejecuta el bot continuamente cada hora.
+    Para usar: export BOT_CONTINUO=true && python3 bot_noticias.py
+    """
+    log("🤖 Bot iniciado en MODO AUTOMÁTICO (daemon)", 'info')
+    log(f"   Publicará cada {TIEMPO_ENTRE_PUBLICACIONES} minutos", 'info')
+    log("   Presiona Ctrl+C para detener", 'info')
     
-    return False
+    while True:
+        try:
+            main()
+        except Exception as e:
+            log(f"💥 Error en ciclo principal: {e}", 'error')
+            import traceback
+            traceback.print_exc()
+        
+        # Calcular espera hasta la próxima hora
+        ahora = datetime.now()
+        minutos_actuales = ahora.minute
+        segundos_actuales = ahora.second
+        
+        # Esperar hasta el minuto 0 de la próxima hora
+        segundos_espera = (60 - minutos_actuales) * 60 - segundos_actuales
+        
+        # O simplemente esperar 60 minutos desde ahora
+        segundos_espera = TIEMPO_ENTRE_PUBLICACIONES * 60
+        
+        proxima = ahora + timedelta(seconds=segundos_espera)
+        log(f"⏱️ Próxima ejecución: {proxima.strftime('%H:%M:%S')} (en {segundos_espera//60} min)", 'info')
+        
+        try:
+            time.sleep(segundos_espera)
+        except KeyboardInterrupt:
+            log("👋 Bot detenido por usuario", 'info')
+            break
+
+# =============================================================================
+# PUNTO DE ENTRADA
+# =============================================================================
 
 if __name__ == "__main__":
-    try:
-        exit(0 if main() else 1)
-    except Exception as e:
-        log(f"Error crítico: {e}", 'error')
-        import traceback
-        traceback.print_exc()
-        exit(1)
+    # Verificar si se ejecuta en modo daemon/continuo o una sola vez
+    modo_continuo = os.getenv('BOT_CONTINUO', 'false').lower() == 'true'
+    
+    if modo_continuo:
+        run_scheduler()
+    else:
+        # Modo una sola ejecución (para cron jobs o pruebas manuales)
+        try:
+            exit(0 if main() else 1)
+        except Exception as e:
+            log(f"💥 Error crítico: {e}", 'error')
+            import traceback
+            traceback.print_exc()
+            exit(1)

@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - VERSIÓN 3.3 CORREGIDA
-- ✅ CORRECCIÓN: Múltiples fuentes RSS como respaldo
-- ✅ CORRECCIÓN: Mejor manejo de errores en feeds
-- ✅ CORRECCIÓN: Timeout y reintentos en requests
+Bot de Noticias Internacionales para Facebook - V3.3
 """
 
 import requests
@@ -13,254 +10,39 @@ import re
 import hashlib
 import json
 import os
-import random
-import html as html_module
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup, Comment
 from difflib import SequenceMatcher
-import time
 
-# =============================================================================
 # CONFIGURACIÓN
-# =============================================================================
-
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 NEWSDATA_API_KEY = os.getenv('NEWSDATA_API_KEY')
 GNEWS_API_KEY = os.getenv('GNEWS_API_KEY')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
-
 HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json')
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
-
 TIEMPO_ENTRE_PUBLICACIONES = 60
 VENTANA_DUPLICADOS_HORAS = 72
 UMBRAL_SIMILITUD_TITULO = 0.70
-UMBRAL_SIMILITUD_CONTENIDO = 0.65
 MAX_TITULOS_HISTORIA = 150
 
-BLACKLIST_TITULOS = [
-    r'^\s*última hora\s*$',
-    r'^\s*breaking news\s*$', 
-    r'^\s*noticias de hoy\s*$',
-    r'^\s*resumen de noticias\s*$',
-    r'^\s*titulares del día\s*$',
-    r'^\s*flash informativo\s*$',
-    r'^\s*boletín de noticias\s*$',
-    r'^\s*actualidad internacional\s*$',
-    r'^\s*mundo hoy\s*$',
-    r'^\s*news update\s*$',
-]
-
-# =============================================================================
-# REGLAS ESTRICTAS DE VALIDACIÓN
-# =============================================================================
-
-MIN_CARACTERES_CONTENIDO = 300
-MIN_ORACIONES = 3
-MAX_PARRAFOS = 8
-MIN_PALABRAS_POR_PARrafo = 15
-
-FRASES_PROHIBIDAS = [
-    'actualidad portada', 'publicado:', 'compartir en', 'síguenos en',
-    'cookies', 'aceptar cookies', 'política de privacidad', 'aviso legal',
-    'todos los derechos reservados', 'copyright', 'suscríbete', 'newsletter',
-    'última hora', 'portada', 'menú', 'buscar', 'inicio', 'contacto',
-    'redes sociales', 'facebook', 'twitter', 'instagram', 'whatsapp',
-    'relacionados', 'también te interesa', 'más noticias', 'etiquetas:',
-    'archivado en:', 'ver comentarios', 'ocultar comentarios'
-]
-
-PATRONES_RUIDO = [
-    r'Vista de.*Gettyimages?\.[a-z]+',
-    r'Stringer\s*/\s*\w+',
-    r'@\w+',
-    r'—\s*\w+\s*\(@\w+\)\s*\w+\s+\d+',
-    r'🚀.*$',
-    r'El senador.*afirma.*mintió.*$',
-    r'^\s*—\s*$',
-]
-
-# =============================================================================
-# PALABRAS CLAVE INTERNACIONALES
-# =============================================================================
-
-PALABRAS_ALTA_PRIORIDAD = [
-    "noticias urgentes hoy",
-    "ultima hora internacional", 
-    "breaking news today",
-    "conflicto mundial hoy",
-    "dictadura hoy",
-    "regimen autoritario noticias",
-    "represion gubernamental",
-    "protestas dictadura",
-    "sanciones regimen",
-    "derechos humanos violaciones",
-    "censura gubernamental",
-    "oposicion politica perseguida",
-    "elecciones fraudulentas",
-    "transicion democratica fallida",
-    "guerra hoy",
-    "conflicto armado actual",
-    "ofensiva militar",
-    "ataque aereo hoy",
-    "bombardeo noticias",
-    "cese al fuego roto",
-    "invasion territorial",
-    "resistencia armada",
-    "guerra civil",
-    "intervencion militar",
-    "tierras raras noticias",
-    "minerales estrategicos guerra",
-    "litio conflicto",
-    "cobalto mineria",
-    "recursos naturales disputa",
-    "monopolio minero",
-    "cadena suministro minerales",
-    "china tierras raras",
-    "guerra economica recursos",
-    "sanciones minerales",
-    "drones militares noticias",
-    "inteligencia artificial guerra",
-    "ciberataque militar",
-    "armas hipersonicas",
-    "guerra cibernetica",
-    "robotica militar",
-    "satelite espionaje",
-    "defensa antimisiles",
-    "tecnologia militar avance",
-    "guerra electronica",
-    "ia en combate",
-    "autonomous weapons",
-    "tension diplomatica hoy",
-    "sanciones economicas noticias",
-    "guerra fria 2.0",
-    "alianza militar",
-    "otan noticias",
-    "otsc noticias",
-    "brics guerra",
-    "g7 g20 tension",
-    "embargo armas",
-    "crisis diplomatica",
-    "refugiados guerra",
-    "crisis humanitaria hoy",
-    "ayuda humanitaria bloqueada",
-    "hambruna conflicto",
-    "desplazados guerra",
-    "campo refugiados",
-    "genocidio noticias",
-    "crimenes guerra",
-    "tribunal penal internacional",
-    "noticias america latina hoy",
-    "mexico noticias urgentes",
-    "colombia conflicto actual",
-    "venezuela crisis noticias",
-    "brasil protestas hoy",
-    "argentina economia crisis",
-    "chile noticias hoy",
-    "peru protestas dictadura",
-    "centroamerica violencia",
-    "eeuu noticias hoy",
-    "canada politica actual",
-    "migracion frontera sur",
-    "africa conflictos hoy",
-    "sahel guerra jihadista",
-    "mali noticias conflicto",
-    "nigeria seguridad hoy",
-    "etiopia guerra tigray",
-    "sudan guerra civil",
-    "somalia al shabaab",
-    "rd congo m23",
-    "sudafrica crisis actual",
-    "magreb noticias hoy",
-    "africa coup etat",
-    "pirateria africa",
-    "china taiwan tension",
-    "corea norte noticias",
-    "japon militar noticias",
-    "india pakistan conflicto",
-    "myanmar dictadura noticias",
-    "filipinas china mar",
-    "vietnam noticias hoy",
-    "tailandia protestas",
-    "indonesia noticias",
-    "afganistan taliban",
-    "pakistan terrorismo",
-    "bangladesh crisis",
-    "australia noticias hoy",
-    "nueva zelanda actualidad",
-    "ue noticias hoy",
-    "rusia ucrania guerra",
-    "balkanes tension",
-    "turquia erdogan",
-    "polonia belarus frontera",
-    "hungria orban dictadura",
-    "serbia kosovo conflicto",
-    "caucaso armenia azerbaiyan",
-    "reino unido noticias",
-    "escandinavia noticias",
-    "israel palestina guerra",
-    "iran noticias hoy",
-    "arabia saudi noticias",
-    "yemen guerra hoy",
-    "siria conflicto actual",
-    "libano hezbollah",
-    "irak noticias hoy",
-    "emiratos arabes noticias",
-    "qatar crisis diplomatica",
-    "kurdistan conflicto",
-    "zelensky",
-    "netanyahu",
-    "hamas",
-    "hezbollah",
-    "houthis",
-    "red sea crisis",
-    "taiwan strait",
-    "south china sea",
-    "arctic militarization",
-    "space force",
-    "nuclear proliferation",
-    "climate war",
-    "water conflict",
-    "rare earth embargo",
-    "chip war"
-]
-
-PALABRAS_MEDIA_PRIORIDAD = [
-    'economía mundial', 'mercados globales', 'inflación', 'FMI', 
-    'China', 'EEUU', 'Estados Unidos', 'Reino Unido', 'Alemania', 'Francia',
-    'Banco Mundial', 'reserva federal', 'eurozona', 'petroleo precio',
-    'gas natural', 'energia crisis', 'bitcoin', 'criptomonedas'
-]
-
-TERMINOS_EXCLUIR = [
-    'liga local', 'campeonato municipal', 'feria del pueblo', 
-    'concurso de belleza local', 'elecciones municipales de',
-    'alcalde de', 'gobernador de', 'partido local', 'deporte local',
-]
-
-# =============================================================================
-# FUNCIONES DE UTILIDAD
-# =============================================================================
+BLACKLIST_TITULOS = [r'^\s*última hora\s*$', r'^\s*breaking news\s*$', r'^\s*noticias de hoy\s*$']
+FRASES_PROHIBIDAS = ['cookies', 'política de privacidad', 'suscríbete', 'newsletter', 'redes sociales']
+PALABRAS_ALTA_PRIORIDAD = ["guerra hoy", "conflicto armado", "dictadura", "sanciones", "ucrania", "rusia", "gaza", "israel", "hamas", "iran", "china", "taiwan", "otan", "brics", "economia mundial", "inflacion", "crisis humanitaria", "refugiados", "derechos humanos", "protestas", "coup", "minerales estrategicos", "tierras raras", "drones", "inteligencia artificial guerra", "ciberataque", "zelensky", "netanyahu", "trump", "biden", "putin"]
+PALABRAS_MEDIA_PRIORIDAD = ['economía', 'mercados', 'FMI', 'China', 'EEUU', 'Alemania', 'petroleo', 'gas']
 
 def log(mensaje, tipo='info'):
     iconos = {'info': 'ℹ️', 'exito': '✅', 'error': '❌', 'advertencia': '⚠️', 'debug': '🔍'}
-    icono = iconos.get(tipo, 'ℹ️')
-    timestamp = datetime.now().strftime('%H:%M:%S')
-    print(f"[{timestamp}] {icono} {mensaje}")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] {iconos.get(tipo, 'ℹ️')} {mensaje}")
 
 def cargar_json(ruta, default=None):
-    if default is None:
-        default = {}
+    if default is None: default = {}
     if os.path.exists(ruta):
         try:
             with open(ruta, 'r', encoding='utf-8') as f:
-                contenido = f.read().strip()
-                if not contenido:
-                    return default.copy()
-                return json.loads(contenido)
-        except Exception as e:
-            log(f"Error cargando JSON: {e}", 'error')
+                return json.loads(f.read().strip()) if f.read().strip() else default.copy()
+        except: pass
     return default.copy()
 
 def guardar_json(ruta, datos):
@@ -269,1517 +51,489 @@ def guardar_json(ruta, datos):
         with open(ruta, 'w', encoding='utf-8') as f:
             json.dump(datos, f, ensure_ascii=False, indent=2)
         return True
-    except Exception as e:
-        log(f"Error guardando JSON: {e}", 'error')
-        return False
+    except: return False
 
 def generar_hash(texto):
-    if not texto:
-        return ""
-    texto_normalizado = re.sub(r'[^\w\s]', '', texto.lower().strip())
-    texto_normalizado = re.sub(r'\s+', ' ', texto_normalizado)
-    return hashlib.md5(texto_normalizado.encode()).hexdigest()
-
-def generar_hash_contenido(texto, longitud=800):
-    if not texto:
-        return ""
-    muestra = texto.lower()[:longitud]
-    muestra = re.sub(r'[^\w\s]', '', muestra)
-    muestra = re.sub(r'\s+', ' ', muestra).strip()
-    return hashlib.md5(muestra.encode()).hexdigest()
-
-def normalizar_url(url):
-    if not url:
-        return ""
-    url = re.sub(r'\?.*$', '', url)
-    url = re.sub(r'#.*$', '', url)
-    url = re.sub(r'https?://(www\.)?', '', url)
-    return url.lower().rstrip('/')
+    if not texto: return ""
+    t = re.sub(r'[^\w\s]', '', texto.lower().strip())
+    t = re.sub(r'\s+', ' ', t)
+    return hashlib.md5(t.encode()).hexdigest()
 
 def normalizar_url_v2(url):
-    if not url:
-        return ""
+    if not url: return ""
     url = url.lower().strip()
     url = re.sub(r'^https?://', '', url)
-    url = re.sub(r'^(www\.|m\.|movil\.|mobile\.|touch\.|wap\.)', '', url)
-    url = re.sub(r'\?(utm_source|utm_medium|utm_campaign|fbclid|gclid|ref|source|medium|campaign|from|share|si|spref)=.*$', '', url)
+    url = re.sub(r'^(www\.|m\.|mobile\.)', '', url)
     url = re.sub(r'\?.*$', '', url)
     url = re.sub(r'#.*$', '', url)
-    url = url.rstrip('/')
-    return url
+    return url.rstrip('/')
 
-def calcular_similitud_titulos(titulo1, titulo2):
-    if not titulo1 or not titulo2:
-        return 0.0
-    
-    def normalizar(t):
-        t = t.lower()
-        t = re.sub(r'[^\w\s]', '', t)
-        t = re.sub(r'\s+', ' ', t).strip()
-        return t
-    
-    t1 = normalizar(titulo1)
-    t2 = normalizar(titulo2)
-    
-    if not t1 or not t2:
-        return 0.0
-    
-    return SequenceMatcher(None, t1, t2).ratio()
+def calcular_similitud_titulos(t1, t2):
+    if not t1 or not t2: return 0.0
+    def n(t): return re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', '', t.lower().strip()))
+    return SequenceMatcher(None, n(t1), n(t2)).ratio()
 
 def es_titulo_generico(titulo):
-    if not titulo:
-        return True
-    
-    titulo_lower = titulo.lower().strip()
-    
-    for patron in BLACKLIST_TITULOS:
-        if re.match(patron, titulo_lower):
-            return True
-    
-    stop_words = {'el', 'la', 'los', 'las', 'un', 'una', 'de', 'del', 'al', 
-                  'y', 'o', 'pero', 'en', 'con', 'por', 'para', 'a', 'ante',
-                  'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'at',
-                  'hoy', 'ayer', 'ahora', 'hace', 'después', 'antes'}
-    
-    palabras = [p for p in re.findall(r'\b\w+\b', titulo_lower) 
-                if p not in stop_words and len(p) > 3]
-    
-    if len(set(palabras)) < 4:
-        return True
-    
-    return False
+    if not titulo: return True
+    tl = titulo.lower().strip()
+    for p in BLACKLIST_TITULOS:
+        if re.match(p, tl): return True
+    stop = {'el','la','de','y','en','the','of','to','hoy'}
+    pal = [p for p in re.findall(r'\b\w+\b', tl) if p not in stop and len(p)>3]
+    return len(set(pal)) < 4
 
 def limpiar_texto(texto):
-    if not texto:
-        return ""
-    
-    texto = html_module.unescape(texto)
-    texto = re.sub(r'<[^>]+>', ' ', texto)
-    texto = re.sub(r'\s+', ' ', texto)
-    texto = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', texto)
-    texto = re.sub(r'https?://\S*', '', texto)
-    texto = re.sub(r'[.…]{2,}\s*$', '.', texto)
-    
-    texto = texto.strip()
-    if texto and texto[-1] not in '.!?':
-        texto += '.'
-    
-    return texto.strip()
+    if not texto: return ""
+    import html
+    t = html.unescape(texto)
+    t = re.sub(r'<[^>]+>', ' ', t)
+    t = re.sub(r'\s+', ' ', t)
+    t = re.sub(r'https?://\S*', '', t)
+    t = t.strip()
+    if t and t[-1] not in '.!?': t += '.'
+    return t.strip()
 
-def es_noticia_excluible(titulo, descripcion=""):
-    texto = f"{titulo} {descripcion}".lower()
-    for termino in TERMINOS_EXCLUIR:
-        if termino.lower() in texto:
-            return True
-    return False
-
-def calcular_puntaje_internacional(titulo, descripcion):
-    texto = f"{titulo} {descripcion}".lower()
-    puntaje = 0
-    
-    for frase in PALABRAS_ALTA_PRIORIDAD:
-        palabras = frase.lower().split()
-        for palabra in palabras:
-            if len(palabra) >= 4 and palabra in texto:
-                puntaje += 3
+def calcular_puntaje(titulo, desc):
+    txt = f"{titulo} {desc}".lower()
+    p = 0
+    for f in PALABRAS_ALTA_PRIORIDAD:
+        pal = f.lower().split()
+        for pa in pal:
+            if len(pa) >= 4 and pa in txt:
+                p += 3
                 break
-        
-        if frase.lower() in texto:
-            puntaje += 7
-    
-    for frase in PALABRAS_MEDIA_PRIORIDAD:
-        palabras = frase.lower().split()
-        for palabra in palabras:
-            if len(palabra) >= 3 and palabra in texto:
-                puntaje += 1
+        if f.lower() in txt: p += 7
+    for f in PALABRAS_MEDIA_PRIORIDAD:
+        for pa in f.lower().split():
+            if len(pa) >= 3 and pa in txt:
+                p += 1
                 break
-    
-    if 30 <= len(titulo) <= 150:
-        puntaje += 2
-    
-    if len(descripcion) >= 50:
-        puntaje += 2
-    
-    palabras_encontradas = len([p for p in PALABRAS_ALTA_PRIORIDAD 
-                                if any(word in texto for word in p.lower().split() if len(word) >= 4)])
-    if palabras_encontradas >= 3:
-        puntaje += 5
-    
-    return puntaje
+    if 30 <= len(titulo) <= 150: p += 2
+    if len(desc) >= 50: p += 2
+    return p
 
-# =============================================================================
-# EXTRACCIÓN CON REGLAS ESTRICTAS
-# =============================================================================
-
-def extraer_contenido_estricto(url):
-    if not url:
-        return None, None
-    
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'es-ES,es;q=0.9',
-    }
-    
+def extraer_contenido(url):
+    if not url: return None, None
     try:
-        log(f"   🔍 Extrayendo: {url[:50]}...", 'debug')
-        resp = requests.get(url, headers=headers, timeout=20)
-        resp.raise_for_status()
-        
-        soup = BeautifulSoup(resp.content, 'html.parser')
-        
-        for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 
-                            'form', 'button', 'iframe', 'noscript', 'svg', 'canvas']):
-            element.decompose()
-        
-        for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
-            comment.extract()
-        
-        clases_basura = [
-            'menu', 'nav', 'sidebar', 'footer', 'header', 'ad', 'ads', 'publicidad',
-            'social', 'share', 'comments', 'related', 'tags', 'meta', 'author-box',
-            'breadcrumb', 'pagination', 'widget', 'carousel', 'slider'
-        ]
-        
-        for clase in clases_basura:
-            for elem in soup.find_all(class_=lambda x: x and clase in x.lower()):
-                elem.decompose()
-            for elem in soup.find_all(id=lambda x: x and clase in x.lower()):
-                elem.decompose()
-        
-        contenido = None
-        creditos = None
-        
-        article = soup.find('article')
-        if article:
-            parrafos = article.find_all('p')
-            if len(parrafos) >= 3:
-                texto_limpio = extraer_parrafos_limpios(parrafos)
-                if validar_calidad(texto_limpio):
-                    contenido = texto_limpio
-                    log(f"   ✅ Article válido: {len(contenido)} chars", 'debug')
-        
-        if not contenido:
-            for clase in ['article-content', 'entry-content', 'post-content', 
-                         'article-body', 'story-body', 'content']:
-                elem = soup.find(class_=lambda x: x and clase in x.lower())
-                if elem:
-                    parrafos = elem.find_all('p')
-                    if len(parrafos) >= 2:
-                        texto_limpio = extraer_parrafos_limpios(parrafos)
-                        if validar_calidad(texto_limpio):
-                            contenido = texto_limpio
-                            log(f"   ✅ Clase '{clase}': {len(contenido)} chars", 'debug')
-                            break
-        
-        if not contenido:
-            todos_p = soup.find_all('p')
-            grupos = []
-            grupo_actual = []
-            
-            for p in todos_p:
-                texto = p.get_text(strip=True)
-                if len(texto) > 80 and not tiene_basura(texto):
-                    grupo_actual.append(texto)
-                else:
-                    if len(grupo_actual) >= 3:
-                        grupos.append(grupo_actual)
-                    grupo_actual = []
-            
-            if grupo_actual and len(grupo_actual) >= 3:
-                grupos.append(grupo_actual)
-            
-            if grupos:
-                mejor_grupo = max(grupos, key=lambda x: sum(len(p) for p in x))
-                texto_limpio = ' '.join(mejor_grupo)
-                if validar_calidad(texto_limpio):
-                    contenido = texto_limpio
-                    log(f"   ✅ Grupo de párrafos: {len(contenido)} chars", 'debug')
-        
-        if contenido:
-            contenido = eliminar_ruido_final(contenido)
-            creditos = extraer_creditos_limpios(soup)
-            return contenido[:2000], creditos
-        
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20)
+        s = BeautifulSoup(r.content, 'html.parser')
+        for e in s(['script','style','nav','header','footer']): e.decompose()
+        art = s.find('article')
+        if art:
+            ps = art.find_all('p')
+            if len(ps) >= 3:
+                txt = ' '.join([limpiar_texto(p.get_text()) for p in ps if len(p.get_text()) > 40])
+                if len(txt) > 300: return txt[:2000], None
+        for c in ['article-content','entry-content','post-content']:
+            e = s.find(class_=lambda x: x and c in x.lower())
+            if e:
+                ps = e.find_all('p')
+                if len(ps) >= 2:
+                    txt = ' '.join([limpiar_texto(p.get_text()) for p in ps if len(p.get_text()) > 40])
+                    if len(txt) > 300: return txt[:2000], None
         return None, None
-        
-    except Exception as e:
-        log(f"   ⚠️ Error: {e}", 'debug')
-        return None, None
+    except: return None, None
 
-def extraer_parrafos_limpios(parrafos):
-    textos = []
-    for p in parrafos:
-        texto = p.get_text(strip=True)
-        texto = limpiar_texto(texto)
-        
-        if len(texto) < 40:
-            continue
-        if tiene_basura(texto):
-            continue
-        if texto.count(' ') < 5:
-            continue
-            
-        textos.append(texto)
-    
-    return ' '.join(textos)
+def dividir_parrafos(texto):
+    if not texto: return []
+    ors = [o.strip() for o in re.split(r'(?<=[.!?])\s+', texto) if len(o.strip()) > 15]
+    if len(ors) < 3: return [texto] if len(texto) > 100 else []
+    pars, actual, palabras = [], [], 0
+    for i, o in enumerate(ors):
+        actual.append(o)
+        palabras += len(o.split())
+        if palabras >= 40 or i == len(ors)-1:
+            if len(' '.join(actual).split()) >= 15:
+                pars.append(' '.join(actual))
+            actual, palabras = [], 0
+    return pars[:8]
 
-def tiene_basura(texto):
-    texto_lower = texto.lower()
-    
-    for frase in FRASES_PROHIBIDAS:
-        if frase in texto_lower:
-            return True
-    
-    if texto.isupper() and len(texto) > 10:
-        return True
-    
-    simbolos = sum(1 for c in texto if c in '│├┤┬┴┼║╣╠╩╦╚╔╝╗▓▒░')
-    if simbolos > 2:
-        return True
-    
-    return False
-
-def validar_calidad(texto):
-    if not texto:
-        return False
-    
-    if len(texto) < MIN_CARACTERES_CONTENIDO:
-        log(f"   ❌ Muy corto: {len(texto)} chars", 'debug')
-        return False
-    
-    oraciones = [o for o in re.split(r'[.!?]+', texto) if len(o.strip()) > 10]
-    if len(oraciones) < MIN_ORACIONES:
-        log(f"   ❌ Pocas oraciones: {len(oraciones)}", 'debug')
-        return False
-    
-    ratio_mayus = sum(1 for c in texto if c.isupper()) / len(texto)
-    if ratio_mayus > 0.4:
-        log(f"   ❌ Muchas mayúsculas: {ratio_mayus:.2f}", 'debug')
-        return False
-    
-    palabras_clave = ['dice', 'declaró', 'afirmó', 'señaló', 'indicó', 'según', 'tras']
-    if not any(p in texto.lower() for p in palabras_clave):
-        log(f"   ❌ No parece noticia (falta verbo de comunicación)", 'debug')
-        return False
-    
-    log(f"   ✅ Calidad validada: {len(texto)} chars, {len(oraciones)} oraciones", 'debug')
-    return True
-
-def eliminar_ruido_final(texto):
-    for patron in PATRONES_RUIDO:
-        texto = re.sub(patron, '', texto, flags=re.IGNORECASE | re.MULTILINE)
-    
-    lineas = texto.split('\n')
-    lineas_limpias = []
-    for linea in lineas:
-        linea_limpia = linea.strip()
-        if linea_limpia and not re.match(r'^[\s\—\-\|\•\·]+$', linea_limpia):
-            lineas_limpias.append(linea_limpia)
-    
-    texto = ' '.join(lineas_limpias)
-    texto = re.sub(r'\s+', ' ', texto).strip()
-    
-    if texto and texto[-1] not in '.!?':
-        texto += '.'
-    
-    return texto
-
-def extraer_creditos_limpios(soup):
-    creditos = None
-    
-    for meta in ['author', 'article:author', 'byline', 'creator']:
-        tag = soup.find('meta', attrs={'name': meta}) or soup.find('meta', property=meta)
-        if tag:
-            creditos = tag.get('content', '').strip()
-            if creditos and len(creditos) < 100:
-                return limpiar_credito(creditos)
-    
-    for clase in ['author', 'byline', 'autor', 'firma']:
-        elem = soup.find(class_=lambda x: x and clase in x.lower())
-        if elem:
-            texto = elem.get_text(strip=True)
-            if 5 < len(texto) < 100:
-                return limpiar_credito(texto)
-    
-    return None
-
-def limpiar_credito(credito):
-    if not credito:
-        return None
-    
-    credito = re.sub(r'^(Por|By|De|Autor|Redacción)[\s:]+', '', credito, flags=re.IGNORECASE)
-    credito = re.sub(r'\d{1,2}/\d{1,2}/\d{4}.*$', '', credito)
-    credito = re.sub(r'\d{1,2} de [a-z]+ de \d{4}.*$', '', credito, flags=re.IGNORECASE)
-    
-    credito = credito.strip()
-    
-    if len(credito) < 3 or len(credito) > 80:
-        return None
-    
-    return credito
-
-# =============================================================================
-# DIVISIÓN EN PÁRRAFOS CON REGLAS ESTRICTAS
-# =============================================================================
-
-def dividir_parrafos_estricto(texto):
-    if not texto:
-        return []
-    
-    oraciones = re.split(r'(?<=[.!?])\s+', texto)
-    oraciones = [o.strip() for o in oraciones if len(o.strip()) > 15]
-    
-    if len(oraciones) < 3:
-        return [texto] if len(texto) > 100 else []
-    
-    parrafos = []
-    parrafo_actual = []
-    palabras_en_parrafo = 0
-    
-    for i, oracion in enumerate(oraciones):
-        parrafo_actual.append(oracion)
-        palabras_en_parrafo += len(oracion.split())
-        
-        cerrar = False
-        
-        if palabras_en_parrafo >= 40:
-            cerrar = True
-        
-        if '"' in oracion or '»' in oracion:
-            comillas_abrir = oracion.count('"') + oracion.count('«')
-            comillas_cerrar = oracion.count('"') + oracion.count('»')
-            if comillas_cerrar > comillas_abrir or (comillas_abrir % 2 == 0 and comillas_abrir > 0):
-                if palabras_en_parrafo >= 25:
-                    cerrar = True
-        
-        if i < len(oraciones) - 1:
-            siguiente = oraciones[i + 1].lower()
-            conectores_fuertes = ['sin embargo', 'por otro lado', 'en contraste', 
-                                 'no obstante', 'por el contrario', 'en cuanto a',
-                                 'respecto a', 'sobre', 'acerca de', 'en relación']
-            if any(siguiente.startswith(c) for c in conectores_fuertes):
-                if palabras_en_parrafo >= 20:
-                    cerrar = True
-        
-        if i == len(oraciones) - 1:
-            cerrar = True
-        
-        if cerrar and parrafo_actual:
-            parrafo_texto = ' '.join(parrafo_actual)
-            if len(parrafo_texto.split()) >= MIN_PALABRAS_POR_PARrafo:
-                parrafos.append(parrafo_texto)
-            parrafo_actual = []
-            palabras_en_parrafo = 0
-    
-    if len(parrafos) > MAX_PARRAFOS:
-        parrafos = parrafos[:MAX_PARRAFOS]
-    
-    return parrafos
-
-# =============================================================================
-# CONSTRUCCIÓN DE PUBLICACIÓN CON VALIDACIÓN
-# =============================================================================
-
-def construir_publicacion_validada(titulo, contenido, creditos, fuente):
-    titulo_limpio = limpiar_texto(titulo)
-    
-    parrafos = dividir_parrafos_estricto(contenido)
-    
-    if len(parrafos) < 2:
-        log("   ⚠️ No se pudieron crear párrafos coherentes, usando formato alternativo", 'advertencia')
-        parrafos = crear_parrafos_fallback(contenido)
-    
-    lineas = []
-    
-    lineas.append(f"📰 ÚLTIMA HORA | {titulo_limpio}")
-    lineas.append("")
-    
-    for i, parrafo in enumerate(parrafos):
-        lineas.append(parrafo)
-        if i < len(parrafos) - 1:
-            lineas.append("")
-    
-    lineas.append("")
-    lineas.append("──────────────────────────────")
-    lineas.append("")
-    
-    if creditos:
-        lineas.append(f"✍️ {creditos}")
-        lineas.append("")
-    
+def construir_publicacion(titulo, contenido, creditos, fuente):
+    t = limpiar_texto(titulo)
+    pars = dividir_parrafos(contenido)
+    if len(pars) < 2:
+        ors = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
+        pars = [' '.join(ors[i:i+2]) for i in range(0, len(ors), 2)][:8]
+    lineas = [f"📰 ÚLTIMA HORA | {t}", ""]
+    for i, p in enumerate(pars):
+        lineas.append(p)
+        if i < len(pars)-1: lineas.append("")
+    lineas.extend(["", "──────────────────────────────", ""])
+    if creditos: lineas.extend([f"✍️ {creditos}", ""])
     lineas.append(f"📎 {fuente}")
-    
-    texto = '\n'.join(lineas)
-    
-    errores = validar_formato_final(texto)
-    if errores:
-        log(f"   ❌ Errores de formato: {errores}", 'advertencia')
-        texto = corregir_formato(texto)
-    
-    return texto
-
-def crear_parrafos_fallback(contenido):
-    oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
-    
-    parrafos = []
-    for i in range(0, len(oraciones), 2):
-        grupo = oraciones[i:i+2]
-        if grupo:
-            parrafos.append(' '.join(grupo))
-    
-    return parrafos[:MAX_PARRAFOS]
-
-def validar_formato_final(texto):
-    errores = []
-    
-    lineas = texto.split('\n')
-    
-    parrafos_contenido = [l for l in lineas if l.strip() 
-                         and not l.startswith('─') 
-                         and not l.startswith('✍️')
-                         and not l.startswith('📎')
-                         and not l.startswith('📰')]
-    
-    if len(parrafos_contenido) < 2:
-        errores.append("Menos de 2 párrafos de contenido")
-    
-    for i, linea in enumerate(lineas):
-        if i > 0 and i < len(lineas) - 1:
-            if linea.strip() and not linea.startswith(('─', '✍️', '📎', '📰')):
-                if lineas[i-1].strip() and not lineas[i-1].startswith(('─', '✍️', '📎', '📰', '')):
-                    if lineas[i-1] != '':
-                        pass
-    
-    if len(texto) < 200:
-        errores.append("Texto muy corto")
-    
-    return errores
-
-def corregir_formato(texto):
-    lineas = texto.split('\n')
-    nuevas_lineas = []
-    
-    for i, linea in enumerate(lineas):
-        nuevas_lineas.append(linea)
-        if linea.strip() and not linea.startswith(('─', '✍️', '📎', '📰')):
-            if i < len(lineas) - 1:
-                siguiente = lineas[i + 1]
-                if siguiente.strip() and not siguiente.startswith(('─', '✍️', '📎')):
-                    nuevas_lineas.append("")
-    
-    return '\n'.join(nuevas_lineas)
-
-# =============================================================================
-# GESTIÓN DE HISTORIAL
-# =============================================================================
+    return '\n'.join(lineas)
 
 def cargar_historial():
-    default = {
-        'urls': [], 
-        'hashes': [],
-        'timestamps': [],
-        'titulos': [],
-        'descripciones': [],
-        'hashes_contenido': [],
-        'hashes_permanentes': [],
-        'estadisticas': {'total_publicadas': 0}
-    }
-    datos = cargar_json(HISTORIAL_PATH, default)
-    
-    for key in default.keys():
-        if key not in datos or not isinstance(datos[key], type(default[key])):
-            datos[key] = default[key]
-    
-    return datos
+    d = {'urls': [], 'hashes': [], 'timestamps': [], 'titulos': [], 'descripciones': [], 'hashes_contenido': [], 'hashes_permanentes': [], 'estadisticas': {'total_publicadas': 0}}
+    h = cargar_json(HISTORIAL_PATH, d)
+    for k in d: 
+        if k not in h: h[k] = d[k]
+    return h
 
-def limpiar_historial_antiguo(historial):
-    if not historial or not isinstance(historial, dict):
-        return cargar_historial()
-    
-    ahora = datetime.now()
-    indices_validos = []
-    
-    timestamps = historial.get('timestamps', [])
-    if not isinstance(timestamps, list):
-        timestamps = []
-    
-    for i, ts_str in enumerate(timestamps):
-        try:
-            if isinstance(ts_str, str):
-                ts = datetime.fromisoformat(ts_str)
-                if (ahora - ts) < timedelta(hours=VENTANA_DUPLICADOS_HORAS):
-                    indices_validos.append(i)
-        except:
-            continue
-    
-    total = len(timestamps)
-    for i in range(max(0, total - 50), total):
-        indices_validos.append(i)
-    
-    indices_validos = sorted(set(indices_validos))
-    
-    nuevo_historial = {
-        'urls': [],
-        'hashes': [],
-        'timestamps': [],
-        'titulos': [],
-        'descripciones': [],
-        'hashes_contenido': [],
-        'estadisticas': historial.get('estadisticas', {'total_publicadas': 0})
-    }
-    
-    urls = historial.get('urls', [])
-    hashes = historial.get('hashes', [])
-    titulos = historial.get('titulos', [])
-    descripciones = historial.get('descripciones', [])
-    hashes_contenido = historial.get('hashes_contenido', [])
-    
-    for i in indices_validos:
-        if i < len(urls):
-            nuevo_historial['urls'].append(urls[i])
-        if i < len(hashes):
-            nuevo_historial['hashes'].append(hashes[i])
-        if i < len(timestamps):
-            nuevo_historial['timestamps'].append(timestamps[i])
-        if i < len(titulos):
-            nuevo_historial['titulos'].append(titulos[i])
-        if i < len(descripciones):
-            nuevo_historial['descripciones'].append(descripciones[i])
-        if i < len(hashes_contenido):
-            nuevo_historial['hashes_contenido'].append(hashes_contenido[i])
-    
-    todos_hashes = historial.get('hashes', []) + historial.get('hashes_permanentes', [])
-    nuevo_historial['hashes_permanentes'] = todos_hashes[-300:] if len(todos_hashes) > 300 else todos_hashes
-    
-    return nuevo_historial
-
-def noticia_ya_publicada(historial, url, titulo, descripcion=""):
-    if not historial or not isinstance(historial, dict):
-        return False, "sin_historial"
-    
-    url_norm = normalizar_url_v2(url)
-    hash_titulo = generar_hash(titulo)
-    hash_desc = generar_hash_contenido(descripcion) if descripcion else ""
-    
+def noticia_ya_publicada(h, url, titulo, desc=""):
+    if not h: return False, "sin_historial"
+    url_n = normalizar_url_v2(url)
+    hash_t = generar_hash(titulo)
     log(f"   🔍 Verificando duplicados:", 'debug')
-    log(f"      URL: {url_norm[:60]}...", 'debug')
-    log(f"      Hash: {hash_titulo[:16]}", 'debug')
-    
-    if es_titulo_generico(titulo):
-        log(f"   ⚠️ RECHAZADO: Título demasiado genérico", 'advertencia')
-        return True, "titulo_generico"
-    
-    urls_guardadas = historial.get('urls', [])
-    for i, url_hist in enumerate(urls_guardadas):
-        if not isinstance(url_hist, str):
-            continue
-            
-        if url_norm == normalizar_url_v2(url_hist):
-            log(f"   ⚠️ DUPLICADO: URL idéntica (índice {i})", 'debug')
-            return True, "url_exacta"
-        
-        path_actual = '/'.join(url_norm.split('/')[1:])
-        path_hist = '/'.join(normalizar_url_v2(url_hist).split('/')[1:])
-        
-        if path_actual and path_actual == path_hist and len(path_actual) > 20:
-            log(f"   ⚠️ DUPLICADO: Mismo path de URL", 'debug')
-            return True, "url_path_identico"
-    
-    hashes_actuales = historial.get('hashes', [])
-    hashes_permanentes = historial.get('hashes_permanentes', [])
-    todos_hashes = list(dict.fromkeys(hashes_actuales + hashes_permanentes))
-    
-    if hash_titulo in todos_hashes:
-        log(f"   ⚠️ DUPLICADO: Hash de título exacto", 'debug')
-        return True, "hash_titulo_exacto"
-    
-    if hash_desc and 'hashes_contenido' in historial:
-        if hash_desc in historial['hashes_contenido']:
-            log(f"   ⚠️ DUPLICADO: Mismo contenido/descripción", 'debug')
-            return True, "hash_contenido_exacto"
-    
-    titulos_guardados = historial.get('titulos', [])
-    max_similitud = 0.0
-    
-    for titulo_hist in titulos_guardados:
-        if not isinstance(titulo_hist, str):
-            continue
-        
-        similitud = calcular_similitud_titulos(titulo, titulo_hist)
-        max_similitud = max(max_similitud, similitud)
-        
-        if similitud >= UMBRAL_SIMILITUD_TITULO:
-            log(f"   ⚠️ DUPLICADO: Similitud de título {similitud:.1%}", 'debug')
-            log(f"      Nuevo: {titulo[:50]}...", 'debug')
-            log(f"      Viejo: {titulo_hist[:50]}...", 'debug')
-            return True, f"similitud_titulo_{similitud:.2f}"
-    
-    if descripcion and 'descripciones' in historial:
-        desc_recientes = historial['descripciones'][-30:]
-        
-        for desc_hist in desc_recientes:
-            if not isinstance(desc_hist, str) or not desc_hist:
-                continue
-            
-            palabras_nueva = set(re.findall(r'\b\w{5,}\b', descripcion.lower()))
-            palabras_vieja = set(re.findall(r'\b\w{5,}\b', desc_hist.lower()))
-            
-            if palabras_nueva and palabras_vieja:
-                interseccion = len(palabras_nueva & palabras_vieja)
-                union = len(palabras_nueva | palabras_vieja)
-                similitud_jaccard = interseccion / union if union > 0 else 0
-                
-                if similitud_jaccard >= UMBRAL_SIMILITUD_CONTENIDO:
-                    log(f"   ⚠️ DUPLICADO: Similitud de contenido {similitud_jaccard:.1%}", 'debug')
-                    return True, f"similitud_contenido_{similitud_jaccard:.2f}"
-    
-    log(f"   ✅ NUEVO: Max similitud encontrada {max_similitud:.1%}", 'debug')
+    if es_titulo_generico(titulo): return True, "titulo_generico"
+    for uh in h.get('urls', []):
+        if not isinstance(uh, str): continue
+        if url_n == normalizar_url_v2(uh): return True, "url_exacta"
+    todos_h = list(dict.fromkeys(h.get('hashes', []) + h.get('hashes_permanentes', [])))
+    if hash_t in todos_h: return True, "hash_titulo_exacto"
+    max_sim = 0.0
+    for th in h.get('titulos', []):
+        if not isinstance(th, str): continue
+        sim = calcular_similitud_titulos(titulo, th)
+        max_sim = max(max_sim, sim)
+        if sim >= UMBRAL_SIMILITUD_TITULO: return True, f"similitud_{sim:.2f}"
+    log(f"   ✅ NUEVO: Max similitud {max_sim:.1%}", 'debug')
     return False, "nuevo"
 
-def guardar_historial(historial, url, titulo, descripcion=""):
-    campos_necesarios = {
-        'urls': [], 'hashes': [], 'timestamps': [], 'titulos': [],
-        'descripciones': [], 'hashes_contenido': [], 
-        'hashes_permanentes': [], 'estadisticas': {'total_publicadas': 0}
-    }
-    
-    for campo, default in campos_necesarios.items():
-        if campo not in historial or not isinstance(historial[campo], type(default)):
-            historial[campo] = default
-    
-    url_limpia = normalizar_url_v2(url)
-    hash_titulo = generar_hash(titulo)
-    hash_contenido = generar_hash_contenido(descripcion)
-    ahora = datetime.now().isoformat()
-    
-    historial['urls'].append(url_limpia)
-    historial['hashes'].append(hash_titulo)
-    historial['timestamps'].append(ahora)
-    historial['titulos'].append(titulo)
-    historial['descripciones'].append(descripcion[:600] if descripcion else "")
-    historial['hashes_contenido'].append(hash_contenido)
-    
-    historial['estadisticas']['total_publicadas'] = \
-        historial['estadisticas'].get('total_publicadas', 0) + 1
-    
-    historial['hashes_permanentes'].append(hash_titulo)
-    if len(historial['hashes_permanentes']) > 300:
-        historial['hashes_permanentes'] = historial['hashes_permanentes'][-300:]
-    
-    max_size = MAX_TITULOS_HISTORIA
-    for key in ['urls', 'hashes', 'timestamps', 'titulos', 'descripciones', 'hashes_contenido']:
-        if len(historial[key]) > max_size:
-            historial[key] = historial[key][-max_size:]
-    
-    historial = limpiar_historial_antiguo(historial)
-    
-    guardar_json(HISTORIAL_PATH, historial)
-    return historial
-
-def cargar_estado():
-    default = {'ultima_publicacion': None}
-    datos = cargar_json(ESTADO_PATH, default)
-    return datos
-
-def guardar_estado(estado):
-    guardar_json(ESTADO_PATH, estado)
+def guardar_historial(h, url, titulo, desc=""):
+    for k in ['urls','hashes','timestamps','titulos','descripciones','hashes_contenido','hashes_permanentes','estadisticas']:
+        if k not in h: h[k] = [] if k != 'estadisticas' else {'total_publicadas': 0}
+    h['urls'].append(normalizar_url_v2(url))
+    h['hashes'].append(generar_hash(titulo))
+    h['timestamps'].append(datetime.now().isoformat())
+    h['titulos'].append(titulo)
+    h['descripciones'].append(desc[:600] if desc else "")
+    h['hashes_contenido'].append(generar_hash(desc) if desc else "")
+    h['estadisticas']['total_publicadas'] = h['estadisticas'].get('total_publicadas', 0) + 1
+    h['hashes_permanentes'].append(generar_hash(titulo))
+    if len(h['hashes_permanentes']) > 300: h['hashes_permanentes'] = h['hashes_permanentes'][-300:]
+    for k in ['urls','hashes','timestamps','titulos','descripciones','hashes_contenido']:
+        if len(h[k]) > MAX_TITULOS_HISTORIA: h[k] = h[k][-MAX_TITULOS_HISTORIA:]
+    guardar_json(HISTORIAL_PATH, h)
+    return h
 
 def verificar_tiempo():
-    estado = cargar_estado()
-    ultima = estado.get('ultima_publicacion')
-    
-    if not ultima:
-        return True
-    
+    e = cargar_json(ESTADO_PATH, {'ultima_publicacion': None})
+    u = e.get('ultima_publicacion')
+    if not u: return True
     try:
-        ultima_dt = datetime.fromisoformat(ultima)
-        minutos = (datetime.now() - ultima_dt).total_seconds() / 60
-        if minutos < TIEMPO_ENTRE_PUBLICACIONES:
-            log(f"⏱️ Esperando... Última hace {minutos:.0f} min", 'info')
+        m = (datetime.now() - datetime.fromisoformat(u)).total_seconds() / 60
+        if m < TIEMPO_ENTRE_PUBLICACIONES:
+            log(f"⏱️ Esperando... Última hace {m:.0f} min", 'info')
             return False
-        return True
-    except:
-        return True
+    except: pass
+    return True
 
-# =============================================================================
-# FUENTES DE NOTICIAS - CORREGIDO CON MÚLTIPLES FUENTES RSS
-# =============================================================================
-
-def obtener_newsapi_internacional():
-    if not NEWS_API_KEY:
-        return []
-    
-    noticias = []
-    queries = [
-        'war OR conflict OR Ukraine OR Russia OR Gaza OR Israel',
-        'Trump OR Biden OR Putin OR international politics',
-        'economy OR inflation OR markets OR IMF',
-        'NATO OR UN OR EU OR summit',
-        'Iran OR Israel OR Middle East conflict',
-        'Zelensky OR Netanyahu OR Hamas',
-        'rare earth minerals OR lithium conflict',
-        'AI warfare OR cyber attack military',
-    ]
-    
-    for q in queries:
+def obtener_newsapi():
+    if not NEWS_API_KEY: return []
+    n = []
+    for q in ['war Ukraine Russia Gaza Israel', 'Trump Biden Putin', 'economy inflation IMF', 'NATO UN EU']:
         try:
-            url = 'https://newsapi.org/v2/everything'
-            params = {
-                'apiKey': NEWS_API_KEY,
-                'q': q,
-                'language': 'es',
-                'sortBy': 'publishedAt',
-                'pageSize': 10
-            }
-            
-            resp = requests.get(url, params=params, timeout=15)
-            data = resp.json()
-            
-            if data.get('status') == 'ok':
-                for art in data.get('articles', []):
-                    titulo = art.get('title', '')
-                    if not titulo or '[Removed]' in titulo:
-                        continue
-                    
-                    desc = art.get('description', '')
-                    
-                    if es_noticia_excluible(titulo, desc):
-                        continue
-                    
-                    noticias.append({
-                        'titulo': limpiar_texto(titulo),
-                        'descripcion': limpiar_texto(desc),
-                        'url': art.get('url', ''),
-                        'imagen': art.get('urlToImage'),
-                        'fuente': f"NewsAPI:{art.get('source', {}).get('name', 'Unknown')}",
-                        'fecha': art.get('publishedAt'),
-                        'puntaje': calcular_puntaje_internacional(titulo, desc)
-                    })
-        except Exception as e:
-            continue
-    
-    urls_vistas = set()
-    noticias_unicas = []
-    for n in noticias:
-        url_base = re.sub(r'\?.*$', '', n['url'])
-        if url_base not in urls_vistas:
-            urls_vistas.add(url_base)
-            noticias_unicas.append(n)
-    
-    log(f"NewsAPI: {len(noticias_unicas)} noticias", 'info')
-    return noticias_unicas
+            r = requests.get('https://newsapi.org/v2/everything', params={'apiKey': NEWS_API_KEY, 'q': q, 'language': 'es', 'sortBy': 'publishedAt', 'pageSize': 10}, timeout=15).json()
+            if r.get('status') == 'ok':
+                for a in r.get('articles', []):
+                    t = a.get('title', '')
+                    if t and '[Removed]' not in t:
+                        d = a.get('description', '')
+                        n.append({'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 'url': a.get('url', ''), 'imagen': a.get('urlToImage'), 'fuente': f"NewsAPI:{a.get('source', {}).get('name', 'Unknown')}", 'fecha': a.get('publishedAt'), 'puntaje': calcular_puntaje(t, d)})
+        except: continue
+    log(f"NewsAPI: {len(n)} noticias", 'info')
+    return n
 
-def obtener_newsdata_internacional():
-    if not NEWSDATA_API_KEY:
-        return []
-    
-    noticias = []
+def obtener_newsdata():
+    if not NEWSDATA_API_KEY: return []
     try:
-        url = 'https://newsdata.io/api/1/news'
-        params = {
-            'apikey': NEWSDATA_API_KEY,
-            'language': 'es',
-            'category': 'world,politics,business',
-            'size': 30
-        }
-        
-        resp = requests.get(url, params=params, timeout=15)
-        data = resp.json()
-        
-        if data.get('status') == 'success':
-            for art in data.get('results', []):
-                titulo = art.get('title', '')
-                if not titulo:
-                    continue
-                
-                desc = art.get('description', '')
-                
-                if es_noticia_excluible(titulo, desc):
-                    continue
-                
-                noticias.append({
-                    'titulo': limpiar_texto(titulo),
-                    'descripcion': limpiar_texto(desc),
-                    'url': art.get('link', ''),
-                    'imagen': art.get('image_url'),
-                    'fuente': f"NewsData:{art.get('source_id', 'Unknown')}",
-                    'fecha': art.get('pubDate'),
-                    'puntaje': calcular_puntaje_internacional(titulo, desc)
-                })
-    except:
-        pass
-    
-    log(f"NewsData: {len(noticias)} noticias", 'info')
-    return noticias
+        r = requests.get('https://newsdata.io/api/1/news', params={'apikey': NEWSDATA_API_KEY, 'language': 'es', 'category': 'world,politics', 'size': 30}, timeout=15).json()
+        n = []
+        if r.get('status') == 'success':
+            for a in r.get('results', []):
+                t = a.get('title', '')
+                if t:
+                    d = a.get('description', '')
+                    n.append({'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 'url': a.get('link', ''), 'imagen': a.get('image_url'), 'fuente': f"NewsData:{a.get('source_id', 'Unknown')}", 'fecha': a.get('pubDate'), 'puntaje': calcular_puntaje(t, d)})
+        log(f"NewsData: {len(n)} noticias", 'info')
+        return n
+    except: return []
 
-def obtener_gnews_internacional():
-    if not GNEWS_API_KEY:
-        return []
-    
-    noticias = []
+def obtener_gnews():
+    if not GNEWS_API_KEY: return []
     try:
-        url = 'https://gnews.io/api/v4/top-headlines'
-        params = {
-            'apikey': GNEWS_API_KEY,
-            'lang': 'es',
-            'max': 20,
-            'topic': 'world'
-        }
-        
-        resp = requests.get(url, params=params, timeout=15)
-        data = resp.json()
-        
-        for art in data.get('articles', []):
-            titulo = art.get('title', '')
-            if not titulo:
-                continue
-            
-            desc = art.get('description', '')
-            
-            if es_noticia_excluible(titulo, desc):
-                continue
-            
-            noticias.append({
-                'titulo': limpiar_texto(titulo),
-                'descripcion': limpiar_texto(desc),
-                'url': art.get('url', ''),
-                'imagen': art.get('image'),
-                'fuente': f"GNews:{art.get('source', {}).get('name', 'Unknown')}",
-                'fecha': art.get('publishedAt'),
-                'puntaje': calcular_puntaje_internacional(titulo, desc)
-            })
-    except:
-        pass
-    
-    log(f"GNews: {len(noticias)} noticias", 'info')
-    return noticias
+        r = requests.get('https://gnews.io/api/v4/top-headlines', params={'apikey': GNEWS_API_KEY, 'lang': 'es', 'max': 20, 'topic': 'world'}, timeout=15).json()
+        n = []
+        for a in r.get('articles', []):
+            t = a.get('title', '')
+            if t:
+                d = a.get('description', '')
+                n.append({'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 'url': a.get('url', ''), 'imagen': a.get('image'), 'fuente': f"GNews:{a.get('source', {}).get('name', 'Unknown')}", 'fecha': a.get('publishedAt'), 'puntaje': calcular_puntaje(t, d)})
+        log(f"GNews: {len(n)} noticias", 'info')
+        return n
+    except: return []
 
-def resolver_redireccion_google_news(url_google):
-    if not url_google:
-        return None
-    
-    if not url_google.startswith('https://news.google.com'):
-        return url_google
-    
+def resolver_redireccion_google(url):
+    if not url or not url.startswith('https://news.google.com'): return url
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-        }
-        
-        resp = requests.get(
-            url_google, 
-            headers=headers, 
-            timeout=15, 
-            allow_redirects=True
-        )
-        
-        url_final = resp.url
-        
-        if 'google.com' in url_final and '/sorry' in url_final:
-            log(f"   ⚠️ Google bloqueó la redirección (captcha)", 'debug')
-            return None
-            
-        if url_final == url_google:
-            resp_head = requests.head(
-                url_google, 
-                headers=headers, 
-                timeout=10, 
-                allow_redirects=True
-            )
-            url_final = resp_head.url
-        
-        url_limpia = re.sub(r'\?(utm_source|utm_medium|utm_campaign|fbclid|gclid|ref|source|medium|campaign|from|share|si|spref)=.*$', '', url_final)
-        url_limpia = re.sub(r'#.*$', '', url_limpia)
-        
-        log(f"   🔍 Redirigido: {url_google[:50]}... -> {url_limpia[:60]}...", 'debug')
-        return url_limpia
-        
-    except Exception as e:
-        log(f"   ⚠️ Error resolviendo redirección: {e}", 'debug')
-        return None
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, allow_redirects=True)
+        u = r.url
+        if 'google.com' in u and '/sorry' in u: return None
+        if u == url:
+            u = requests.head(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10, allow_redirects=True).url
+        return re.sub(r'\?.*$', '', re.sub(r'#.*$', '', u))
+    except: return None
 
-def obtener_google_news_rss():
-    feeds = [
-        'https://news.google.com/rss?hl=es&gl=US&ceid=US:es',
-        'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=US&ceid=US:es',
-    ]
-    
-    noticias = []
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    
-    for feed_url in feeds:
+def obtener_google_news():
+    feeds = ['https://news.google.com/rss?hl=es&gl=US&ceid=US:es', 'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=US&ceid=US:es']
+    n = []
+    for f in feeds:
         try:
-            feed = feedparser.parse(feed_url, request_headers=headers)
-            
-            if not feed or not feed.entries:
-                log(f"   ⚠️ Feed vacío o error: {feed_url}", 'debug')
-                continue
-            
-            for entry in feed.entries[:8]:
-                titulo = entry.get('title', '')
-                if not titulo or '[Removed]' in titulo:
-                    continue
-                
-                if ' - ' in titulo:
-                    titulo = titulo.rsplit(' - ', 1)[0]
-                
-                link = entry.get('link', '')
-                
-                url_real = resolver_redireccion_google_news(link)
-                if not url_real:
-                    continue
-                
-                descripcion = entry.get('summary', '') or entry.get('description', '')
-                descripcion = re.sub(r'<[^>]+>', '', descripcion)
-                descripcion = limpiar_texto(descripcion)
-                
-                if es_noticia_excluible(titulo, descripcion):
-                    continue
-                
-                noticias.append({
-                    'titulo': limpiar_texto(titulo),
-                    'descripcion': descripcion,
-                    'url': url_real,
-                    'imagen': None,
-                    'fuente': 'Google News',
-                    'fecha': entry.get('published'),
-                    'puntaje': calcular_puntaje_internacional(titulo, descripcion)
-                })
-        except Exception as e:
-            log(f"Error en feed {feed_url}: {e}", 'debug')
-            continue
-    
-    log(f"Google News RSS: {len(noticias)} noticias", 'info')
-    return noticias
+            feed = feedparser.parse(f, request_headers={'User-Agent': 'Mozilla/5.0'})
+            if not feed or not feed.entries: continue
+            for e in feed.entries[:8]:
+                t = e.get('title', '')
+                if not t or '[Removed]' in t: continue
+                if ' - ' in t: t = t.rsplit(' - ', 1)[0]
+                l = e.get('link', '')
+                u = resolver_redireccion_google(l)
+                if not u: continue
+                d = e.get('summary', '') or e.get('description', '')
+                d = re.sub(r'<[^>]+>', '', d)
+                n.append({'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 'url': u, 'imagen': None, 'fuente': 'Google News', 'fecha': e.get('published'), 'puntaje': calcular_puntaje(t, d)})
+        except: continue
+    log(f"Google News: {len(n)} noticias", 'info')
+    return n
 
-# ✅ NUEVAS FUENTES RSS ALTERNATIVAS
 def obtener_rss_alternativos():
-    """
-    Fuentes RSS alternativas en español como respaldo
-    """
-    feeds = [
-        # BBC Mundo
-        'http://feeds.bbci.co.uk/mundo/rss.xml',
-        # El País - Internacional
-        'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada',
-        # RTVE - Internacional
-        'https://api2.rtve.es/rss/temas_noticias/1190',
-        # Infobae - Mundo
-        'https://www.infobae.com/arc/outboundfeeds/rss/mundo/',
-        # CNN Español
-        'http://rss.cnn.com/rss/edition_world.rss',
-    ]
-    
-    noticias = []
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'application/rss+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    }
-    
-    for feed_url in feeds:
+    feeds = ['http://feeds.bbci.co.uk/mundo/rss.xml', 'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada', 'https://www.infobae.com/arc/outboundfeeds/rss/mundo/']
+    n = []
+    for f in feeds:
         try:
-            log(f"   🔍 Intentando RSS: {feed_url[:40]}...", 'debug')
-            
-            # Descargar feed manualmente con requests
-            resp = requests.get(feed_url, headers=headers, timeout=10)
-            
-            if resp.status_code != 200:
-                continue
-            
-            # Parsear con feedparser
-            feed = feedparser.parse(resp.content)
-            
-            if not feed or not feed.entries:
-                continue
-            
-            fuente_nombre = feed.feed.get('title', 'RSS')[:20]
-            
-            for entry in feed.entries[:5]:  # Solo 5 por fuente para variedad
-                titulo = entry.get('title', '')
-                if not titulo:
-                    continue
-                
-                # Limpiar título de pubs
-                titulo = re.sub(r'\s*-\s*[^-]*$', '', titulo)  # Quitar " - BBC News" al final
-                
-                link = entry.get('link', '')
-                if not link:
-                    continue
-                
-                descripcion = entry.get('summary', '') or entry.get('description', '')
-                descripcion = re.sub(r'<[^>]+>', '', descripcion)
-                descripcion = limpiar_texto(descripcion)
-                
-                if es_noticia_excluible(titulo, descripcion):
-                    continue
-                
-                # Extraer imagen si está en el feed
-                imagen = None
-                if 'media_content' in entry:
-                    imagen = entry.media_content[0].get('url')
-                elif 'links' in entry:
-                    for link_data in entry.links:
-                        if link_data.get('type', '').startswith('image/'):
-                            imagen = link_data.get('href')
-                            break
-                
-                noticias.append({
-                    'titulo': limpiar_texto(titulo),
-                    'descripcion': descripcion,
-                    'url': link,
-                    'imagen': imagen,
-                    'fuente': f"RSS:{fuente_nombre}",
-                    'fecha': entry.get('published'),
-                    'puntaje': calcular_puntaje_internacional(titulo, descripcion)
-                })
-            
-            log(f"   ✅ RSS {fuente_nombre}: {len([n for n in noticias if fuente_nombre in n['fuente']])} noticias", 'debug')
-            
-        except Exception as e:
-            log(f"   ⚠️ Error en RSS {feed_url}: {e}", 'debug')
-            continue
-    
-    log(f"RSS Alternativos: {len(noticias)} noticias", 'info')
-    return noticias
-
-# =============================================================================
-# PROCESAMIENTO DE IMAGEN
-# =============================================================================
+            r = requests.get(f, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            if r.status_code != 200: continue
+            feed = feedparser.parse(r.content)
+            if not feed or not feed.entries: continue
+            fn = feed.feed.get('title', 'RSS')[:20]
+            for e in feed.entries[:5]:
+                t = e.get('title', '')
+                if not t: continue
+                t = re.sub(r'\s*-\s*[^-]*$', '', t)
+                l = e.get('link', '')
+                if not l: continue
+                d = e.get('summary', '') or e.get('description', '')
+                d = re.sub(r'<[^>]+>', '', d)
+                img = None
+                if 'media_content' in e: img = e.media_content[0].get('url')
+                elif 'links' in e:
+                    for ld in e.links:
+                        if ld.get('type', '').startswith('image/'): img = ld.get('href'); break
+                n.append({'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 'url': l, 'imagen': img, 'fuente': f"RSS:{fn}", 'fecha': e.get('published'), 'puntaje': calcular_puntaje(t, d)})
+        except: continue
+    log(f"RSS Alternativos: {len(n)} noticias", 'info')
+    return n
 
 def extraer_imagen_web(url):
-    if not url:
-        return None
-        
+    if not url: return None
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        }
-        
-        resp = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(resp.content, 'html.parser')
-        
-        for meta in ['og:image:secure_url', 'og:image', 'twitter:image:src', 'twitter:image']:
-            tag = soup.find('meta', property=meta) or soup.find('meta', attrs={'name': meta})
-            if tag:
-                img_url = tag.get('content', '').strip()
-                if img_url and img_url.startswith('http') and 'google.com' not in img_url and 'gstatic.com' not in img_url:
-                    log(f"   🖼️  Imagen encontrada (meta {meta}): {img_url[:60]}...", 'debug')
-                    return img_url
-        
-        article = soup.find('article') or soup.find('main') or soup.find('div', class_=re.compile(r'article|content|story', re.I))
-        if article:
-            imgs = article.find_all('img')
-            for img in imgs:
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+        s = BeautifulSoup(r.content, 'html.parser')
+        for m in ['og:image', 'twitter:image']:
+            t = s.find('meta', property=m) or s.find('meta', attrs={'name': m})
+            if t:
+                i = t.get('content', '').strip()
+                if i and i.startswith('http') and 'google' not in i.lower(): return i
+        art = s.find('article') or s.find('main')
+        if art:
+            for img in art.find_all('img'):
                 src = img.get('data-src') or img.get('src', '')
-                if src and src.startswith('http'):
-                    width = img.get('width', '0')
-                    height = img.get('height', '0')
-                    if width.isdigit() and int(width) >= 300:
-                        if 'google' not in src.lower() and 'logo' not in src.lower():
-                            log(f"   🖼️  Imagen encontrada (artículo): {src[:60]}...", 'debug')
-                            return src
-                    elif 'upload' in src or 'wp-content' in src or 'cdn' in src:
-                        if 'google' not in src.lower() and 'logo' not in src.lower():
-                            log(f"   🖼️  Imagen encontrada (CDN): {src[:60]}...", 'debug')
-                            return src
-        
-        all_imgs = soup.find_all('img', src=re.compile(r'^https?://'))
-        for img in all_imgs:
-            src = img.get('src', '')
-            if src and len(src) > 20:
-                if any(bad in src.lower() for bad in ['logo', 'icon', 'button', 'avatar', 'user', 'profile', 'google', 'gstatic']):
-                    continue
-                if any(good in src.lower() for good in ['photo', 'image', 'pic', 'upload', 'asset', 'cdn', 'media']):
-                    log(f"   🖼️  Imagen encontrada (fallback): {src[:60]}...", 'debug')
+                if src and src.startswith('http') and 'google' not in src.lower() and 'logo' not in src.lower():
                     return src
-        
-        log("   ⚠️ No se encontró imagen válida en el artículo", 'debug')
         return None
-        
-    except Exception as e:
-        log(f"   ⚠️ Error extrayendo imagen: {e}", 'debug')
-        return None
+    except: return None
 
 def descargar_imagen(url):
-    if not url or not url.startswith('http'):
-        return None
-    
-    blocked_patterns = [
-        'google.com', 'gstatic.com', 'googleapis.com',
-        'facebook.com', 'fbcdn.net',
-        'twitter.com', 'twimg.com',
-        'logo', 'icon', 'favicon', 'avatar', 'button', 'sprite'
-    ]
-    
-    url_lower = url.lower()
-    for pattern in blocked_patterns:
-        if pattern in url_lower:
-            log(f"   ⚠️ URL bloqueada (logo/icon): {pattern}", 'debug')
-            return None
-    
+    if not url: return None
+    for b in ['google.com', 'gstatic.com', 'facebook.com', 'logo', 'icon', 'favicon']:
+        if b in url.lower(): return None
     try:
         from PIL import Image
         from io import BytesIO
-        
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-        }
-        
-        resp = requests.get(url, headers=headers, timeout=20, stream=True)
-        
-        if resp.status_code != 200:
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20, stream=True)
+        if r.status_code != 200: return None
+        if 'image' not in r.headers.get('content-type', ''): return None
+        img = Image.open(BytesIO(r.content))
+        w, h = img.size
+        if w < 400 or h < 300: return None
+        if w/h > 4 or w/h < 0.2: return None
+        if img.mode in ('RGBA', 'P'): img = img.convert('RGB')
+        img.thumbnail((1200, 1200))
+        p = f'/tmp/noticia_{generar_hash(url)}.jpg'
+        img.save(p, 'JPEG', quality=85)
+        if os.path.getsize(p) < 5000:
+            os.remove(p)
             return None
-        
-        content_type = resp.headers.get('content-type', '')
-        if 'image' not in content_type:
-            log(f"   ⚠️ Content-Type no es imagen: {content_type}", 'debug')
-            return None
-        
-        img_data = BytesIO(resp.content)
-        img = Image.open(img_data)
-        
-        width, height = img.size
-        
-        if width < 400 or height < 300:
-            log(f"   ⚠️ Imagen muy pequeña: {width}x{height}", 'debug')
-            return None
-        
-        ratio = width / height
-        if ratio > 4 or ratio < 0.2:
-            log(f"   ⚠️ Proporción sospechosa: {ratio:.2f}", 'debug')
-            return None
-        
-        if img.mode in ('RGBA', 'P'):
-            img = img.convert('RGB')
-        
-        img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
-        
-        temp_path = f'/tmp/noticia_{generar_hash(url)}.jpg'
-        img.save(temp_path, 'JPEG', quality=85, optimize=True)
-        
-        file_size = os.path.getsize(temp_path)
-        if file_size < 5000:
-            log(f"   ⚠️ Archivo muy pequeño: {file_size} bytes", 'debug')
-            os.remove(temp_path)
-            return None
-        
-        log(f"   ✅ Imagen descargada: {width}x{height}, {file_size/1024:.1f}KB", 'debug')
-        return temp_path
-        
-    except Exception as e:
-        log(f"   ⚠️ Error descargando imagen: {e}", 'debug')
-        return None
+        return p
+    except: return None
 
 def crear_imagen_titulo(titulo):
     try:
         from PIL import Image, ImageDraw, ImageFont
         import textwrap
-        
         img = Image.new('RGB', (1200, 630), color='#0f172a')
         draw = ImageDraw.Draw(img)
-        
         try:
-            font_paths = [
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-                "/System/Library/Fonts/Helvetica.ttc",
-                "C:/Windows/Fonts/arialbd.ttf",
-            ]
-            
-            font_big = None
-            font_small = None
-            
-            for path in font_paths:
-                if os.path.exists(path):
-                    font_big = ImageFont.truetype(path, 44)
-                    font_small = ImageFont.truetype(path, 24)
-                    break
-            
-            if not font_big:
-                font_big = ImageFont.load_default()
-                font_small = font_big
-                
-        except Exception as e:
-            font_big = ImageFont.load_default()
-            font_small = font_big
-        
+            fb = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 44)
+            fs = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
+        except:
+            fb = fs = ImageFont.load_default()
         draw.rectangle([(0, 0), (1200, 8)], fill='#3b82f6')
-        
-        titulo_envuelto = textwrap.fill(titulo[:140], width=36)
-        
-        lineas = titulo_envuelto.split('\n')
-        altura_texto = len(lineas) * 50
-        y_inicio = (630 - altura_texto) // 2 - 50
-        
-        draw.text((60, y_inicio), titulo_envuelto, font=font_big, fill='white')
-        
-        draw.text((60, 550), "🌍 Noticias Internacionales", font=font_small, fill='#94a3b8')
-        draw.text((60, 580), "Verdad Hoy • Agencia de Noticias", font=font_small, fill='#64748b')
-        
-        temp_path = f'/tmp/noticia_gen_{generar_hash(titulo)}.jpg'
-        img.save(temp_path, 'JPEG', quality=90, optimize=True)
-        
-        log(f"   ✅ Imagen generada: {temp_path}", 'debug')
-        return temp_path
-        
-    except Exception as e:
-        log(f"   ❌ Error creando imagen: {e}", 'debug')
-        return None
+        tt = textwrap.fill(titulo[:140], width=36)
+        ls = tt.split('\n')
+        y = (630 - len(ls)*50) // 2 - 50
+        draw.text((60, y), tt, font=fb, fill='white')
+        draw.text((60, 550), "🌍 Noticias Internacionales", font=fs, fill='#94a3b8')
+        draw.text((60, 580), "Verdad Hoy • Agencia de Noticias", font=fs, fill='#64748b')
+        p = f'/tmp/noticia_gen_{generar_hash(titulo)}.jpg'
+        img.save(p, 'JPEG', quality=90)
+        return p
+    except: return None
 
-def generar_hashtags(titulo, contenido):
-    texto = f"{titulo} {contenido}".lower()
-    hashtags = ['#NoticiasInternacionales', '#ÚltimaHora']
-    
-    temas = {
-        'guerra|conflicto|ataque|bombardeo': '#ConflictoArmado',
-        'ucrania|rusia|zelensky|putin': '#UcraniaRusia',
-        'gaza|israel|palestina|hamas|netanyahu': '#IsraelGaza',
-        'trump|biden|putin': '#PolíticaGlobal',
-        'economía|mercados|inflación': '#EconomíaMundial',
-        'irán|iran': '#Irán',
-        'dron|drones|ia|inteligencia artificial': '#TecnologíaMilitar',
-        'china|taiwan': '#ChinaTaiwán',
-    }
-    
-    for patron, tag in temas.items():
-        if re.search(patron, texto):
-            hashtags.append(tag)
-            break
-    
-    hashtags.append('#Mundo')
-    return ' '.join(hashtags)
-
-# =============================================================================
-# PUBLICACIÓN EN FACEBOOK
-# =============================================================================
+def generar_hashtags(t, c):
+    txt = f"{t} {c}".lower()
+    h = ['#NoticiasInternacionales', '#ÚltimaHora']
+    temas = {'guerra|conflicto|ataque': '#ConflictoArmado', 'ucrania|rusia|putin': '#UcraniaRusia', 'gaza|israel|hamas': '#IsraelGaza', 'trump|biden': '#PolíticaGlobal', 'economía|inflación': '#EconomíaMundial', 'china|taiwan': '#ChinaTaiwán'}
+    for p, tag in temas.items():
+        if re.search(p, txt): h.append(tag); break
+    h.append('#Mundo')
+    return ' '.join(h)
 
 def publicar_facebook(titulo, texto, imagen_path, hashtags):
-    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
-        log("Faltan credenciales Facebook", 'error')
-        return False
-    
-    mensaje = f"{texto}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
-    
-    if len(mensaje) > 2000:
-        lineas = texto.split('\n')
-        texto_cortado = ""
-        for linea in lineas:
-            if len(texto_cortado + linea + "\n") < 1600:
-                texto_cortado += linea + "\n"
-            else:
-                break
-        mensaje = f"{texto_cortado.rstrip()}\n\n[...]\n\n{hashtags}\n\n— 🌐 Verdad Hoy"
-    
-    mensaje = re.sub(r'https?://\S+', '', mensaje)
-    mensaje = re.sub(r'\n{5,}', '\n\n\n\n', mensaje)
-    
+    if not FB_PAGE_ID or not FB_ACCESS_TOKEN: return False
+    m = f"{texto}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+    if len(m) > 2000:
+        l = texto.split('\n')
+        tc = ""
+        for ln in l:
+            if len(tc + ln + "\n") < 1600: tc += ln + "\n"
+            else: break
+        m = f"{tc.rstrip()}\n\n[...]\n\n{hashtags}\n\n— 🌐 Verdad Hoy"
+    m = re.sub(r'https?://\S+', '', m)
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
-        
         with open(imagen_path, 'rb') as f:
-            files = {'file': ('imagen.jpg', f, 'image/jpeg')}
-            data = {'message': mensaje, 'access_token': FB_ACCESS_TOKEN}
-            
-            resp = requests.post(url, files=files, data=data, timeout=60)
-            result = resp.json()
-        
-        if resp.status_code == 200 and 'id' in result:
-            log(f"✅ Publicado ID: {result['id']}", 'exito')
+            r = requests.post(url, files={'file': ('imagen.jpg', f, 'image/jpeg')}, data={'message': m, 'access_token': FB_ACCESS_TOKEN}, timeout=60).json()
+        if 'id' in r:
+            log(f"✅ Publicado ID: {r['id']}", 'exito')
             return True
-        else:
-            log(f"Error FB: {result.get('error', {}).get('message', 'Unknown')}", 'error')
-            return False
-    except Exception as e:
-        log(f"Error publicando: {e}", 'error')
-        return False
-
-# =============================================================================
-# FUNCIÓN PRINCIPAL - CORREGIDA CON FUENTES ALTERNATIVAS
-# =============================================================================
+    except: pass
+    return False
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V3.3 CORREGIDO")
+    print("🌍 BOT DE NOTICIAS - V3.3")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
-        log("ERROR: Faltan credenciales de Facebook", 'error')
+        log("ERROR: Faltan credenciales Facebook", 'error')
         return False
     
     if not verificar_tiempo():
         return False
     
-    historial = cargar_historial()
-    log(f"📊 Historial: {len(historial.get('urls', []))} URLs recientes (72h)")
-    log(f"📊 Hashes permanentes: {len(historial.get('hashes_permanentes', []))} guardados")
+    h = cargar_historial()
+    log(f"📊 Historial: {len(h.get('urls', []))} URLs")
     
-    todas_noticias = []
+    n = []
+    if NEWS_API_KEY: n.extend(obtener_newsapi())
+    if NEWSDATA_API_KEY and len(n) < 15: n.extend(obtener_newsdata())
+    if GNEWS_API_KEY and len(n) < 20: n.extend(obtener_gnews())
+    if len(n) < 25:
+        gn = obtener_google_news()
+        if gn: n.extend(gn)
+    if len(n) < 10:
+        log("⚠️ Intentando RSS alternativos...", 'advertencia')
+        alt = obtener_rss_alternativos()
+        if alt: n.extend(alt)
     
-    # Fuentes principales (con API key)
-    if NEWS_API_KEY:
-        todas_noticias.extend(obtener_newsapi_internacional())
-    if NEWSDATA_API_KEY and len(todas_noticias) < 15:
-        todas_noticias.extend(obtener_newsdata_internacional())
-    if GNEWS_API_KEY and len(todas_noticias) < 20:
-        todas_noticias.extend(obtener_gnews_internacional())
+    log(f"📰 Total: {len(n)} noticias")
     
-    # Google News RSS
-    if len(todas_noticias) < 25:
-        noticias_gn = obtener_google_news_rss()
-        if noticias_gn:
-            todas_noticias.extend(noticias_gn)
-    
-    # ✅ FUENTES ALTERNATIVAS RSS (si todo lo demás falla)
-    if len(todas_noticias) < 10:
-        log("⚠️ Pocas noticias de fuentes principales, intentando RSS alternativos...", 'advertencia')
-        noticias_alt = obtener_rss_alternativos()
-        if noticias_alt:
-            todas_noticias.extend(noticias_alt)
-    
-    log(f"📰 Total recolectadas: {len(todas_noticias)} noticias")
-    
-    if not todas_noticias:
-        log("ERROR: No se encontraron noticias de ninguna fuente", 'error')
-        log("💡 Sugerencias:", 'info')
-        log("   1. Verificar conexión a internet", 'info')
-        log("   2. Las fuentes RSS pueden estar bloqueando temporalmente", 'info')
-        log("   3. Intentar en unos minutos", 'info')
+    if not n:
+        log("ERROR: No se encontraron noticias", 'error')
         return False
     
-    todas_noticias.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
+    n.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
     
-    noticia_seleccionada = None
-    intentos = 0
-    max_intentos = len(todas_noticias)
+    sel = None
+    cont = None
+    cred = None
     
-    while intentos < max_intentos:
-        noticia = todas_noticias[intentos]
-        url = noticia.get('url', '')
-        titulo = noticia.get('titulo', '')
-        descripcion = noticia.get('descripcion', '')
-        intentos += 1
+    for i, nt in enumerate(n):
+        url = nt.get('url', '')
+        t = nt.get('titulo', '')
+        d = nt.get('descripcion', '')
         
-        if not url or not titulo:
+        if not url or not t: continue
+        
+        log(f"   [{i+1}] Probando: {t[:50]}...", 'debug')
+        
+        dup, rz = noticia_ya_publicada(h, url, t, d)
+        if dup:
+            log(f"      ❌ {rz}", 'debug')
             continue
         
-        log(f"   [{intentos}] Probando: {titulo[:50]}...", 'debug')
-        
-        es_dup, razon = noticia_ya_publicada(historial, url, titulo, descripcion)
-        if es_dup:
-            log(f"      ❌ Rechazada: {razon}", 'debug')
+        if nt.get('puntaje', 0) < 3:
+            log(f"      ❌ Puntaje bajo ({nt.get('puntaje', 0)})", 'debug')
             continue
         
-        if noticia.get('puntaje', 0) < 3:
-            log(f"      ❌ Rechazada: Puntaje bajo ({noticia.get('puntaje', 0)})", 'debug')
-            continue
+        log(f"      ✅ Aceptada", 'debug')
+        log(f"\n📝 NOTICIA: {t[:60]}...")
+        log(f"   Fuente: {nt['fuente']} | Puntaje: {nt.get('puntaje', 0)}")
         
-        log(f"      ✅ Aceptada: Noticia válida encontrada", 'debug')
+        cont, cred = extraer_contenido(url)
         
-        log(f"\n📝 NOTICIA SELECCIONADA:")
-        log(f"   Título: {noticia['titulo'][:60]}...")
-        log(f"   Fuente: {noticia['fuente']}")
-        log(f"   Puntaje: {noticia.get('puntaje', 0)}")
-        
-        log("🌐 Extrayendo contenido con validación estricta...")
-        contenido,contenido, creditos = extraer_contenido_estricto(noticia['url'])
-        
-        if contenido:
-            log(f"   ✅ Contenido válido: {len(contenido)} caracteres", 'exito')
-            noticia_seleccionada = noticia
+        if cont:
+            log(f"   ✅ Contenido: {len(cont)} chars", 'exito')
+            sel = nt
             break
         else:
-            log("   ⚠️ Extracción falló, usando descripción de API", 'advertencia')
-            contenido = noticia.get('descripcion', '')
-            
-            if len(contenido) >= 100:
-                log(f"   ✅ Usando descripción: {len(contenido)} caracteres", 'exito')
-                noticia_seleccionada = noticia
+            log("   ⚠️ Sin contenido, usando descripción", 'advertencia')
+            cont = d
+            if len(cont) >= 100:
+                log(f"   ✅ Descripción: {len(cont)} chars", 'exito')
+                sel = nt
                 break
             else:
-                log(f"   ❌ Descripción insuficiente ({len(contenido)} chars), probando siguiente...", 'advertencia')
-                historial = guardar_historial(
-                    historial, 
-                    noticia['url'], 
-                    noticia['titulo'],
-                    noticia.get('descripcion', '')
-                )
+                log(f"   ❌ Descripción corta ({len(cont)}), siguiente...", 'advertencia')
+                h = guardar_historial(h, url, t, d)
                 continue
     
-    if not noticia_seleccionada:
-        log(f"ERROR: No hay noticias nuevas disponibles (revisadas {intentos} noticias)", 'error')
-        log("💡 Sugerencia: Esperar a que las APIs actualicen su contenido o ampliar ventana de tiempo", 'info')
+    if not sel:
+        log("ERROR: No hay noticias válidas", 'error')
         return False
     
-    log("📝 Construyendo publicación con formato validado...")
-    texto_publicacion = construir_publicacion_validada(
-        noticia_seleccionada['titulo'],
-        contenido,
-        creditos,
-        noticia_seleccionada['fuente']
-    )
-    
-    log("   📄 Preview de la publicación:", 'debug')
-    for linea in texto_publicacion.split('\n')[:8]:
-        log(f"      {linea[:65]}{'...' if len(linea) > 65 else ''}", 'debug')
-    
-    hashtags = generar_hashtags(noticia_seleccionada['titulo'], contenido)
+    pub = construir_publicacion(sel['titulo'], cont, cred, sel['fuente'])
+    ht = generar_hashtags(sel['titulo'], cont)
     
     log("🖼️  Procesando imagen...")
-    imagen_path = None
-    fuente = noticia_seleccionada.get('fuente', '')
+    img_path = None
     
-    if noticia_seleccionada.get('imagen') and 'Google News' not in fuente:
-        log("   🔍 Intentando imagen de API...", 'debug')
-        imagen_path = descargar_imagen(noticia_seleccionada['imagen'])
+    if sel.get('imagen') and 'Google' not in sel.get('fuente', ''):
+        img_path = descargar_imagen(sel['imagen'])
     
-    if not imagen_path:
-        log("   🔍 Extrayendo imagen del artículo web...", 'debug')
-        img_url = extraer_imagen_web(noticia_seleccionada['url'])
-        if img_url:
-            imagen_path = descargar_imagen(img_url)
+    if not img_path:
+        iu = extraer_imagen_web(sel['url'])
+        if iu: img_path = descargar_imagen(iu)
     
-    if not imagen_path:
-        log("   🎨 Generando imagen con título...", 'debug')
-        imagen_path = crear_imagen_titulo(noticia_seleccionada['titulo'])
+    if not img_path:
+        img_path = crear_imagen_titulo(sel['titulo'])
     
-    if not imagen_path:
-        log("ERROR: No se pudo obtener ni generar imagen", 'error')
+    if not img_path:
+        log("ERROR: Sin imagen", 'error')
         return False
     
-    exito = publicar_facebook(
-        noticia_seleccionada['titulo'],
-        texto_publicacion,
-        imagen_path,
-        hashtags
-    )
+    ok = publicar_facebook(sel['titulo'], pub, img_path, ht)
     
     try:
-        if os.path.exists(imagen_path):
-            os.remove(imagen_path)
-    except:
-        pass
+        if os.path.exists(img_path): os.remove(img_path)
+    except: pass
     
-    if exito:
-        guardar_historial(
-            historial, 
-            noticia_seleccionada['url'], 
-            noticia_seleccionada['titulo'],
-            noticia_seleccionada.get('descripcion', '') + ' ' + contenido[:400]
-        )
-        
-        estado = cargar_estado()
-        estado['ultima_publicacion'] = datetime.now().isoformat()
-        guardar_estado(estado)
-        
-        total = cargar_historial().get('estadisticas', {}).get('total_publicadas', 0)
-        log(f"✅ ÉXITO - Total acumulado: {total} noticias", 'exito')
+    if ok:
+        guardar_historial(h, sel['url'], sel['titulo'], sel.get('descripcion', '') + ' ' + cont[:400])
+        guardar_json(ESTADO_PATH, {'ultima_publicacion': datetime.now().isoformat()})
+        log(f"✅ ÉXITO - Total: {cargar_historial().get('estadisticas', {}).get('total_publicadas', 0)} noticias", 'exito')
         return True
     
     return False

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - VERSIÓN CORREGIDA
+Bot de Noticias Internacionales para Facebook - VERSIÓN 3.0 CORREGIDA
 - CORRECCIÓN CRÍTICA: Sistema anti-duplicados mejorado con detección de similitud
 - Persistencia de historial extendida a 72 horas
-- Detección de títulos similares (85% de coincidencia)
+- Detección de títulos similares (70% de coincidencia) - ANTES 85%
 - Más palabras clave para noticias frescas
+- 🆕 NUEVO: Verificación de contenido/descripción
+- 🆕 NUEVO: Normalización agresiva de URLs (móvil/desktop)
+- 🆕 NUEVO: Blacklist de títulos genéricos
 """
 
 import requests
@@ -18,7 +21,7 @@ import random
 import html as html_module
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup, Comment
-from difflib import SequenceMatcher  # 🆕 NUEVO: Para detectar similitud de títulos
+from difflib import SequenceMatcher
 
 # =============================================================================
 # CONFIGURACIÓN
@@ -34,8 +37,24 @@ HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json'
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 
 TIEMPO_ENTRE_PUBLICACIONES = 60  # 60 minutos
-VENTANA_DUPLICADOS_HORAS = 72    # 🆕 CORREGIDO: 72 horas (3 días) en lugar de 24
-UMBRAL_SIMILITUD_TITULO = 0.85   # 🆕 NUEVO: 85% de similitud para considerar duplicado
+VENTANA_DUPLICADOS_HORAS = 72    # 72 horas (3 días)
+UMBRAL_SIMILITUD_TITULO = 0.70   # 🔧 CORREGIDO: 70% en lugar de 85%
+UMBRAL_SIMILITUD_CONTENIDO = 0.65  # 🆕 NUEVO: Verificación de contenido
+MAX_TITULOS_HISTORIA = 150       # 🆕 Aumentado para mejor cobertura
+
+# 🆕 NUEVO: Blacklist de títulos genéricos que se repiten
+BLACKLIST_TITULOS = [
+    r'^\s*última hora\s*$',
+    r'^\s*breaking news\s*$', 
+    r'^\s*noticias de hoy\s*$',
+    r'^\s*resumen de noticias\s*$',
+    r'^\s*titulares del día\s*$',
+    r'^\s*flash informativo\s*$',
+    r'^\s*boletín de noticias\s*$',
+    r'^\s*actualidad internacional\s*$',
+    r'^\s*mundo hoy\s*$',
+    r'^\s*news update\s*$',
+]
 
 # =============================================================================
 # REGLAS ESTRICTAS DE VALIDACIÓN
@@ -291,22 +310,61 @@ def generar_hash(texto):
     texto_normalizado = re.sub(r'\s+', ' ', texto_normalizado)
     return hashlib.md5(texto_normalizado.encode()).hexdigest()  # 32 caracteres, no 16
 
+def generar_hash_contenido(texto, longitud=800):
+    """
+    🆕 NUEVO: Crea hash del contenido/descripción para detectar noticias 
+    idénticas con títulos diferentes entre fuentes
+    """
+    if not texto:
+        return ""
+    
+    # Normalizar: primeros N chars, lowercase, sin espacios extra
+    muestra = texto.lower()[:longitud]
+    muestra = re.sub(r'[^\w\s]', '', muestra)
+    muestra = re.sub(r'\s+', ' ', muestra).strip()
+    
+    return hashlib.md5(muestra.encode()).hexdigest()
+
 def normalizar_url(url):
-    """🆕 NUEVO: Normalización consistente de URLs"""
+    """Normalización básica (mantenida para compatibilidad)"""
     if not url:
         return ""
-    # Eliminar parámetros de tracking
     url = re.sub(r'\?.*$', '', url)
+    url = re.sub(r'#.*$', '', url)
+    url = re.sub(r'https?://(www\.)?', '', url)
+    return url.lower().rstrip('/')
+
+def normalizar_url_v2(url):
+    """
+    🆕 MEJORADO: Normalización más agresiva que maneja móviles, tracking, etc.
+    """
+    if not url:
+        return ""
+    
+    url = url.lower().strip()
+    
+    # Eliminar protocolo
+    url = re.sub(r'^https?://', '', url)
+    
+    # Eliminar subdominios móviles comunes
+    url = re.sub(r'^(www\.|m\.|movil\.|mobile\.|touch\.|wap\.)', '', url)
+    
+    # Eliminar parámetros de tracking completamente
+    url = re.sub(r'\?(utm_source|utm_medium|utm_campaign|fbclid|gclid|ref|'
+                 r'source|medium|campaign|from|share|si|spref)=.*$', '', url)
+    url = re.sub(r'\?.*$', '', url)  # Eliminar cualquier query string restante
+    
     # Eliminar fragmentos
     url = re.sub(r'#.*$', '', url)
-    # Eliminar www y protocolo
-    url = re.sub(r'https?://(www\.)?', '', url)
-    # Lowercase y quitar barra final
-    return url.lower().rstrip('/')
+    
+    # Eliminar barras finales
+    url = url.rstrip('/')
+    
+    return url
 
 def calcular_similitud_titulos(titulo1, titulo2):
     """
-    🆕 NUEVO: Calcula similitud entre dos títulos usando SequenceMatcher
+    Calcula similitud entre dos títulos usando SequenceMatcher
     Retorna valor entre 0.0 y 1.0
     """
     if not titulo1 or not titulo2:
@@ -326,6 +384,35 @@ def calcular_similitud_titulos(titulo1, titulo2):
         return 0.0
     
     return SequenceMatcher(None, t1, t2).ratio()
+
+def es_titulo_generico(titulo):
+    """
+    🆕 NUEVO: Detecta si el título es demasiado genérico/plantilla
+    """
+    if not titulo:
+        return True
+    
+    titulo_lower = titulo.lower().strip()
+    
+    # Verificar contra blacklist de regex
+    for patron in BLACKLIST_TITULOS:
+        if re.match(patron, titulo_lower):
+            return True
+    
+    # Contar palabras significativas (excluyendo stop words)
+    stop_words = {'el', 'la', 'los', 'las', 'un', 'una', 'de', 'del', 'al', 
+                  'y', 'o', 'pero', 'en', 'con', 'por', 'para', 'a', 'ante',
+                  'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'at',
+                  'hoy', 'ayer', 'ahora', 'hace', 'después', 'antes'}
+    
+    palabras = [p for p in re.findall(r'\b\w+\b', titulo_lower) 
+                if p not in stop_words and len(p) > 3]
+    
+    # Si tiene menos de 4 palabras significativas, es genérico
+    if len(set(palabras)) < 4:
+        return True
+    
+    return False
 
 def limpiar_texto(texto):
     if not texto:
@@ -740,24 +827,24 @@ def cargar_historial():
         'urls': [], 
         'hashes': [],
         'timestamps': [],
-        'titulos': [],  # 🆕 NUEVO: Guardar títulos para comparación de similitud
+        'titulos': [],
+        'descripciones': [],
+        'hashes_contenido': [],
+        'hashes_permanentes': [],
         'estadisticas': {'total_publicadas': 0}
     }
     datos = cargar_json(HISTORIAL_PATH, default)
     
-    for key in ['urls', 'hashes', 'timestamps', 'titulos']:
-        if key not in datos or not isinstance(datos[key], list):
-            datos[key] = []
-    
-    if 'estadisticas' not in datos or not isinstance(datos['estadisticas'], dict):
-        datos['estadisticas'] = {'total_publicadas': 0}
+    for key in default.keys():
+        if key not in datos or not isinstance(datos[key], type(default[key])):
+            datos[key] = default[key]
     
     return datos
 
 def limpiar_historial_antiguo(historial):
-    """🆕 MEJORADO: Limpieza inteligente que preserva hashes antiguos para evitar duplicados"""
+    """🆕 MEJORADO: Limpieza inteligente que preserva hashes antiguos"""
     if not historial or not isinstance(historial, dict):
-        return {'urls': [], 'hashes': [], 'timestamps': [], 'titulos': [], 'estadisticas': {'total_publicadas': 0}}
+        return cargar_historial()
     
     ahora = datetime.now()
     indices_validos = []
@@ -766,27 +853,39 @@ def limpiar_historial_antiguo(historial):
     if not isinstance(timestamps, list):
         timestamps = []
     
+    # Preservar entradas de últimas 72h
     for i, ts_str in enumerate(timestamps):
         try:
             if isinstance(ts_str, str):
                 ts = datetime.fromisoformat(ts_str)
-                # 🆕 CAMBIO: 72 horas en lugar de 24
                 if (ahora - ts) < timedelta(hours=VENTANA_DUPLICADOS_HORAS):
                     indices_validos.append(i)
         except:
             continue
+    
+    # Siempre preservar últimas 50 entradas
+    total = len(timestamps)
+    for i in range(max(0, total - 50), total):
+        indices_validos.append(i)
+    
+    # Eliminar duplicados en índices y ordenar
+    indices_validos = sorted(set(indices_validos))
     
     nuevo_historial = {
         'urls': [],
         'hashes': [],
         'timestamps': [],
         'titulos': [],
+        'descripciones': [],
+        'hashes_contenido': [],
         'estadisticas': historial.get('estadisticas', {'total_publicadas': 0})
     }
     
     urls = historial.get('urls', [])
     hashes = historial.get('hashes', [])
     titulos = historial.get('titulos', [])
+    descripciones = historial.get('descripciones', [])
+    hashes_contenido = historial.get('hashes_contenido', [])
     
     for i in indices_validos:
         if i < len(urls):
@@ -797,118 +896,163 @@ def limpiar_historial_antiguo(historial):
             nuevo_historial['timestamps'].append(timestamps[i])
         if i < len(titulos):
             nuevo_historial['titulos'].append(titulos[i])
+        if i < len(descripciones):
+            nuevo_historial['descripciones'].append(descripciones[i])
+        if i < len(hashes_contenido):
+            nuevo_historial['hashes_contenido'].append(hashes_contenido[i])
     
-    # 🆕 NUEVO: Mantener un registro permanente de hashes antiguos (últimos 200)
-    # para evitar republicación incluso después de 72 horas
-    todos_hashes = historial.get('hashes', [])
-    if len(todos_hashes) > 200:
-        nuevo_historial['hashes_permanentes'] = todos_hashes[-200:]
-    elif 'hashes_permanentes' in historial:
-        nuevo_historial['hashes_permanentes'] = historial['hashes_permanentes']
-    else:
-        nuevo_historial['hashes_permanentes'] = []
+    # Mantener hashes permanentes (últimos 300)
+    todos_hashes = historial.get('hashes', []) + historial.get('hashes_permanentes', [])
+    nuevo_historial['hashes_permanentes'] = todos_hashes[-300:] if len(todos_hashes) > 300 else todos_hashes
     
     return nuevo_historial
 
-def noticia_ya_publicada(historial, url, titulo):
+def noticia_ya_publicada(historial, url, titulo, descripcion=""):
     """
-    🆕 MEJORADO: Detección de duplicados con múltiples capas de verificación
+    🆕 VERSIÓN 2.0: Sistema multi-capa de detección de duplicados
+    Retorna: (bool, str) -> (es_duplicado, razon)
     """
     if not historial or not isinstance(historial, dict):
-        return False
+        return False, "sin_historial"
     
-    url_normalizada = normalizar_url(url)
-    if not url_normalizada:
-        return False
+    # Normalizar inputs
+    url_norm = normalizar_url_v2(url)
+    hash_titulo = generar_hash(titulo)
+    hash_desc = generar_hash_contenido(descripcion) if descripcion else ""
     
-    log(f"   🔍 Verificando duplicados para: {url_normalizada[:50]}...", 'debug')
+    log(f"   🔍 Verificando duplicados:", 'debug')
+    log(f"      URL: {url_norm[:60]}...", 'debug')
+    log(f"      Hash: {hash_titulo[:16]}", 'debug')
     
-    # 1. Verificación por URL exacta (normalizada)
+    # 1. 🆕 RECHAZAR TÍTULOS GENÉRICOS
+    if es_titulo_generico(titulo):
+        log(f"   ⚠️ RECHAZADO: Título demasiado genérico", 'advertencia')
+        return True, "titulo_generico"
+    
+    # 2. Verificación por URL (más estricta con normalización v2)
     urls_guardadas = historial.get('urls', [])
-    if not isinstance(urls_guardadas, list):
-        urls_guardadas = []
-    
     for i, url_hist in enumerate(urls_guardadas):
         if not isinstance(url_hist, str):
             continue
-        url_hist_normalizada = normalizar_url(url_hist)
+            
+        if url_norm == normalizar_url_v2(url_hist):
+            log(f"   ⚠️ DUPLICADO: URL idéntica (índice {i})", 'debug')
+            return True, "url_exacta"
         
-        if url_normalizada == url_hist_normalizada:
-            log(f"   ⚠️ DUPLICADO: URL exacta encontrada (índice {i})", 'debug')
-            return True
+        # Verificar si es la misma noticia con diferente formato de URL
+        path_actual = '/'.join(url_norm.split('/')[1:])
+        path_hist = '/'.join(normalizar_url_v2(url_hist).split('/')[1:])
         
-        # Comparar slugs (última parte de la URL)
-        slug_actual = url_normalizada.split('/')[-1]
-        slug_hist = url_hist_normalizada.split('/')[-1]
-        if slug_actual and slug_hist and len(slug_actual) > 15:
-            if slug_actual == slug_hist:
-                log(f"   ⚠️ DUPLICADO: Slug idéntico encontrado", 'debug')
-                return True
+        if path_actual and path_actual == path_hist and len(path_actual) > 20:
+            log(f"   ⚠️ DUPLICADO: Mismo path de URL", 'debug')
+            return True, "url_path_identico"
     
-    # 2. Verificación por hash exacto del título
-    hash_titulo = generar_hash(titulo)
-    hashes_guardados = historial.get('hashes', [])
+    # 3. Verificación por hash exacto del título (incluye permanentes)
+    hashes_actuales = historial.get('hashes', [])
     hashes_permanentes = historial.get('hashes_permanentes', [])
-    todos_hashes = hashes_guardados + hashes_permanentes
+    todos_hashes = list(dict.fromkeys(hashes_actuales + hashes_permanentes))
     
     if hash_titulo in todos_hashes:
-        log(f"   ⚠️ DUPLICADO: Hash de título exacto encontrado", 'debug')
-        return True
+        log(f"   ⚠️ DUPLICADO: Hash de título exacto", 'debug')
+        return True, "hash_titulo_exacto"
     
-    # 3. 🆕 NUEVO: Verificación por similitud de título (85% de coincidencia)
+    # 4. 🆕 Verificación por hash de descripción/contenido
+    if hash_desc and 'hashes_contenido' in historial:
+        if hash_desc in historial['hashes_contenido']:
+            log(f"   ⚠️ DUPLICADO: Mismo contenido/descripción", 'debug')
+            return True, "hash_contenido_exacto"
+    
+    # 5. Verificación por similitud de título (70% umbral)
     titulos_guardados = historial.get('titulos', [])
-    if not isinstance(titulos_guardados, list):
-        titulos_guardados = []
+    max_similitud = 0.0
     
     for titulo_hist in titulos_guardados:
         if not isinstance(titulo_hist, str):
             continue
+        
         similitud = calcular_similitud_titulos(titulo, titulo_hist)
+        max_similitud = max(max_similitud, similitud)
+        
         if similitud >= UMBRAL_SIMILITUD_TITULO:
-            log(f"   ⚠️ DUPLICADO: Título {similitud:.1%} similar a uno publicado", 'debug')
-            log(f"      Nuevo: {titulo[:60]}...", 'debug')
-            log(f"      Viejo: {titulo_hist[:60]}...", 'debug')
-            return True
+            log(f"   ⚠️ DUPLICADO: Similitud de título {similitud:.1%}", 'debug')
+            log(f"      Nuevo: {titulo[:50]}...", 'debug')
+            log(f"      Viejo: {titulo_hist[:50]}...", 'debug')
+            return True, f"similitud_titulo_{similitud:.2f}"
     
-    log(f"   ✅ No es duplicado (URL nueva, hash nuevo, título diferente)", 'debug')
-    return False
+    # 6. 🆕 Verificación por similitud de contenido/descripción
+    if descripcion and 'descripciones' in historial:
+        desc_recientes = historial['descripciones'][-30:]  # Solo últimas 30
+        
+        for desc_hist in desc_recientes:
+            if not isinstance(desc_hist, str) or not desc_hist:
+                continue
+            
+            # Calcular similitud de palabras clave en descripción (Jaccard)
+            palabras_nueva = set(re.findall(r'\b\w{5,}\b', descripcion.lower()))
+            palabras_vieja = set(re.findall(r'\b\w{5,}\b', desc_hist.lower()))
+            
+            if palabras_nueva and palabras_vieja:
+                interseccion = len(palabras_nueva & palabras_vieja)
+                union = len(palabras_nueva | palabras_vieja)
+                similitud_jaccard = interseccion / union if union > 0 else 0
+                
+                if similitud_jaccard >= UMBRAL_SIMILITUD_CONTENIDO:
+                    log(f"   ⚠️ DUPLICADO: Similitud de contenido {similitud_jaccard:.1%}", 'debug')
+                    return True, f"similitud_contenido_{similitud_jaccard:.2f}"
+    
+    log(f"   ✅ NUEVO: Max similitud encontrada {max_similitud:.1%}", 'debug')
+    return False, "nuevo"
 
-def guardar_historial(historial, url, titulo):
-    """🆕 MEJORADO: Guarda también el título para comparación futura"""
-    # No limpiar al inicio, limpiar solo si es necesario al final
-    # historial = limpiar_historial_antiguo(historial)  # 🆕 COMENTADO: Limpieza al final
+def guardar_historial(historial, url, titulo, descripcion=""):
+    """
+    🆕 VERSIÓN 2.0: Guarda más metadatos para mejor detección futura
+    """
+    # Asegurar estructura completa del historial
+    campos_necesarios = {
+        'urls': [], 'hashes': [], 'timestamps': [], 'titulos': [],
+        'descripciones': [], 'hashes_contenido': [], 
+        'hashes_permanentes': [], 'estadisticas': {'total_publicadas': 0}
+    }
     
-    url_limpia = re.sub(r'\?.*$', '', url)  # Mantener parámetros básicos para referencia
+    for campo, default in campos_necesarios.items():
+        if campo not in historial or not isinstance(historial[campo], type(default)):
+            historial[campo] = default
+    
+    # Generar todos los hashes y metadatos
+    url_limpia = normalizar_url_v2(url)
     hash_titulo = generar_hash(titulo)
+    hash_contenido = generar_hash_contenido(descripcion)
     ahora = datetime.now().isoformat()
     
+    # Agregar a listas principales
     historial['urls'].append(url_limpia)
     historial['hashes'].append(hash_titulo)
     historial['timestamps'].append(ahora)
-    historial['titulos'].append(titulo)  # 🆕 NUEVO: Guardar título
+    historial['titulos'].append(titulo)
+    historial['descripciones'].append(descripcion[:600] if descripcion else "")
+    historial['hashes_contenido'].append(hash_contenido)
     
-    stats = historial.get('estadisticas', {'total_publicadas': 0})
-    if not isinstance(stats, dict):
-        stats = {'total_publicadas': 0}
-    stats['total_publicadas'] = stats.get('total_publicadas', 0) + 1
-    historial['estadisticas'] = stats
+    # Actualizar estadísticas
+    historial['estadisticas']['total_publicadas'] = \
+        historial['estadisticas'].get('total_publicadas', 0) + 1
     
-    # 🆕 NUEVO: Actualizar hashes permanentes
-    if 'hashes_permanentes' not in historial:
-        historial['hashes_permanentes'] = []
+    # Actualizar hashes permanentes (últimos 300 para referencia de largo plazo)
     historial['hashes_permanentes'].append(hash_titulo)
-    if len(historial['hashes_permanentes']) > 200:
-        historial['hashes_permanentes'] = historial['hashes_permanentes'][-200:]
+    if len(historial['hashes_permanentes']) > 300:
+        historial['hashes_permanentes'] = historial['hashes_permanentes'][-300:]
     
-    # 🆕 AHORA sí limpiar, pero manteniendo hashes_permanentes
-    historial = limpiar_historial_antiguo(historial)
-    
-    max_size = 500
-    for key in ['urls', 'hashes', 'timestamps', 'titulos']:
+    # Limitar tamaño de listas principales (últimas 150)
+    max_size = MAX_TITULOS_HISTORIA
+    for key in ['urls', 'hashes', 'timestamps', 'titulos', 'descripciones', 'hashes_contenido']:
         if len(historial[key]) > max_size:
             historial[key] = historial[key][-max_size:]
     
+    # Limpieza inteligente: mantener últimas 72h + últimas 50 siempre
+    historial = limpiar_historial_antiguo(historial)
+    
+    # Guardar en disco
     guardar_json(HISTORIAL_PATH, historial)
+    return historial
 
 def cargar_estado():
     default = {'ultima_publicacion': None}
@@ -950,9 +1094,9 @@ def obtener_newsapi_internacional():
         'economy OR inflation OR markets OR IMF',
         'NATO OR UN OR EU OR summit',
         'Iran OR Israel OR Middle East conflict',
-        'Zelensky OR Netanyahu OR Hamas',  # 🆕 NUEVO
-        'rare earth minerals OR lithium conflict',  # 🆕 NUEVO
-        'AI warfare OR cyber attack military',  # 🆕 NUEVO
+        'Zelensky OR Netanyahu OR Hamas',
+        'rare earth minerals OR lithium conflict',
+        'AI warfare OR cyber attack military',
     ]
     
     for q in queries:
@@ -1220,8 +1364,8 @@ def generar_hashtags(titulo, contenido):
         'trump|biden|putin': '#PolíticaGlobal',
         'economía|mercados|inflación': '#EconomíaMundial',
         'irán|iran': '#Irán',
-        'dron|drones|ia|inteligencia artificial': '#TecnologíaMilitar',  # 🆕 NUEVO
-        'china|taiwan': '#ChinaTaiwán',  # 🆕 NUEVO
+        'dron|drones|ia|inteligencia artificial': '#TecnologíaMilitar',
+        'china|taiwan': '#ChinaTaiwán',
     }
     
     for patron, tag in temas.items():
@@ -1282,7 +1426,7 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V2.0 CORREGIDO")
+    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V3.0 CORREGIDO")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -1315,16 +1459,17 @@ def main():
         log("ERROR: No se encontraron noticias", 'error')
         return False
     
-    # 🆕 MEJORADO: Ordenar por puntaje Y por fecha (más recientes primero si puntaje similar)
+    # Ordenar por puntaje Y por fecha (más recientes primero si puntaje similar)
     todas_noticias.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
     
-    # Seleccionar noticia - 🆕 MEJORADO: Verificación exhaustiva de duplicados
+    # Seleccionar noticia - Verificación exhaustiva de duplicados
     noticia_seleccionada = None
     intentos = 0
     
     for noticia in todas_noticias:
         url = noticia.get('url', '')
         titulo = noticia.get('titulo', '')
+        descripcion = noticia.get('descripcion', '')
         intentos += 1
         
         if not url or not titulo:
@@ -1332,9 +1477,10 @@ def main():
         
         log(f"   [{intentos}] Probando: {titulo[:50]}...", 'debug')
         
-        # Verificación estricta de duplicados
-        if noticia_ya_publicada(historial, url, titulo):
-            log(f"      ❌ Rechazada: Ya publicada", 'debug')
+        # 🆕 CORREGIDO: Verificación con descripción y razón específica
+        es_dup, razon = noticia_ya_publicada(historial, url, titulo, descripcion)
+        if es_dup:
+            log(f"      ❌ Rechazada: {razon}", 'debug')
             continue
         
         if noticia.get('puntaje', 0) < 5:
@@ -1420,7 +1566,13 @@ def main():
     
     # Guardar estado
     if exito:
-        guardar_historial(historial, noticia_seleccionada['url'], noticia_seleccionada['titulo'])
+        # 🆕 CORREGIDO: Guardar con descripción para mejor detección futura
+        guardar_historial(
+            historial, 
+            noticia_seleccionada['url'], 
+            noticia_seleccionada['titulo'],
+            noticia_seleccionada.get('descripcion', '') + ' ' + contenido[:400]
+        )
         
         estado = cargar_estado()
         estado['ultima_publicacion'] = datetime.now().isoformat()

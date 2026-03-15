@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook
-- Prioridad: Conflictos bélicos, política global, economía mundial
-- Fuentes: NewsAPI, google news, NewsData, GNews (todo internacional)
-- Extracción de texto completo con reglas estrictas de calidad
+Bot de Noticias Internacionales para Facebook - VERSIÓN CORREGIDA
+- CORRECCIÓN CRÍTICA: Sistema anti-duplicados mejorado con detección de similitud
+- Persistencia de historial extendida a 72 horas
+- Detección de títulos similares (85% de coincidencia)
+- Más palabras clave para noticias frescas
 """
 
 import requests
@@ -17,6 +18,7 @@ import random
 import html as html_module
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup, Comment
+from difflib import SequenceMatcher  # 🆕 NUEVO: Para detectar similitud de títulos
 
 # =============================================================================
 # CONFIGURACIÓN
@@ -32,19 +34,18 @@ HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json'
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 
 TIEMPO_ENTRE_PUBLICACIONES = 60  # 60 minutos
-VENTANA_DUPLICADOS_HORAS = 24    # 24 horas de memoria de duplicados
+VENTANA_DUPLICADOS_HORAS = 72    # 🆕 CORREGIDO: 72 horas (3 días) en lugar de 24
+UMBRAL_SIMILITUD_TITULO = 0.85   # 🆕 NUEVO: 85% de similitud para considerar duplicado
 
 # =============================================================================
 # REGLAS ESTRICTAS DE VALIDACIÓN
 # =============================================================================
 
-# Mínimos de calidad
 MIN_CARACTERES_CONTENIDO = 300
 MIN_ORACIONES = 3
 MAX_PARRAFOS = 8
 MIN_PALABRAS_POR_PARrafo = 15
 
-# Frases prohibidas (contenido de menús/publicidad)
 FRASES_PROHIBIDAS = [
     'actualidad portada', 'publicado:', 'compartir en', 'síguenos en',
     'cookies', 'aceptar cookies', 'política de privacidad', 'aviso legal',
@@ -55,176 +56,191 @@ FRASES_PROHIBIDAS = [
     'archivado en:', 'ver comentarios', 'ocultar comentarios'
 ]
 
-# Patrones de "ruido" a eliminar
 PATRONES_RUIDO = [
-    r'Vista de.*Gettyimages?\.[a-z]+',  # Descripciones de imágenes
-    r'Stringer\s*/\s*\w+',              # Créditos de fotos
-    r'@\w+',                            # Menciones de usuario
-    r'—\s*\w+\s*\(@\w+\)\s*\w+\s+\d+', # Tweets embebidos
-    r'🚀.*$',                           # Emojis con texto promocional
-    r'El senador.*afirma.*mintió.*$',   # Textos duplicados/resumen
-    r'^\s*—\s*$',                       # Líneas solo con guiones
+    r'Vista de.*Gettyimages?\.[a-z]+',
+    r'Stringer\s*/\s*\w+',
+    r'@\w+',
+    r'—\s*\w+\s*\(@\w+\)\s*\w+\s+\d+',
+    r'🚀.*$',
+    r'El senador.*afirma.*mintió.*$',
+    r'^\s*—\s*$',
 ]
 
 # =============================================================================
-# PALABRAS CLAVE INTERNACIONALES
+# PALABRAS CLAVE INTERNACIONALES - AMPLIADAS Y ACTUALIZADAS
 # =============================================================================
 
 PALABRAS_ALTA_PRIORIDAD = [
-    'guerra', 'conflicto', 'bombardeo', 'ataque', 'invasión', 'invasion',
-    'misil', 'dron', 'ataque aéreo', 'ataque aereo', 'ofensiva', 'combate',
-    'Ucrania', 'Rusia', 'Gaza', 'Israel', 'Palestina', 'Trump', 'Biden', 'Putin',
-    'OTAN', 'NATO', 'ONU', 'UE', 'sanciones', 'embargo', 'crisis diplomática', # 🎯 ORIGINALES (4)
-        "noticias urgentes hoy",
-        "ultima hora internacional", 
-        "breaking news today",
-        "conflicto mundial hoy",
-        
-        # 🏛️ DICTADURAS (10)
-        "dictadura hoy",
-        "regimen autoritario noticias",
-        "represion gubernamental",
-        "protestas dictadura",
-        "sanciones regimen",
-        "derechos humanos violaciones",
-        "censura gubernamental",
-        "oposicion politica perseguida",
-        "elecciones fraudulentas",
-        "transicion democratica fallida",
-        
-        # ⚔️ GUERRAS (10)
-        "guerra hoy",
-        "conflicto armado actual",
-        "ofensiva militar",
-        "ataque aereo hoy",
-        "bombardeo noticias",
-        "cese al fuego roto",
-        "invasion territorial",
-        "resistencia armada",
-        "guerra civil",
-        "intervencion militar",
-        
-        # ⛏️ TIERRAS RARAS (10)
-        "tierras raras noticias",
-        "minerales estrategicos guerra",
-        "litio conflicto",
-        "cobalto mineria",
-        "recursos naturales disputa",
-        "monopolio minero",
-        "cadena suministro minerales",
-        "china tierras raras",
-        "guerra economica recursos",
-        "sanciones minerales",
-        
-        # 🤖 TECNOLOGÍA MILITAR (12)
-        "drones militares noticias",
-        "inteligencia artificial guerra",
-        "ciberataque militar",
-        "armas hipersonicas",
-        "guerra cibernetica",
-        "robotica militar",
-        "satelite espionaje",
-        "defensa antimisiles",
-        "tecnologia militar avance",
-        "guerra electronica",
-        "ia en combate",
-        "autonomous weapons",
-        
-        # 🌍 GEOPOLÍTICA (10)
-        "tension diplomatica hoy",
-        "sanciones economicas noticias",
-        "guerra fria 2.0",
-        "alianza militar",
-        "otan noticias",
-        "otsc noticias",
-        "brics guerra",
-        "g7 g20 tension",
-        "embargo armas",
-        "crisis diplomatica",
-        
-        # 🔥 CRISIS HUMANITARIAS (9)
-        "refugiados guerra",
-        "crisis humanitaria hoy",
-        "ayuda humanitaria bloqueada",
-        "hambruna conflicto",
-        "desplazados guerra",
-        "campo refugiados",
-        "genocidio noticias",
-        "crimenes guerra",
-        "tribunal penal internacional",
-        
-        # 🌎 AMÉRICA (12)
-        "noticias america latina hoy",
-        "mexico noticias urgentes",
-        "colombia conflicto actual",
-        "venezuela crisis noticias",
-        "brasil protestas hoy",
-        "argentina economia crisis",
-        "chile noticias hoy",
-        "peru protestas dictadura",
-        "centroamerica violencia",
-        "eeuu noticias hoy",
-        "canada politica actual",
-        "migracion frontera sur",
-        
-        # 🌍 ÁFRICA (12)
-        "africa conflictos hoy",
-        "sahel guerra jihadista",
-        "mali noticias conflicto",
-        "nigeria seguridad hoy",
-        "etiopia guerra tigray",
-        "sudan guerra civil",
-        "somalia al shabaab",
-        "rd congo m23",
-        "sudafrica crisis actual",
-        "magreb noticias hoy",
-        "africa coup etat",
-        "pirateria africa",
-        
-        # 🌏 ASIA-PACÍFICO (14)
-        "china taiwan tension",
-        "corea norte noticias",
-        "japon militar noticias",
-        "india pakistan conflicto",
-        "myanmar dictadura noticias",
-        "filipinas china mar",
-        "vietnam noticias hoy",
-        "tailandia protestas",
-        "indonesia noticias",
-        "afganistan taliban",
-        "pakistan terrorismo",
-        "bangladesh crisis",
-        "australia noticias hoy",
-        "nueva zelanda actualidad",
-        
-        # 🌍 EUROPA (10)
-        "ue noticias hoy",
-        "rusia ucrania guerra",
-        "balkanes tension",
-        "turquia erdogan",
-        "polonia belarus frontera",
-        "hungria orban dictadura",
-        "serbia kosovo conflicto",
-        "caucaso armenia azerbaiyan",
-        "reino unido noticias",
-        "escandinavia noticias",
-        
-        # 🌏 ORIENTE MEDIO (10)
-        "israel palestina guerra",
-        "iran noticias hoy",
-        "arabia saudi noticias",
-        "yemen guerra hoy",
-        "siria conflicto actual",
-        "libano hezbollah",
-        "irak noticias hoy",
-        "emiratos arabes noticias",
-        "qatar crisis diplomatica",
-        "kurdistan conflicto"
+    # 🎯 ORIGINALES (4)
+    "noticias urgentes hoy",
+    "ultima hora internacional", 
+    "breaking news today",
+    "conflicto mundial hoy",
+    
+    # 🏛️ DICTADURAS (10)
+    "dictadura hoy",
+    "regimen autoritario noticias",
+    "represion gubernamental",
+    "protestas dictadura",
+    "sanciones regimen",
+    "derechos humanos violaciones",
+    "censura gubernamental",
+    "oposicion politica perseguida",
+    "elecciones fraudulentas",
+    "transicion democratica fallida",
+    
+    # ⚔️ GUERRAS (10)
+    "guerra hoy",
+    "conflicto armado actual",
+    "ofensiva militar",
+    "ataque aereo hoy",
+    "bombardeo noticias",
+    "cese al fuego roto",
+    "invasion territorial",
+    "resistencia armada",
+    "guerra civil",
+    "intervencion militar",
+    
+    # ⛏️ TIERRAS RARAS (10)
+    "tierras raras noticias",
+    "minerales estrategicos guerra",
+    "litio conflicto",
+    "cobalto mineria",
+    "recursos naturales disputa",
+    "monopolio minero",
+    "cadena suministro minerales",
+    "china tierras raras",
+    "guerra economica recursos",
+    "sanciones minerales",
+    
+    # 🤖 TECNOLOGÍA MILITAR (12)
+    "drones militares noticias",
+    "inteligencia artificial guerra",
+    "ciberataque militar",
+    "armas hipersonicas",
+    "guerra cibernetica",
+    "robotica militar",
+    "satelite espionaje",
+    "defensa antimisiles",
+    "tecnologia militar avance",
+    "guerra electronica",
+    "ia en combate",
+    "autonomous weapons",
+    
+    # 🌍 GEOPOLÍTICA (10)
+    "tension diplomatica hoy",
+    "sanciones economicas noticias",
+    "guerra fria 2.0",
+    "alianza militar",
+    "otan noticias",
+    "otsc noticias",
+    "brics guerra",
+    "g7 g20 tension",
+    "embargo armas",
+    "crisis diplomatica",
+    
+    # 🔥 CRISIS HUMANITARIAS (9)
+    "refugiados guerra",
+    "crisis humanitaria hoy",
+    "ayuda humanitaria bloqueada",
+    "hambruna conflicto",
+    "desplazados guerra",
+    "campo refugiados",
+    "genocidio noticias",
+    "crimenes guerra",
+    "tribunal penal internacional",
+    
+    # 🌎 AMÉRICA (12)
+    "noticias america latina hoy",
+    "mexico noticias urgentes",
+    "colombia conflicto actual",
+    "venezuela crisis noticias",
+    "brasil protestas hoy",
+    "argentina economia crisis",
+    "chile noticias hoy",
+    "peru protestas dictadura",
+    "centroamerica violencia",
+    "eeuu noticias hoy",
+    "canada politica actual",
+    "migracion frontera sur",
+    
+    # 🌍 ÁFRICA (12)
+    "africa conflictos hoy",
+    "sahel guerra jihadista",
+    "mali noticias conflicto",
+    "nigeria seguridad hoy",
+    "etiopia guerra tigray",
+    "sudan guerra civil",
+    "somalia al shabaab",
+    "rd congo m23",
+    "sudafrica crisis actual",
+    "magreb noticias hoy",
+    "africa coup etat",
+    "pirateria africa",
+    
+    # 🌏 ASIA-PACÍFICO (14)
+    "china taiwan tension",
+    "corea norte noticias",
+    "japon militar noticias",
+    "india pakistan conflicto",
+    "myanmar dictadura noticias",
+    "filipinas china mar",
+    "vietnam noticias hoy",
+    "tailandia protestas",
+    "indonesia noticias",
+    "afganistan taliban",
+    "pakistan terrorismo",
+    "bangladesh crisis",
+    "australia noticias hoy",
+    "nueva zelanda actualidad",
+    
+    # 🌍 EUROPA (10)
+    "ue noticias hoy",
+    "rusia ucrania guerra",
+    "balkanes tension",
+    "turquia erdogan",
+    "polonia belarus frontera",
+    "hungria orban dictadura",
+    "serbia kosovo conflicto",
+    "caucaso armenia azerbaiyan",
+    "reino unido noticias",
+    "escandinavia noticias",
+    
+    # 🌏 ORIENTE MEDIO (10)
+    "israel palestina guerra",
+    "iran noticias hoy",
+    "arabia saudi noticias",
+    "yemen guerra hoy",
+    "siria conflicto actual",
+    "libano hezbollah",
+    "irak noticias hoy",
+    "emiratos arabes noticias",
+    "qatar crisis diplomatica",
+    "kurdistan conflicto",
+    
+    # 🆕 NUEVAS PALABRAS CLAVE 2026 (15)
+    "zelensky",
+    "netanyahu",
+    "hamas",
+    "hezbollah",
+    "houthis",
+    "red sea crisis",
+    "taiwan strait",
+    "south china sea",
+    "arctic militarization",
+    "space force",
+    "nuclear proliferation",
+    "climate war",
+    "water conflict",
+    "rare earth embargo",
+    "chip war"
 ]
 
 PALABRAS_MEDIA_PRIORIDAD = [
     'economía mundial', 'mercados globales', 'inflación', 'FMI', 
     'China', 'EEUU', 'Estados Unidos', 'Reino Unido', 'Alemania', 'Francia',
+    'Banco Mundial', 'reserva federal', 'eurozona', 'petroleo precio',
+    'gas natural', 'energia crisis', 'bitcoin', 'criptomonedas'
 ]
 
 TERMINOS_EXCLUIR = [
@@ -268,11 +284,48 @@ def guardar_json(ruta, datos):
         return False
 
 def generar_hash(texto):
+    """🆕 MEJORADO: Hash completo sin truncar para evitar colisiones"""
     if not texto:
         return ""
     texto_normalizado = re.sub(r'[^\w\s]', '', texto.lower().strip())
     texto_normalizado = re.sub(r'\s+', ' ', texto_normalizado)
-    return hashlib.md5(texto_normalizado.encode()).hexdigest()[:16]
+    return hashlib.md5(texto_normalizado.encode()).hexdigest()  # 32 caracteres, no 16
+
+def normalizar_url(url):
+    """🆕 NUEVO: Normalización consistente de URLs"""
+    if not url:
+        return ""
+    # Eliminar parámetros de tracking
+    url = re.sub(r'\?.*$', '', url)
+    # Eliminar fragmentos
+    url = re.sub(r'#.*$', '', url)
+    # Eliminar www y protocolo
+    url = re.sub(r'https?://(www\.)?', '', url)
+    # Lowercase y quitar barra final
+    return url.lower().rstrip('/')
+
+def calcular_similitud_titulos(titulo1, titulo2):
+    """
+    🆕 NUEVO: Calcula similitud entre dos títulos usando SequenceMatcher
+    Retorna valor entre 0.0 y 1.0
+    """
+    if not titulo1 or not titulo2:
+        return 0.0
+    
+    # Normalizar: lowercase, sin puntuación, sin espacios extra
+    def normalizar(t):
+        t = t.lower()
+        t = re.sub(r'[^\w\s]', '', t)
+        t = re.sub(r'\s+', ' ', t).strip()
+        return t
+    
+    t1 = normalizar(titulo1)
+    t2 = normalizar(titulo2)
+    
+    if not t1 or not t2:
+        return 0.0
+    
+    return SequenceMatcher(None, t1, t2).ratio()
 
 def limpiar_texto(texto):
     if not texto:
@@ -320,10 +373,6 @@ def calcular_puntaje_internacional(titulo, descripcion):
 # =============================================================================
 
 def extraer_contenido_estricto(url):
-    """
-    Extrae contenido con reglas estrictas de calidad.
-    Retorna None si no cumple los estándares mínimos.
-    """
     if not url:
         return None, None
     
@@ -340,16 +389,13 @@ def extraer_contenido_estricto(url):
         
         soup = BeautifulSoup(resp.content, 'html.parser')
         
-        # Eliminar TODOS los elementos no deseados agresivamente
         for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 
                             'form', 'button', 'iframe', 'noscript', 'svg', 'canvas']):
             element.decompose()
         
-        # Eliminar comentarios HTML
         for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
             comment.extract()
         
-        # Eliminar elementos con clases/IDs de publicidad/menú
         clases_basura = [
             'menu', 'nav', 'sidebar', 'footer', 'header', 'ad', 'ads', 'publicidad',
             'social', 'share', 'comments', 'related', 'tags', 'meta', 'author-box',
@@ -362,11 +408,9 @@ def extraer_contenido_estricto(url):
             for elem in soup.find_all(id=lambda x: x and clase in x.lower()):
                 elem.decompose()
         
-        # Buscar el contenido principal
         contenido = None
         creditos = None
         
-        # Estrategia 1: Article con puros párrafos
         article = soup.find('article')
         if article:
             parrafos = article.find_all('p')
@@ -376,7 +420,6 @@ def extraer_contenido_estricto(url):
                     contenido = texto_limpio
                     log(f"   ✅ Article válido: {len(contenido)} chars", 'debug')
         
-        # Estrategia 2: Div con clase de contenido
         if not contenido:
             for clase in ['article-content', 'entry-content', 'post-content', 
                          'article-body', 'story-body', 'content']:
@@ -390,10 +433,8 @@ def extraer_contenido_estricto(url):
                             log(f"   ✅ Clase '{clase}': {len(contenido)} chars", 'debug')
                             break
         
-        # Estrategia 3: Buscar bloque de párrafos consecutivos
         if not contenido:
             todos_p = soup.find_all('p')
-            # Buscar grupos de 3+ párrafos seguidos con texto sustancial
             grupos = []
             grupo_actual = []
             
@@ -410,7 +451,6 @@ def extraer_contenido_estricto(url):
                 grupos.append(grupo_actual)
             
             if grupos:
-                # Tomar el grupo más largo
                 mejor_grupo = max(grupos, key=lambda x: sum(len(p) for p in x))
                 texto_limpio = ' '.join(mejor_grupo)
                 if validar_calidad(texto_limpio):
@@ -429,18 +469,16 @@ def extraer_contenido_estricto(url):
         return None, None
 
 def extraer_parrafos_limpios(parrafos):
-    """Extrae texto de párrafos filtrando los que tienen basura."""
     textos = []
     for p in parrafos:
         texto = p.get_text(strip=True)
         texto = limpiar_texto(texto)
         
-        # Filtrar párrafos cortos o con basura
         if len(texto) < 40:
             continue
         if tiene_basura(texto):
             continue
-        if texto.count(' ') < 5:  # Muy pocas palabras
+        if texto.count(' ') < 5:
             continue
             
         textos.append(texto)
@@ -448,18 +486,15 @@ def extraer_parrafos_limpios(parrafos):
     return ' '.join(textos)
 
 def tiene_basura(texto):
-    """Verifica si el texto contiene elementos de menú/publicidad."""
     texto_lower = texto.lower()
     
     for frase in FRASES_PROHIBIDAS:
         if frase in texto_lower:
             return True
     
-    # Verificar si es solo mayúsculas (típico de menús)
     if texto.isupper() and len(texto) > 10:
         return True
     
-    # Verificar si tiene demasiados símbolos especiales
     simbolos = sum(1 for c in texto if c in '│├┤┬┴┼║╣╠╩╦╚╔╝╗▓▒░')
     if simbolos > 2:
         return True
@@ -467,28 +502,23 @@ def tiene_basura(texto):
     return False
 
 def validar_calidad(texto):
-    """Valida que el texto cumpla estándares mínimos de calidad."""
     if not texto:
         return False
     
-    # Mínimo de caracteres
     if len(texto) < MIN_CARACTERES_CONTENIDO:
         log(f"   ❌ Muy corto: {len(texto)} chars", 'debug')
         return False
     
-    # Mínimo de oraciones
     oraciones = [o for o in re.split(r'[.!?]+', texto) if len(o.strip()) > 10]
     if len(oraciones) < MIN_ORACIONES:
         log(f"   ❌ Pocas oraciones: {len(oraciones)}", 'debug')
         return False
     
-    # No debe tener demasiadas mayúsculas (signo de menú)
     ratio_mayus = sum(1 for c in texto if c.isupper()) / len(texto)
     if ratio_mayus > 0.4:
         log(f"   ❌ Muchas mayúsculas: {ratio_mayus:.2f}", 'debug')
         return False
     
-    # Debe tener palabras del título o relacionadas
     palabras_clave = ['dice', 'declaró', 'afirmó', 'señaló', 'indicó', 'según', 'tras']
     if not any(p in texto.lower() for p in palabras_clave):
         log(f"   ❌ No parece noticia (falta verbo de comunicación)", 'debug')
@@ -498,11 +528,9 @@ def validar_calidad(texto):
     return True
 
 def eliminar_ruido_final(texto):
-    """Elimina patrones de ruido específicos del texto final."""
     for patron in PATRONES_RUIDO:
         texto = re.sub(patron, '', texto, flags=re.IGNORECASE | re.MULTILINE)
     
-    # Eliminar líneas que son solo espacios o símbolos
     lineas = texto.split('\n')
     lineas_limpias = []
     for linea in lineas:
@@ -513,17 +541,14 @@ def eliminar_ruido_final(texto):
     texto = ' '.join(lineas_limpias)
     texto = re.sub(r'\s+', ' ', texto).strip()
     
-    # Asegurar que termine bien
     if texto and texto[-1] not in '.!?':
         texto += '.'
     
     return texto
 
 def extraer_creditos_limpios(soup):
-    """Extrae créditos de forma limpia."""
     creditos = None
     
-    # Buscar en meta tags
     for meta in ['author', 'article:author', 'byline', 'creator']:
         tag = soup.find('meta', attrs={'name': meta}) or soup.find('meta', property=meta)
         if tag:
@@ -531,7 +556,6 @@ def extraer_creditos_limpios(soup):
             if creditos and len(creditos) < 100:
                 return limpiar_credito(creditos)
     
-    # Buscar en elementos específicos
     for clase in ['author', 'byline', 'autor', 'firma']:
         elem = soup.find(class_=lambda x: x and clase in x.lower())
         if elem:
@@ -542,11 +566,9 @@ def extraer_creditos_limpios(soup):
     return None
 
 def limpiar_credito(credito):
-    """Limpia el texto del crédito."""
     if not credito:
         return None
     
-    # Eliminar prefijos comunes
     credito = re.sub(r'^(Por|By|De|Autor|Redacción)[\s:]+', '', credito, flags=re.IGNORECASE)
     credito = re.sub(r'\d{1,2}/\d{1,2}/\d{4}.*$', '', credito)
     credito = re.sub(r'\d{1,2} de [a-z]+ de \d{4}.*$', '', credito, flags=re.IGNORECASE)
@@ -563,14 +585,9 @@ def limpiar_credito(credito):
 # =============================================================================
 
 def dividir_parrafos_estricto(texto):
-    """
-    Divide el texto en párrafos con reglas estrictas de coherencia.
-    Garantiza que cada párrafo tenga sentido completo.
-    """
     if not texto:
         return []
     
-    # Dividir en oraciones
     oraciones = re.split(r'(?<=[.!?])\s+', texto)
     oraciones = [o.strip() for o in oraciones if len(o.strip()) > 15]
     
@@ -585,14 +602,11 @@ def dividir_parrafos_estricto(texto):
         parrafo_actual.append(oracion)
         palabras_en_parrafo += len(oracion.split())
         
-        # Forzar cierre de párrafo si:
         cerrar = False
         
-        # 1. Llegamos a 40-50 palabras (párrafo sustancial)
         if palabras_en_parrafo >= 40:
             cerrar = True
         
-        # 2. La oración termina en cita completa
         if '"' in oracion or '»' in oracion:
             comillas_abrir = oracion.count('"') + oracion.count('«')
             comillas_cerrar = oracion.count('"') + oracion.count('»')
@@ -600,7 +614,6 @@ def dividir_parrafos_estricto(texto):
                 if palabras_en_parrafo >= 25:
                     cerrar = True
         
-        # 3. La siguiente oración empieza con conector fuerte
         if i < len(oraciones) - 1:
             siguiente = oraciones[i + 1].lower()
             conectores_fuertes = ['sin embargo', 'por otro lado', 'en contraste', 
@@ -610,19 +623,16 @@ def dividir_parrafos_estricto(texto):
                 if palabras_en_parrafo >= 20:
                     cerrar = True
         
-        # 4. Es la última oración
         if i == len(oraciones) - 1:
             cerrar = True
         
         if cerrar and parrafo_actual:
             parrafo_texto = ' '.join(parrafo_actual)
-            # Validar que el párrafo tenga sentido
             if len(parrafo_texto.split()) >= MIN_PALABRAS_POR_PARrafo:
                 parrafos.append(parrafo_texto)
             parrafo_actual = []
             palabras_en_parrafo = 0
     
-    # Limitar número de párrafos
     if len(parrafos) > MAX_PARRAFOS:
         parrafos = parrafos[:MAX_PARRAFOS]
     
@@ -633,61 +643,44 @@ def dividir_parrafos_estricto(texto):
 # =============================================================================
 
 def construir_publicacion_validada(titulo, contenido, creditos, fuente):
-    """
-    Construye la publicación con validación estricta de formato.
-    Si no cumple estándares, usa fallback.
-    """
     titulo_limpio = limpiar_texto(titulo)
     
-    # Intentar dividir en párrafos coherentes
     parrafos = dividir_parrafos_estricto(contenido)
     
-    # Validar que tenemos párrafos válidos
     if len(parrafos) < 2:
         log("   ⚠️ No se pudieron crear párrafos coherentes, usando formato alternativo", 'advertencia')
-        # Fallback: dividir por puntos y agrupar
         parrafos = crear_parrafos_fallback(contenido)
     
-    # Construir texto con formato estricto
     lineas = []
     
-    # Encabezado
     lineas.append(f"📰 ÚLTIMA HORA | {titulo_limpio}")
-    lineas.append("")  # Línea en blanco obligatoria
+    lineas.append("")
     
-    # Párrafos con separación
     for i, parrafo in enumerate(parrafos):
         lineas.append(parrafo)
         if i < len(parrafos) - 1:
-            lineas.append("")  # Línea en blanco entre párrafos
+            lineas.append("")
     
-    # Separador
     lineas.append("")
     lineas.append("──────────────────────────────")
     lineas.append("")
     
-    # Metadatos
     if creditos:
         lineas.append(f"✍️ {creditos}")
         lineas.append("")
     
     lineas.append(f"📎 {fuente}")
     
-    # Unir y validar
     texto = '\n'.join(lineas)
     
-    # Validación final estricta
     errores = validar_formato_final(texto)
     if errores:
         log(f"   ❌ Errores de formato: {errores}", 'advertencia')
-        # Intentar corrección
         texto = corregir_formato(texto)
     
     return texto
 
 def crear_parrafos_fallback(contenido):
-    """Crea párrafos básicos si el método principal falla."""
-    # Dividir en oraciones y agrupar de 2 en 2
     oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
     
     parrafos = []
@@ -699,13 +692,10 @@ def crear_parrafos_fallback(contenido):
     return parrafos[:MAX_PARRAFOS]
 
 def validar_formato_final(texto):
-    """Valida que el formato final sea correcto."""
     errores = []
     
-    # Debe tener líneas en blanco entre párrafos
     lineas = texto.split('\n')
     
-    # Contar párrafos de contenido (no vacíos, no separadores, no metadatos)
     parrafos_contenido = [l for l in lineas if l.strip() 
                          and not l.startswith('─') 
                          and not l.startswith('✍️')
@@ -715,29 +705,24 @@ def validar_formato_final(texto):
     if len(parrafos_contenido) < 2:
         errores.append("Menos de 2 párrafos de contenido")
     
-    # Verificar que hay líneas en blanco entre párrafos
     for i, linea in enumerate(lineas):
         if i > 0 and i < len(lineas) - 1:
             if linea.strip() and not linea.startswith(('─', '✍️', '📎', '📰')):
                 if lineas[i-1].strip() and not lineas[i-1].startswith(('─', '✍️', '📎', '📰', '')):
-                    if lineas[i-1] != '':  # Si la anterior no es línea en blanco
-                        pass  # Podría ser error, pero verificamos contexto
+                    if lineas[i-1] != '':
+                        pass
     
-    # Verificar longitud
     if len(texto) < 200:
         errores.append("Texto muy corto")
     
     return errores
 
 def corregir_formato(texto):
-    """Intenta corregir problemas de formato."""
-    # Asegurar líneas en blanco entre párrafos
     lineas = texto.split('\n')
     nuevas_lineas = []
     
     for i, linea in enumerate(lineas):
         nuevas_lineas.append(linea)
-        # Agregar línea en blanco después de párrafos de contenido
         if linea.strip() and not linea.startswith(('─', '✍️', '📎', '📰')):
             if i < len(lineas) - 1:
                 siguiente = lineas[i + 1]
@@ -747,7 +732,7 @@ def corregir_formato(texto):
     return '\n'.join(nuevas_lineas)
 
 # =============================================================================
-# GESTIÓN DE HISTORIAL (igual que antes)
+# GESTIÓN DE HISTORIAL - CORREGIDO Y MEJORADO
 # =============================================================================
 
 def cargar_historial():
@@ -755,11 +740,12 @@ def cargar_historial():
         'urls': [], 
         'hashes': [],
         'timestamps': [],
+        'titulos': [],  # 🆕 NUEVO: Guardar títulos para comparación de similitud
         'estadisticas': {'total_publicadas': 0}
     }
     datos = cargar_json(HISTORIAL_PATH, default)
     
-    for key in ['urls', 'hashes', 'timestamps']:
+    for key in ['urls', 'hashes', 'timestamps', 'titulos']:
         if key not in datos or not isinstance(datos[key], list):
             datos[key] = []
     
@@ -769,8 +755,9 @@ def cargar_historial():
     return datos
 
 def limpiar_historial_antiguo(historial):
+    """🆕 MEJORADO: Limpieza inteligente que preserva hashes antiguos para evitar duplicados"""
     if not historial or not isinstance(historial, dict):
-        return {'urls': [], 'hashes': [], 'timestamps': [], 'estadisticas': {'total_publicadas': 0}}
+        return {'urls': [], 'hashes': [], 'timestamps': [], 'titulos': [], 'estadisticas': {'total_publicadas': 0}}
     
     ahora = datetime.now()
     indices_validos = []
@@ -783,6 +770,7 @@ def limpiar_historial_antiguo(historial):
         try:
             if isinstance(ts_str, str):
                 ts = datetime.fromisoformat(ts_str)
+                # 🆕 CAMBIO: 72 horas en lugar de 24
                 if (ahora - ts) < timedelta(hours=VENTANA_DUPLICADOS_HORAS):
                     indices_validos.append(i)
         except:
@@ -792,11 +780,13 @@ def limpiar_historial_antiguo(historial):
         'urls': [],
         'hashes': [],
         'timestamps': [],
+        'titulos': [],
         'estadisticas': historial.get('estadisticas', {'total_publicadas': 0})
     }
     
     urls = historial.get('urls', [])
     hashes = historial.get('hashes', [])
+    titulos = historial.get('titulos', [])
     
     for i in indices_validos:
         if i < len(urls):
@@ -805,55 +795,97 @@ def limpiar_historial_antiguo(historial):
             nuevo_historial['hashes'].append(hashes[i])
         if i < len(timestamps):
             nuevo_historial['timestamps'].append(timestamps[i])
+        if i < len(titulos):
+            nuevo_historial['titulos'].append(titulos[i])
+    
+    # 🆕 NUEVO: Mantener un registro permanente de hashes antiguos (últimos 200)
+    # para evitar republicación incluso después de 72 horas
+    todos_hashes = historial.get('hashes', [])
+    if len(todos_hashes) > 200:
+        nuevo_historial['hashes_permanentes'] = todos_hashes[-200:]
+    elif 'hashes_permanentes' in historial:
+        nuevo_historial['hashes_permanentes'] = historial['hashes_permanentes']
+    else:
+        nuevo_historial['hashes_permanentes'] = []
     
     return nuevo_historial
 
 def noticia_ya_publicada(historial, url, titulo):
+    """
+    🆕 MEJORADO: Detección de duplicados con múltiples capas de verificación
+    """
     if not historial or not isinstance(historial, dict):
         return False
     
-    url_limpia = re.sub(r'\?.*$', '', url)
-    url_base = re.sub(r'https?://(www\.)?', '', url_limpia).lower().rstrip('/')
+    url_normalizada = normalizar_url(url)
+    if not url_normalizada:
+        return False
     
+    log(f"   🔍 Verificando duplicados para: {url_normalizada[:50]}...", 'debug')
+    
+    # 1. Verificación por URL exacta (normalizada)
     urls_guardadas = historial.get('urls', [])
     if not isinstance(urls_guardadas, list):
         urls_guardadas = []
     
-    for url_hist in urls_guardadas:
+    for i, url_hist in enumerate(urls_guardadas):
         if not isinstance(url_hist, str):
             continue
-        url_hist_limpia = re.sub(r'\?.*$', '', url_hist)
-        url_hist_base = re.sub(r'https?://(www\.)?', '', url_hist_limpia).lower().rstrip('/')
+        url_hist_normalizada = normalizar_url(url_hist)
         
-        if url_base == url_hist_base:
+        if url_normalizada == url_hist_normalizada:
+            log(f"   ⚠️ DUPLICADO: URL exacta encontrada (índice {i})", 'debug')
             return True
         
-        url_slug = url_base.split('/')[-1]
-        hist_slug = url_hist_base.split('/')[-1]
-        if url_slug and hist_slug and len(url_slug) > 15:
-            if url_slug[:20] == hist_slug[:20]:
+        # Comparar slugs (última parte de la URL)
+        slug_actual = url_normalizada.split('/')[-1]
+        slug_hist = url_hist_normalizada.split('/')[-1]
+        if slug_actual and slug_hist and len(slug_actual) > 15:
+            if slug_actual == slug_hist:
+                log(f"   ⚠️ DUPLICADO: Slug idéntico encontrado", 'debug')
                 return True
     
+    # 2. Verificación por hash exacto del título
     hash_titulo = generar_hash(titulo)
     hashes_guardados = historial.get('hashes', [])
-    if not isinstance(hashes_guardados, list):
-        hashes_guardados = []
+    hashes_permanentes = historial.get('hashes_permanentes', [])
+    todos_hashes = hashes_guardados + hashes_permanentes
     
-    if hash_titulo in hashes_guardados:
+    if hash_titulo in todos_hashes:
+        log(f"   ⚠️ DUPLICADO: Hash de título exacto encontrado", 'debug')
         return True
     
+    # 3. 🆕 NUEVO: Verificación por similitud de título (85% de coincidencia)
+    titulos_guardados = historial.get('titulos', [])
+    if not isinstance(titulos_guardados, list):
+        titulos_guardados = []
+    
+    for titulo_hist in titulos_guardados:
+        if not isinstance(titulo_hist, str):
+            continue
+        similitud = calcular_similitud_titulos(titulo, titulo_hist)
+        if similitud >= UMBRAL_SIMILITUD_TITULO:
+            log(f"   ⚠️ DUPLICADO: Título {similitud:.1%} similar a uno publicado", 'debug')
+            log(f"      Nuevo: {titulo[:60]}...", 'debug')
+            log(f"      Viejo: {titulo_hist[:60]}...", 'debug')
+            return True
+    
+    log(f"   ✅ No es duplicado (URL nueva, hash nuevo, título diferente)", 'debug')
     return False
 
 def guardar_historial(historial, url, titulo):
-    historial = limpiar_historial_antiguo(historial)
+    """🆕 MEJORADO: Guarda también el título para comparación futura"""
+    # No limpiar al inicio, limpiar solo si es necesario al final
+    # historial = limpiar_historial_antiguo(historial)  # 🆕 COMENTADO: Limpieza al final
     
-    url_limpia = re.sub(r'\?.*$', '', url)
+    url_limpia = re.sub(r'\?.*$', '', url)  # Mantener parámetros básicos para referencia
     hash_titulo = generar_hash(titulo)
     ahora = datetime.now().isoformat()
     
     historial['urls'].append(url_limpia)
     historial['hashes'].append(hash_titulo)
     historial['timestamps'].append(ahora)
+    historial['titulos'].append(titulo)  # 🆕 NUEVO: Guardar título
     
     stats = historial.get('estadisticas', {'total_publicadas': 0})
     if not isinstance(stats, dict):
@@ -861,8 +893,18 @@ def guardar_historial(historial, url, titulo):
     stats['total_publicadas'] = stats.get('total_publicadas', 0) + 1
     historial['estadisticas'] = stats
     
+    # 🆕 NUEVO: Actualizar hashes permanentes
+    if 'hashes_permanentes' not in historial:
+        historial['hashes_permanentes'] = []
+    historial['hashes_permanentes'].append(hash_titulo)
+    if len(historial['hashes_permanentes']) > 200:
+        historial['hashes_permanentes'] = historial['hashes_permanentes'][-200:]
+    
+    # 🆕 AHORA sí limpiar, pero manteniendo hashes_permanentes
+    historial = limpiar_historial_antiguo(historial)
+    
     max_size = 500
-    for key in ['urls', 'hashes', 'timestamps']:
+    for key in ['urls', 'hashes', 'timestamps', 'titulos']:
         if len(historial[key]) > max_size:
             historial[key] = historial[key][-max_size:]
     
@@ -908,6 +950,9 @@ def obtener_newsapi_internacional():
         'economy OR inflation OR markets OR IMF',
         'NATO OR UN OR EU OR summit',
         'Iran OR Israel OR Middle East conflict',
+        'Zelensky OR Netanyahu OR Hamas',  # 🆕 NUEVO
+        'rare earth minerals OR lithium conflict',  # 🆕 NUEVO
+        'AI warfare OR cyber attack military',  # 🆕 NUEVO
     ]
     
     for q in queries:
@@ -1170,11 +1215,13 @@ def generar_hashtags(titulo, contenido):
     
     temas = {
         'guerra|conflicto|ataque|bombardeo': '#ConflictoArmado',
-        'ucrania|rusia': '#UcraniaRusia',
-        'gaza|israel|palestina': '#IsraelGaza',
+        'ucrania|rusia|zelensky|putin': '#UcraniaRusia',
+        'gaza|israel|palestina|hamas|netanyahu': '#IsraelGaza',
         'trump|biden|putin': '#PolíticaGlobal',
         'economía|mercados|inflación': '#EconomíaMundial',
         'irán|iran': '#Irán',
+        'dron|drones|ia|inteligencia artificial': '#TecnologíaMilitar',  # 🆕 NUEVO
+        'china|taiwan': '#ChinaTaiwán',  # 🆕 NUEVO
     }
     
     for patron, tag in temas.items():
@@ -1196,7 +1243,6 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
     
     mensaje = f"{texto}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
     
-    # Validación de longitud
     if len(mensaje) > 2000:
         lineas = texto.split('\n')
         texto_cortado = ""
@@ -1207,7 +1253,6 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
                 break
         mensaje = f"{texto_cortado.rstrip()}\n\n[...]\n\n{hashtags}\n\n— 🌐 Verdad Hoy"
     
-    # Limpieza final
     mensaje = re.sub(r'https?://\S+', '', mensaje)
     mensaje = re.sub(r'\n{5,}', '\n\n\n\n', mensaje)
     
@@ -1232,12 +1277,12 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
         return False
 
 # =============================================================================
-# FUNCIÓN PRINCIPAL
+# FUNCIÓN PRINCIPAL - CORREGIDA
 # =============================================================================
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS INTERNACIONALES")
+    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V2.0 CORREGIDO")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -1249,7 +1294,8 @@ def main():
         return False
     
     historial = cargar_historial()
-    log(f"📊 Historial: {len(historial.get('urls', []))} URLs guardadas")
+    log(f"📊 Historial: {len(historial.get('urls', []))} URLs recientes (72h)")
+    log(f"📊 Hashes permanentes: {len(historial.get('hashes_permanentes', []))} guardados")
     
     # Recolectar noticias
     todas_noticias = []
@@ -1269,39 +1315,47 @@ def main():
         log("ERROR: No se encontraron noticias", 'error')
         return False
     
-    todas_noticias.sort(key=lambda x: x.get('puntaje', 0), reverse=True)
+    # 🆕 MEJORADO: Ordenar por puntaje Y por fecha (más recientes primero si puntaje similar)
+    todas_noticias.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
     
-    # Seleccionar noticia
+    # Seleccionar noticia - 🆕 MEJORADO: Verificación exhaustiva de duplicados
     noticia_seleccionada = None
+    intentos = 0
     
     for noticia in todas_noticias:
         url = noticia.get('url', '')
         titulo = noticia.get('titulo', '')
+        intentos += 1
         
         if not url or not titulo:
             continue
         
+        log(f"   [{intentos}] Probando: {titulo[:50]}...", 'debug')
+        
+        # Verificación estricta de duplicados
         if noticia_ya_publicada(historial, url, titulo):
+            log(f"      ❌ Rechazada: Ya publicada", 'debug')
             continue
         
         if noticia.get('puntaje', 0) < 5:
+            log(f"      ❌ Rechazada: Puntaje bajo ({noticia.get('puntaje', 0)})", 'debug')
             continue
         
         noticia_seleccionada = noticia
+        log(f"      ✅ Aceptada: Noticia válida encontrada", 'debug')
         break
     
     if not noticia_seleccionada:
-        log("ERROR: No hay noticias disponibles", 'error')
+        log(f"ERROR: No hay noticias nuevas disponibles (revisadas {intentos} noticias)", 'error')
+        log("💡 Sugerencia: Esperar a que las APIs actualicen su contenido o ampliar ventana de tiempo", 'info')
         return False
     
     log(f"\n📝 NOTICIA SELECCIONADA:")
     log(f"   Título: {noticia_seleccionada['titulo'][:60]}...")
     log(f"   Fuente: {noticia_seleccionada['fuente']}")
+    log(f"   Puntaje: {noticia_seleccionada.get('puntaje', 0)}")
     
-    # =================================================================
-    # EXTRACCIÓN CON REGLAS ESTRICTAS
-    # =================================================================
-    
+    # Extracción de contenido
     log("🌐 Extrayendo contenido con validación estricta...")
     contenido, creditos = extraer_contenido_estricto(noticia_seleccionada['url'])
     
@@ -1314,10 +1368,7 @@ def main():
             log("   ❌ Descripción insuficiente, buscando otra noticia...", 'error')
             return False
     
-    # =================================================================
-    # CONSTRUIR PUBLICACIÓN VALIDADA
-    # =================================================================
-    
+    # Construir publicación
     log("📝 Construyendo publicación con formato validado...")
     texto_publicacion = construir_publicacion_validada(
         noticia_seleccionada['titulo'],
@@ -1331,10 +1382,7 @@ def main():
     for linea in texto_publicacion.split('\n')[:8]:
         log(f"      {linea[:65]}{'...' if len(linea) > 65 else ''}", 'debug')
     
-    # =================================================================
-    # PROCESAR IMAGEN Y PUBLICAR
-    # =================================================================
-    
+    # Procesar imagen y publicar
     hashtags = generar_hashtags(noticia_seleccionada['titulo'], contenido)
     
     log("🖼️  Procesando imagen...")

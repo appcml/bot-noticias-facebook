@@ -3,7 +3,7 @@
 """
 Bot de Noticias Internacionales para Facebook
 - Prioridad: Conflictos bélicos, política global, economía mundial
-- Fuentes: NewsAPI, NewsData, GNews (todo internacional)
+- Fuentes: NewsAPI, google news, NewsData, GNews (todo internacional)
 - Extracción de texto completo con reglas estrictas de calidad
 """
 
@@ -41,7 +41,7 @@ VENTANA_DUPLICADOS_HORAS = 24    # 24 horas de memoria de duplicados
 # Mínimos de calidad
 MIN_CARACTERES_CONTENIDO = 300
 MIN_ORACIONES = 3
-MAX_PARRAFOS = 4
+MAX_PARRAFOS = 8
 MIN_PALABRAS_POR_PARrafo = 15
 
 # Frases prohibidas (contenido de menús/publicidad)
@@ -74,7 +74,152 @@ PALABRAS_ALTA_PRIORIDAD = [
     'guerra', 'conflicto', 'bombardeo', 'ataque', 'invasión', 'invasion',
     'misil', 'dron', 'ataque aéreo', 'ataque aereo', 'ofensiva', 'combate',
     'Ucrania', 'Rusia', 'Gaza', 'Israel', 'Palestina', 'Trump', 'Biden', 'Putin',
-    'OTAN', 'NATO', 'ONU', 'UE', 'sanciones', 'embargo', 'crisis diplomática',
+    'OTAN', 'NATO', 'ONU', 'UE', 'sanciones', 'embargo', 'crisis diplomática', # 🎯 ORIGINALES (4)
+        "noticias urgentes hoy",
+        "ultima hora internacional", 
+        "breaking news today",
+        "conflicto mundial hoy",
+        
+        # 🏛️ DICTADURAS (10)
+        "dictadura hoy",
+        "regimen autoritario noticias",
+        "represion gubernamental",
+        "protestas dictadura",
+        "sanciones regimen",
+        "derechos humanos violaciones",
+        "censura gubernamental",
+        "oposicion politica perseguida",
+        "elecciones fraudulentas",
+        "transicion democratica fallida",
+        
+        # ⚔️ GUERRAS (10)
+        "guerra hoy",
+        "conflicto armado actual",
+        "ofensiva militar",
+        "ataque aereo hoy",
+        "bombardeo noticias",
+        "cese al fuego roto",
+        "invasion territorial",
+        "resistencia armada",
+        "guerra civil",
+        "intervencion militar",
+        
+        # ⛏️ TIERRAS RARAS (10)
+        "tierras raras noticias",
+        "minerales estrategicos guerra",
+        "litio conflicto",
+        "cobalto mineria",
+        "recursos naturales disputa",
+        "monopolio minero",
+        "cadena suministro minerales",
+        "china tierras raras",
+        "guerra economica recursos",
+        "sanciones minerales",
+        
+        # 🤖 TECNOLOGÍA MILITAR (12)
+        "drones militares noticias",
+        "inteligencia artificial guerra",
+        "ciberataque militar",
+        "armas hipersonicas",
+        "guerra cibernetica",
+        "robotica militar",
+        "satelite espionaje",
+        "defensa antimisiles",
+        "tecnologia militar avance",
+        "guerra electronica",
+        "ia en combate",
+        "autonomous weapons",
+        
+        # 🌍 GEOPOLÍTICA (10)
+        "tension diplomatica hoy",
+        "sanciones economicas noticias",
+        "guerra fria 2.0",
+        "alianza militar",
+        "otan noticias",
+        "otsc noticias",
+        "brics guerra",
+        "g7 g20 tension",
+        "embargo armas",
+        "crisis diplomatica",
+        
+        # 🔥 CRISIS HUMANITARIAS (9)
+        "refugiados guerra",
+        "crisis humanitaria hoy",
+        "ayuda humanitaria bloqueada",
+        "hambruna conflicto",
+        "desplazados guerra",
+        "campo refugiados",
+        "genocidio noticias",
+        "crimenes guerra",
+        "tribunal penal internacional",
+        
+        # 🌎 AMÉRICA (12)
+        "noticias america latina hoy",
+        "mexico noticias urgentes",
+        "colombia conflicto actual",
+        "venezuela crisis noticias",
+        "brasil protestas hoy",
+        "argentina economia crisis",
+        "chile noticias hoy",
+        "peru protestas dictadura",
+        "centroamerica violencia",
+        "eeuu noticias hoy",
+        "canada politica actual",
+        "migracion frontera sur",
+        
+        # 🌍 ÁFRICA (12)
+        "africa conflictos hoy",
+        "sahel guerra jihadista",
+        "mali noticias conflicto",
+        "nigeria seguridad hoy",
+        "etiopia guerra tigray",
+        "sudan guerra civil",
+        "somalia al shabaab",
+        "rd congo m23",
+        "sudafrica crisis actual",
+        "magreb noticias hoy",
+        "africa coup etat",
+        "pirateria africa",
+        
+        # 🌏 ASIA-PACÍFICO (14)
+        "china taiwan tension",
+        "corea norte noticias",
+        "japon militar noticias",
+        "india pakistan conflicto",
+        "myanmar dictadura noticias",
+        "filipinas china mar",
+        "vietnam noticias hoy",
+        "tailandia protestas",
+        "indonesia noticias",
+        "afganistan taliban",
+        "pakistan terrorismo",
+        "bangladesh crisis",
+        "australia noticias hoy",
+        "nueva zelanda actualidad",
+        
+        # 🌍 EUROPA (10)
+        "ue noticias hoy",
+        "rusia ucrania guerra",
+        "balkanes tension",
+        "turquia erdogan",
+        "polonia belarus frontera",
+        "hungria orban dictadura",
+        "serbia kosovo conflicto",
+        "caucaso armenia azerbaiyan",
+        "reino unido noticias",
+        "escandinavia noticias",
+        
+        # 🌏 ORIENTE MEDIO (10)
+        "israel palestina guerra",
+        "iran noticias hoy",
+        "arabia saudi noticias",
+        "yemen guerra hoy",
+        "siria conflicto actual",
+        "libano hezbollah",
+        "irak noticias hoy",
+        "emiratos arabes noticias",
+        "qatar crisis diplomatica",
+        "kurdistan conflicto"
 ]
 
 PALABRAS_MEDIA_PRIORIDAD = [

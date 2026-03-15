@@ -1688,7 +1688,7 @@ def main():
         log(f"   Puntaje: {noticia.get('puntaje', 0)}")
         
         log("🌐 Extrayendo contenido con validación estricta...")
-        contenido,         contenido, creditos = extraer_contenido_estricto(noticia['url'])
+        contenido,contenido, creditos = extraer_contenido_estricto(noticia['url'])
         
         if contenido:
             log(f"   ✅ Contenido válido: {len(contenido)} caracteres", 'exito')

@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - VERSIÓN 3.0 CORREGIDA
-- CORRECCIÓN CRÍTICA: Sistema anti-duplicados mejorado con detección de similitud
+Bot de Noticias Internacionales para Facebook - VERSIÓN 3.1 CORREGIDA
+- ✅ CORRECCIÓN: Sistema de puntuación por palabras individuales
+- ✅ CORRECCIÓN: Resolución de redirecciones Google News
+- ✅ CORRECCIÓN: Continuar buscando si una noticia falla
 - Persistencia de historial extendida a 72 horas
-- Detección de títulos similares (70% de coincidencia) - ANTES 85%
-- Más palabras clave para noticias frescas
-- 🆕 NUEVO: Verificación de contenido/descripción
-- 🆕 NUEVO: Normalización agresiva de URLs (móvil/desktop)
-- 🆕 NUEVO: Blacklist de títulos genéricos
+- Detección de títulos similares (70% de coincidencia)
 """
 
 import requests
@@ -38,11 +36,11 @@ ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 
 TIEMPO_ENTRE_PUBLICACIONES = 60  # 60 minutos
 VENTANA_DUPLICADOS_HORAS = 72    # 72 horas (3 días)
-UMBRAL_SIMILITUD_TITULO = 0.70   # 🔧 CORREGIDO: 70% en lugar de 85%
-UMBRAL_SIMILITUD_CONTENIDO = 0.65  # 🆕 NUEVO: Verificación de contenido
-MAX_TITULOS_HISTORIA = 150       # 🆕 Aumentado para mejor cobertura
+UMBRAL_SIMILITUD_TITULO = 0.70   # 70% de coincidencia
+UMBRAL_SIMILITUD_CONTENIDO = 0.65
+MAX_TITULOS_HISTORIA = 150
 
-# 🆕 NUEVO: Blacklist de títulos genéricos que se repiten
+# Blacklist de títulos genéricos
 BLACKLIST_TITULOS = [
     r'^\s*última hora\s*$',
     r'^\s*breaking news\s*$', 
@@ -86,17 +84,14 @@ PATRONES_RUIDO = [
 ]
 
 # =============================================================================
-# PALABRAS CLAVE INTERNACIONALES - AMPLIADAS Y ACTUALIZADAS
+# PALABRAS CLAVE INTERNACIONALES
 # =============================================================================
 
 PALABRAS_ALTA_PRIORIDAD = [
-    # 🎯 ORIGINALES (4)
     "noticias urgentes hoy",
     "ultima hora internacional", 
     "breaking news today",
     "conflicto mundial hoy",
-    
-    # 🏛️ DICTADURAS (10)
     "dictadura hoy",
     "regimen autoritario noticias",
     "represion gubernamental",
@@ -107,8 +102,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "oposicion politica perseguida",
     "elecciones fraudulentas",
     "transicion democratica fallida",
-    
-    # ⚔️ GUERRAS (10)
     "guerra hoy",
     "conflicto armado actual",
     "ofensiva militar",
@@ -119,8 +112,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "resistencia armada",
     "guerra civil",
     "intervencion militar",
-    
-    # ⛏️ TIERRAS RARAS (10)
     "tierras raras noticias",
     "minerales estrategicos guerra",
     "litio conflicto",
@@ -131,8 +122,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "china tierras raras",
     "guerra economica recursos",
     "sanciones minerales",
-    
-    # 🤖 TECNOLOGÍA MILITAR (12)
     "drones militares noticias",
     "inteligencia artificial guerra",
     "ciberataque militar",
@@ -145,8 +134,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "guerra electronica",
     "ia en combate",
     "autonomous weapons",
-    
-    # 🌍 GEOPOLÍTICA (10)
     "tension diplomatica hoy",
     "sanciones economicas noticias",
     "guerra fria 2.0",
@@ -157,8 +144,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "g7 g20 tension",
     "embargo armas",
     "crisis diplomatica",
-    
-    # 🔥 CRISIS HUMANITARIAS (9)
     "refugiados guerra",
     "crisis humanitaria hoy",
     "ayuda humanitaria bloqueada",
@@ -168,8 +153,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "genocidio noticias",
     "crimenes guerra",
     "tribunal penal internacional",
-    
-    # 🌎 AMÉRICA (12)
     "noticias america latina hoy",
     "mexico noticias urgentes",
     "colombia conflicto actual",
@@ -182,8 +165,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "eeuu noticias hoy",
     "canada politica actual",
     "migracion frontera sur",
-    
-    # 🌍 ÁFRICA (12)
     "africa conflictos hoy",
     "sahel guerra jihadista",
     "mali noticias conflicto",
@@ -196,8 +177,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "magreb noticias hoy",
     "africa coup etat",
     "pirateria africa",
-    
-    # 🌏 ASIA-PACÍFICO (14)
     "china taiwan tension",
     "corea norte noticias",
     "japon militar noticias",
@@ -212,8 +191,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "bangladesh crisis",
     "australia noticias hoy",
     "nueva zelanda actualidad",
-    
-    # 🌍 EUROPA (10)
     "ue noticias hoy",
     "rusia ucrania guerra",
     "balkanes tension",
@@ -224,8 +201,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "caucaso armenia azerbaiyan",
     "reino unido noticias",
     "escandinavia noticias",
-    
-    # 🌏 ORIENTE MEDIO (10)
     "israel palestina guerra",
     "iran noticias hoy",
     "arabia saudi noticias",
@@ -236,8 +211,6 @@ PALABRAS_ALTA_PRIORIDAD = [
     "emiratos arabes noticias",
     "qatar crisis diplomatica",
     "kurdistan conflicto",
-    
-    # 🆕 NUEVAS PALABRAS CLAVE 2026 (15)
     "zelensky",
     "netanyahu",
     "hamas",
@@ -303,30 +276,21 @@ def guardar_json(ruta, datos):
         return False
 
 def generar_hash(texto):
-    """🆕 MEJORADO: Hash completo sin truncar para evitar colisiones"""
     if not texto:
         return ""
     texto_normalizado = re.sub(r'[^\w\s]', '', texto.lower().strip())
     texto_normalizado = re.sub(r'\s+', ' ', texto_normalizado)
-    return hashlib.md5(texto_normalizado.encode()).hexdigest()  # 32 caracteres, no 16
+    return hashlib.md5(texto_normalizado.encode()).hexdigest()
 
 def generar_hash_contenido(texto, longitud=800):
-    """
-    🆕 NUEVO: Crea hash del contenido/descripción para detectar noticias 
-    idénticas con títulos diferentes entre fuentes
-    """
     if not texto:
         return ""
-    
-    # Normalizar: primeros N chars, lowercase, sin espacios extra
     muestra = texto.lower()[:longitud]
     muestra = re.sub(r'[^\w\s]', '', muestra)
     muestra = re.sub(r'\s+', ' ', muestra).strip()
-    
     return hashlib.md5(muestra.encode()).hexdigest()
 
 def normalizar_url(url):
-    """Normalización básica (mantenida para compatibilidad)"""
     if not url:
         return ""
     url = re.sub(r'\?.*$', '', url)
@@ -335,42 +299,21 @@ def normalizar_url(url):
     return url.lower().rstrip('/')
 
 def normalizar_url_v2(url):
-    """
-    🆕 MEJORADO: Normalización más agresiva que maneja móviles, tracking, etc.
-    """
     if not url:
         return ""
-    
     url = url.lower().strip()
-    
-    # Eliminar protocolo
     url = re.sub(r'^https?://', '', url)
-    
-    # Eliminar subdominios móviles comunes
     url = re.sub(r'^(www\.|m\.|movil\.|mobile\.|touch\.|wap\.)', '', url)
-    
-    # Eliminar parámetros de tracking completamente
-    url = re.sub(r'\?(utm_source|utm_medium|utm_campaign|fbclid|gclid|ref|'
-                 r'source|medium|campaign|from|share|si|spref)=.*$', '', url)
-    url = re.sub(r'\?.*$', '', url)  # Eliminar cualquier query string restante
-    
-    # Eliminar fragmentos
+    url = re.sub(r'\?(utm_source|utm_medium|utm_campaign|fbclid|gclid|ref|source|medium|campaign|from|share|si|spref)=.*$', '', url)
+    url = re.sub(r'\?.*$', '', url)
     url = re.sub(r'#.*$', '', url)
-    
-    # Eliminar barras finales
     url = url.rstrip('/')
-    
     return url
 
 def calcular_similitud_titulos(titulo1, titulo2):
-    """
-    Calcula similitud entre dos títulos usando SequenceMatcher
-    Retorna valor entre 0.0 y 1.0
-    """
     if not titulo1 or not titulo2:
         return 0.0
     
-    # Normalizar: lowercase, sin puntuación, sin espacios extra
     def normalizar(t):
         t = t.lower()
         t = re.sub(r'[^\w\s]', '', t)
@@ -386,20 +329,15 @@ def calcular_similitud_titulos(titulo1, titulo2):
     return SequenceMatcher(None, t1, t2).ratio()
 
 def es_titulo_generico(titulo):
-    """
-    🆕 NUEVO: Detecta si el título es demasiado genérico/plantilla
-    """
     if not titulo:
         return True
     
     titulo_lower = titulo.lower().strip()
     
-    # Verificar contra blacklist de regex
     for patron in BLACKLIST_TITULOS:
         if re.match(patron, titulo_lower):
             return True
     
-    # Contar palabras significativas (excluyendo stop words)
     stop_words = {'el', 'la', 'los', 'las', 'un', 'una', 'de', 'del', 'al', 
                   'y', 'o', 'pero', 'en', 'con', 'por', 'para', 'a', 'ante',
                   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'at',
@@ -408,7 +346,6 @@ def es_titulo_generico(titulo):
     palabras = [p for p in re.findall(r'\b\w+\b', titulo_lower) 
                 if p not in stop_words and len(p) > 3]
     
-    # Si tiene menos de 4 palabras significativas, es genérico
     if len(set(palabras)) < 4:
         return True
     
@@ -438,20 +375,43 @@ def es_noticia_excluible(titulo, descripcion=""):
             return True
     return False
 
+# ✅ CORREGIDO: Sistema de puntuación por palabras individuales
 def calcular_puntaje_internacional(titulo, descripcion):
     texto = f"{titulo} {descripcion}".lower()
     puntaje = 0
     
-    for palabra in PALABRAS_ALTA_PRIORIDAD:
-        if palabra.lower() in texto:
-            puntaje += 10
+    # Buscar palabras individuales de alta prioridad
+    for frase in PALABRAS_ALTA_PRIORIDAD:
+        palabras = frase.lower().split()
+        for palabra in palabras:
+            if len(palabra) >= 4 and palabra in texto:
+                puntaje += 3
+                break
+        
+        if frase.lower() in texto:
+            puntaje += 7
     
-    for palabra in PALABRAS_MEDIA_PRIORIDAD:
-        if palabra.lower() in texto:
-            puntaje += 3
+    # Buscar palabras de media prioridad
+    for frase in PALABRAS_MEDIA_PRIORIDAD:
+        palabras = frase.lower().split()
+        for palabra in palabras:
+            if len(palabra) >= 3 and palabra in texto:
+                puntaje += 1
+                break
     
-    if 50 <= len(titulo) <= 120:
+    # Bonus por longitud óptima
+    if 30 <= len(titulo) <= 150:
         puntaje += 2
+    
+    # Bonus por descripción sustancial
+    if len(descripcion) >= 50:
+        puntaje += 2
+    
+    # Bonus por múltiples palabras clave
+    palabras_encontradas = len([p for p in PALABRAS_ALTA_PRIORIDAD 
+                                if any(word in texto for word in p.lower().split() if len(word) >= 4)])
+    if palabras_encontradas >= 3:
+        puntaje += 5
     
     return puntaje
 
@@ -819,7 +779,7 @@ def corregir_formato(texto):
     return '\n'.join(nuevas_lineas)
 
 # =============================================================================
-# GESTIÓN DE HISTORIAL - CORREGIDO Y MEJORADO
+# GESTIÓN DE HISTORIAL
 # =============================================================================
 
 def cargar_historial():
@@ -842,7 +802,6 @@ def cargar_historial():
     return datos
 
 def limpiar_historial_antiguo(historial):
-    """🆕 MEJORADO: Limpieza inteligente que preserva hashes antiguos"""
     if not historial or not isinstance(historial, dict):
         return cargar_historial()
     
@@ -853,7 +812,6 @@ def limpiar_historial_antiguo(historial):
     if not isinstance(timestamps, list):
         timestamps = []
     
-    # Preservar entradas de últimas 72h
     for i, ts_str in enumerate(timestamps):
         try:
             if isinstance(ts_str, str):
@@ -863,12 +821,10 @@ def limpiar_historial_antiguo(historial):
         except:
             continue
     
-    # Siempre preservar últimas 50 entradas
     total = len(timestamps)
     for i in range(max(0, total - 50), total):
         indices_validos.append(i)
     
-    # Eliminar duplicados en índices y ordenar
     indices_validos = sorted(set(indices_validos))
     
     nuevo_historial = {
@@ -901,21 +857,15 @@ def limpiar_historial_antiguo(historial):
         if i < len(hashes_contenido):
             nuevo_historial['hashes_contenido'].append(hashes_contenido[i])
     
-    # Mantener hashes permanentes (últimos 300)
     todos_hashes = historial.get('hashes', []) + historial.get('hashes_permanentes', [])
     nuevo_historial['hashes_permanentes'] = todos_hashes[-300:] if len(todos_hashes) > 300 else todos_hashes
     
     return nuevo_historial
 
 def noticia_ya_publicada(historial, url, titulo, descripcion=""):
-    """
-    🆕 VERSIÓN 2.0: Sistema multi-capa de detección de duplicados
-    Retorna: (bool, str) -> (es_duplicado, razon)
-    """
     if not historial or not isinstance(historial, dict):
         return False, "sin_historial"
     
-    # Normalizar inputs
     url_norm = normalizar_url_v2(url)
     hash_titulo = generar_hash(titulo)
     hash_desc = generar_hash_contenido(descripcion) if descripcion else ""
@@ -924,12 +874,10 @@ def noticia_ya_publicada(historial, url, titulo, descripcion=""):
     log(f"      URL: {url_norm[:60]}...", 'debug')
     log(f"      Hash: {hash_titulo[:16]}", 'debug')
     
-    # 1. 🆕 RECHAZAR TÍTULOS GENÉRICOS
     if es_titulo_generico(titulo):
         log(f"   ⚠️ RECHAZADO: Título demasiado genérico", 'advertencia')
         return True, "titulo_generico"
     
-    # 2. Verificación por URL (más estricta con normalización v2)
     urls_guardadas = historial.get('urls', [])
     for i, url_hist in enumerate(urls_guardadas):
         if not isinstance(url_hist, str):
@@ -939,7 +887,6 @@ def noticia_ya_publicada(historial, url, titulo, descripcion=""):
             log(f"   ⚠️ DUPLICADO: URL idéntica (índice {i})", 'debug')
             return True, "url_exacta"
         
-        # Verificar si es la misma noticia con diferente formato de URL
         path_actual = '/'.join(url_norm.split('/')[1:])
         path_hist = '/'.join(normalizar_url_v2(url_hist).split('/')[1:])
         
@@ -947,7 +894,6 @@ def noticia_ya_publicada(historial, url, titulo, descripcion=""):
             log(f"   ⚠️ DUPLICADO: Mismo path de URL", 'debug')
             return True, "url_path_identico"
     
-    # 3. Verificación por hash exacto del título (incluye permanentes)
     hashes_actuales = historial.get('hashes', [])
     hashes_permanentes = historial.get('hashes_permanentes', [])
     todos_hashes = list(dict.fromkeys(hashes_actuales + hashes_permanentes))
@@ -956,13 +902,11 @@ def noticia_ya_publicada(historial, url, titulo, descripcion=""):
         log(f"   ⚠️ DUPLICADO: Hash de título exacto", 'debug')
         return True, "hash_titulo_exacto"
     
-    # 4. 🆕 Verificación por hash de descripción/contenido
     if hash_desc and 'hashes_contenido' in historial:
         if hash_desc in historial['hashes_contenido']:
             log(f"   ⚠️ DUPLICADO: Mismo contenido/descripción", 'debug')
             return True, "hash_contenido_exacto"
     
-    # 5. Verificación por similitud de título (70% umbral)
     titulos_guardados = historial.get('titulos', [])
     max_similitud = 0.0
     
@@ -979,15 +923,13 @@ def noticia_ya_publicada(historial, url, titulo, descripcion=""):
             log(f"      Viejo: {titulo_hist[:50]}...", 'debug')
             return True, f"similitud_titulo_{similitud:.2f}"
     
-    # 6. 🆕 Verificación por similitud de contenido/descripción
     if descripcion and 'descripciones' in historial:
-        desc_recientes = historial['descripciones'][-30:]  # Solo últimas 30
+        desc_recientes = historial['descripciones'][-30:]
         
         for desc_hist in desc_recientes:
             if not isinstance(desc_hist, str) or not desc_hist:
                 continue
             
-            # Calcular similitud de palabras clave en descripción (Jaccard)
             palabras_nueva = set(re.findall(r'\b\w{5,}\b', descripcion.lower()))
             palabras_vieja = set(re.findall(r'\b\w{5,}\b', desc_hist.lower()))
             
@@ -1004,10 +946,6 @@ def noticia_ya_publicada(historial, url, titulo, descripcion=""):
     return False, "nuevo"
 
 def guardar_historial(historial, url, titulo, descripcion=""):
-    """
-    🆕 VERSIÓN 2.0: Guarda más metadatos para mejor detección futura
-    """
-    # Asegurar estructura completa del historial
     campos_necesarios = {
         'urls': [], 'hashes': [], 'timestamps': [], 'titulos': [],
         'descripciones': [], 'hashes_contenido': [], 
@@ -1018,13 +956,11 @@ def guardar_historial(historial, url, titulo, descripcion=""):
         if campo not in historial or not isinstance(historial[campo], type(default)):
             historial[campo] = default
     
-    # Generar todos los hashes y metadatos
     url_limpia = normalizar_url_v2(url)
     hash_titulo = generar_hash(titulo)
     hash_contenido = generar_hash_contenido(descripcion)
     ahora = datetime.now().isoformat()
     
-    # Agregar a listas principales
     historial['urls'].append(url_limpia)
     historial['hashes'].append(hash_titulo)
     historial['timestamps'].append(ahora)
@@ -1032,25 +968,20 @@ def guardar_historial(historial, url, titulo, descripcion=""):
     historial['descripciones'].append(descripcion[:600] if descripcion else "")
     historial['hashes_contenido'].append(hash_contenido)
     
-    # Actualizar estadísticas
     historial['estadisticas']['total_publicadas'] = \
         historial['estadisticas'].get('total_publicadas', 0) + 1
     
-    # Actualizar hashes permanentes (últimos 300 para referencia de largo plazo)
     historial['hashes_permanentes'].append(hash_titulo)
     if len(historial['hashes_permanentes']) > 300:
         historial['hashes_permanentes'] = historial['hashes_permanentes'][-300:]
     
-    # Limitar tamaño de listas principales (últimas 150)
     max_size = MAX_TITULOS_HISTORIA
     for key in ['urls', 'hashes', 'timestamps', 'titulos', 'descripciones', 'hashes_contenido']:
         if len(historial[key]) > max_size:
             historial[key] = historial[key][-max_size:]
     
-    # Limpieza inteligente: mantener últimas 72h + últimas 50 siempre
     historial = limpiar_historial_antiguo(historial)
     
-    # Guardar en disco
     guardar_json(HISTORIAL_PATH, historial)
     return historial
 
@@ -1080,7 +1011,7 @@ def verificar_tiempo():
         return True
 
 # =============================================================================
-# FUENTES DE NOTICIAS (simplificado)
+# FUENTES DE NOTICIAS
 # =============================================================================
 
 def obtener_newsapi_internacional():
@@ -1232,6 +1163,57 @@ def obtener_gnews_internacional():
     log(f"GNews: {len(noticias)} noticias", 'info')
     return noticias
 
+# ✅ NUEVA FUNCIÓN: Resolver redirecciones de Google News
+def resolver_redireccion_google_news(url_google):
+    """
+    Resuelve las redirecciones de Google News RSS para obtener URL real del artículo.
+    """
+    if not url_google:
+        return None
+    
+    if not url_google.startswith('https://news.google.com'):
+        return url_google
+    
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        }
+        
+        resp = requests.get(
+            url_google, 
+            headers=headers, 
+            timeout=15, 
+            allow_redirects=True
+        )
+        
+        url_final = resp.url
+        
+        if 'google.com' in url_final and '/sorry' in url_final:
+            log(f"   ⚠️ Google bloqueó la redirección (captcha)", 'debug')
+            return None
+            
+        if url_final == url_google:
+            resp_head = requests.head(
+                url_google, 
+                headers=headers, 
+                timeout=10, 
+                allow_redirects=True
+            )
+            url_final = resp_head.url
+        
+        url_limpia = re.sub(r'\?(utm_source|utm_medium|utm_campaign|fbclid|gclid|ref|source|medium|campaign|from|share|si|spref)=.*$', '', url_final)
+        url_limpia = re.sub(r'#.*$', '', url_limpia)
+        
+        log(f"   🔍 Redirigido: {url_google[:50]}... -> {url_limpia[:60]}...", 'debug')
+        return url_limpia
+        
+    except Exception as e:
+        log(f"   ⚠️ Error resolviendo redirección: {e}", 'debug')
+        return None
+
+# ✅ CORREGIDO: Google News RSS con resolución de redirecciones
 def obtener_google_news_rss():
     feeds = [
         'https://news.google.com/rss?hl=es&gl=US&ceid=US:es',
@@ -1254,25 +1236,31 @@ def obtener_google_news_rss():
                     titulo = titulo.rsplit(' - ', 1)[0]
                 
                 link = entry.get('link', '')
-                try:
-                    resp = requests.head(link, allow_redirects=True, timeout=8, headers=headers)
-                    link_final = resp.url
-                except:
-                    link_final = link
                 
-                if es_noticia_excluible(titulo):
+                # ✅ Resolver redirección para obtener URL real
+                url_real = resolver_redireccion_google_news(link)
+                if not url_real:
+                    continue
+                
+                # ✅ Obtener descripción del RSS
+                descripcion = entry.get('summary', '') or entry.get('description', '')
+                descripcion = re.sub(r'<[^>]+>', '', descripcion)
+                descripcion = limpiar_texto(descripcion)
+                
+                if es_noticia_excluible(titulo, descripcion):
                     continue
                 
                 noticias.append({
                     'titulo': limpiar_texto(titulo),
-                    'descripcion': '',
-                    'url': link_final,
+                    'descripcion': descripcion,
+                    'url': url_real,
                     'imagen': None,
                     'fuente': 'Google News',
                     'fecha': entry.get('published'),
-                    'puntaje': calcular_puntaje_internacional(titulo, '')
+                    'puntaje': calcular_puntaje_internacional(titulo, descripcion)
                 })
-        except:
+        except Exception as e:
+            log(f"Error en feed {feed_url}: {e}", 'debug')
             pass
     
     log(f"Google News RSS: {len(noticias)} noticias", 'info')
@@ -1426,7 +1414,7 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V3.0 CORREGIDO")
+    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V3.1 CORREGIDO")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -1459,14 +1447,16 @@ def main():
         log("ERROR: No se encontraron noticias", 'error')
         return False
     
-    # Ordenar por puntaje Y por fecha (más recientes primero si puntaje similar)
+    # Ordenar por puntaje y fecha
     todas_noticias.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
     
-    # Seleccionar noticia - Verificación exhaustiva de duplicados
+    # ✅ CORREGIDO: Buscar noticia válida con reintentos
     noticia_seleccionada = None
     intentos = 0
+    max_intentos = len(todas_noticias)
     
-    for noticia in todas_noticias:
+    while intentos < max_intentos:
+        noticia = todas_noticias[intentos]
         url = noticia.get('url', '')
         titulo = noticia.get('titulo', '')
         descripcion = noticia.get('descripcion', '')
@@ -1477,42 +1467,55 @@ def main():
         
         log(f"   [{intentos}] Probando: {titulo[:50]}...", 'debug')
         
-        # 🆕 CORREGIDO: Verificación con descripción y razón específica
+        # Verificar duplicados
         es_dup, razon = noticia_ya_publicada(historial, url, titulo, descripcion)
         if es_dup:
             log(f"      ❌ Rechazada: {razon}", 'debug')
             continue
         
+        # ✅ CORREGIDO: Umbral de puntaje bajado a 3
         if noticia.get('puntaje', 0) < 3:
             log(f"      ❌ Rechazada: Puntaje bajo ({noticia.get('puntaje', 0)})", 'debug')
             continue
         
-        noticia_seleccionada = noticia
         log(f"      ✅ Aceptada: Noticia válida encontrada", 'debug')
-        break
+        
+        # Intentar extraer contenido
+        log(f"\n📝 NOTICIA SELECCIONADA:")
+        log(f"   Título: {noticia['titulo'][:60]}...")
+        log(f"   Fuente: {noticia['fuente']}")
+        log(f"   Puntaje: {noticia.get('puntaje', 0)}")
+        
+        log("🌐 Extrayendo contenido con validación estricta...")
+        contenido, creditos = extraer_contenido_estricto(noticia['url'])
+        
+        if contenido:
+            log(f"   ✅ Contenido válido: {len(contenido)} caracteres", 'exito')
+            noticia_seleccionada = noticia
+            break
+        else:
+            log("   ⚠️ Extracción falló, usando descripción de API", 'advertencia')
+            contenido = noticia.get('descripcion', '')
+            
+            if len(contenido) >= 100:
+                log(f"   ✅ Usando descripción: {len(contenido)} caracteres", 'exito')
+                noticia_seleccionada = noticia
+                break
+            else:
+                log(f"   ❌ Descripción insuficiente ({len(contenido)} chars), probando siguiente...", 'advertencia')
+                # ✅ Guardar como usada para no repetir y continuar
+                historial = guardar_historial(
+                    historial, 
+                    noticia['url'], 
+                    noticia['titulo'],
+                    noticia.get('descripcion', '')
+                )
+                continue
     
     if not noticia_seleccionada:
         log(f"ERROR: No hay noticias nuevas disponibles (revisadas {intentos} noticias)", 'error')
         log("💡 Sugerencia: Esperar a que las APIs actualicen su contenido o ampliar ventana de tiempo", 'info')
         return False
-    
-    log(f"\n📝 NOTICIA SELECCIONADA:")
-    log(f"   Título: {noticia_seleccionada['titulo'][:60]}...")
-    log(f"   Fuente: {noticia_seleccionada['fuente']}")
-    log(f"   Puntaje: {noticia_seleccionada.get('puntaje', 0)}")
-    
-    # Extracción de contenido
-    log("🌐 Extrayendo contenido con validación estricta...")
-    contenido, creditos = extraer_contenido_estricto(noticia_seleccionada['url'])
-    
-    if contenido:
-        log(f"   ✅ Contenido válido: {len(contenido)} caracteres", 'exito')
-    else:
-        log("   ⚠️ Extracción falló, usando descripción de API", 'advertencia')
-        contenido = noticia_seleccionada.get('descripcion', '')
-        if len(contenido) < 100:
-            log("   ❌ Descripción insuficiente, buscando otra noticia...", 'error')
-            return False
     
     # Construir publicación
     log("📝 Construyendo publicación con formato validado...")
@@ -1566,7 +1569,6 @@ def main():
     
     # Guardar estado
     if exito:
-        # 🆕 CORREGIDO: Guardar con descripción para mejor detección futura
         guardar_historial(
             historial, 
             noticia_seleccionada['url'], 

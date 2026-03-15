@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - VERSIÓN 3.2 CORREGIDA
-- ✅ CORRECCIÓN: Sistema de puntuación por palabras individuales
-- ✅ CORRECCIÓN: Resolución de redirecciones Google News
-- ✅ CORRECCIÓN: Continuar buscando si una noticia falla
-- ✅ CORRECCIÓN: Evitar imágenes de logos (Google News, etc.)
-- Persistencia de historial extendida a 72 horas
-- Detección de títulos similares (70% de coincidencia)
+Bot de Noticias Internacionales para Facebook - VERSIÓN 3.3 CORREGIDA
+- ✅ CORRECCIÓN: Múltiples fuentes RSS como respaldo
+- ✅ CORRECCIÓN: Mejor manejo de errores en feeds
+- ✅ CORRECCIÓN: Timeout y reintentos en requests
 """
 
 import requests
@@ -21,6 +18,7 @@ import html as html_module
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup, Comment
 from difflib import SequenceMatcher
+import time
 
 # =============================================================================
 # CONFIGURACIÓN
@@ -35,13 +33,12 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json')
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 
-TIEMPO_ENTRE_PUBLICACIONES = 60  # 60 minutos
-VENTANA_DUPLICADOS_HORAS = 72    # 72 horas (3 días)
-UMBRAL_SIMILITUD_TITULO = 0.70   # 70% de coincidencia
+TIEMPO_ENTRE_PUBLICACIONES = 60
+VENTANA_DUPLICADOS_HORAS = 72
+UMBRAL_SIMILITUD_TITULO = 0.70
 UMBRAL_SIMILITUD_CONTENIDO = 0.65
 MAX_TITULOS_HISTORIA = 150
 
-# Blacklist de títulos genéricos
 BLACKLIST_TITULOS = [
     r'^\s*última hora\s*$',
     r'^\s*breaking news\s*$', 
@@ -1006,7 +1003,7 @@ def verificar_tiempo():
         return True
 
 # =============================================================================
-# FUENTES DE NOTICIAS
+# FUENTES DE NOTICIAS - CORREGIDO CON MÚLTIPLES FUENTES RSS
 # =============================================================================
 
 def obtener_newsapi_internacional():
@@ -1217,6 +1214,10 @@ def obtener_google_news_rss():
         try:
             feed = feedparser.parse(feed_url, request_headers=headers)
             
+            if not feed or not feed.entries:
+                log(f"   ⚠️ Feed vacío o error: {feed_url}", 'debug')
+                continue
+            
             for entry in feed.entries[:8]:
                 titulo = entry.get('title', '')
                 if not titulo or '[Removed]' in titulo:
@@ -1249,13 +1250,103 @@ def obtener_google_news_rss():
                 })
         except Exception as e:
             log(f"Error en feed {feed_url}: {e}", 'debug')
-            pass
+            continue
     
     log(f"Google News RSS: {len(noticias)} noticias", 'info')
     return noticias
 
+# ✅ NUEVAS FUENTES RSS ALTERNATIVAS
+def obtener_rss_alternativos():
+    """
+    Fuentes RSS alternativas en español como respaldo
+    """
+    feeds = [
+        # BBC Mundo
+        'http://feeds.bbci.co.uk/mundo/rss.xml',
+        # El País - Internacional
+        'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada',
+        # RTVE - Internacional
+        'https://api2.rtve.es/rss/temas_noticias/1190',
+        # Infobae - Mundo
+        'https://www.infobae.com/arc/outboundfeeds/rss/mundo/',
+        # CNN Español
+        'http://rss.cnn.com/rss/edition_world.rss',
+    ]
+    
+    noticias = []
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/rss+xml,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    }
+    
+    for feed_url in feeds:
+        try:
+            log(f"   🔍 Intentando RSS: {feed_url[:40]}...", 'debug')
+            
+            # Descargar feed manualmente con requests
+            resp = requests.get(feed_url, headers=headers, timeout=10)
+            
+            if resp.status_code != 200:
+                continue
+            
+            # Parsear con feedparser
+            feed = feedparser.parse(resp.content)
+            
+            if not feed or not feed.entries:
+                continue
+            
+            fuente_nombre = feed.feed.get('title', 'RSS')[:20]
+            
+            for entry in feed.entries[:5]:  # Solo 5 por fuente para variedad
+                titulo = entry.get('title', '')
+                if not titulo:
+                    continue
+                
+                # Limpiar título de pubs
+                titulo = re.sub(r'\s*-\s*[^-]*$', '', titulo)  # Quitar " - BBC News" al final
+                
+                link = entry.get('link', '')
+                if not link:
+                    continue
+                
+                descripcion = entry.get('summary', '') or entry.get('description', '')
+                descripcion = re.sub(r'<[^>]+>', '', descripcion)
+                descripcion = limpiar_texto(descripcion)
+                
+                if es_noticia_excluible(titulo, descripcion):
+                    continue
+                
+                # Extraer imagen si está en el feed
+                imagen = None
+                if 'media_content' in entry:
+                    imagen = entry.media_content[0].get('url')
+                elif 'links' in entry:
+                    for link_data in entry.links:
+                        if link_data.get('type', '').startswith('image/'):
+                            imagen = link_data.get('href')
+                            break
+                
+                noticias.append({
+                    'titulo': limpiar_texto(titulo),
+                    'descripcion': descripcion,
+                    'url': link,
+                    'imagen': imagen,
+                    'fuente': f"RSS:{fuente_nombre}",
+                    'fecha': entry.get('published'),
+                    'puntaje': calcular_puntaje_internacional(titulo, descripcion)
+                })
+            
+            log(f"   ✅ RSS {fuente_nombre}: {len([n for n in noticias if fuente_nombre in n['fuente']])} noticias", 'debug')
+            
+        except Exception as e:
+            log(f"   ⚠️ Error en RSS {feed_url}: {e}", 'debug')
+            continue
+    
+    log(f"RSS Alternativos: {len(noticias)} noticias", 'info')
+    return noticias
+
 # =============================================================================
-# PROCESAMIENTO DE IMAGEN - CORREGIDO
+# PROCESAMIENTO DE IMAGEN
 # =============================================================================
 
 def extraer_imagen_web(url):
@@ -1509,12 +1600,12 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
         return False
 
 # =============================================================================
-# FUNCIÓN PRINCIPAL - CORREGIDA
+# FUNCIÓN PRINCIPAL - CORREGIDA CON FUENTES ALTERNATIVAS
 # =============================================================================
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V3.2 CORREGIDO")
+    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V3.3 CORREGIDO")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -1531,19 +1622,35 @@ def main():
     
     todas_noticias = []
     
+    # Fuentes principales (con API key)
     if NEWS_API_KEY:
         todas_noticias.extend(obtener_newsapi_internacional())
     if NEWSDATA_API_KEY and len(todas_noticias) < 15:
         todas_noticias.extend(obtener_newsdata_internacional())
     if GNEWS_API_KEY and len(todas_noticias) < 20:
         todas_noticias.extend(obtener_gnews_internacional())
+    
+    # Google News RSS
     if len(todas_noticias) < 25:
-        todas_noticias.extend(obtener_google_news_rss())
+        noticias_gn = obtener_google_news_rss()
+        if noticias_gn:
+            todas_noticias.extend(noticias_gn)
+    
+    # ✅ FUENTES ALTERNATIVAS RSS (si todo lo demás falla)
+    if len(todas_noticias) < 10:
+        log("⚠️ Pocas noticias de fuentes principales, intentando RSS alternativos...", 'advertencia')
+        noticias_alt = obtener_rss_alternativos()
+        if noticias_alt:
+            todas_noticias.extend(noticias_alt)
     
     log(f"📰 Total recolectadas: {len(todas_noticias)} noticias")
     
     if not todas_noticias:
-        log("ERROR: No se encontraron noticias", 'error')
+        log("ERROR: No se encontraron noticias de ninguna fuente", 'error')
+        log("💡 Sugerencias:", 'info')
+        log("   1. Verificar conexión a internet", 'info')
+        log("   2. Las fuentes RSS pueden estar bloqueando temporalmente", 'info')
+        log("   3. Intentar en unos minutos", 'info')
         return False
     
     todas_noticias.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
@@ -1581,7 +1688,7 @@ def main():
         log(f"   Puntaje: {noticia.get('puntaje', 0)}")
         
         log("🌐 Extrayendo contenido con validación estricta...")
-        contenido, creditos = extraer_contenido_estricto(noticia['url'])
+        contenido,         contenido, creditos = extraer_contenido_estricto(noticia['url'])
         
         if contenido:
             log(f"   ✅ Contenido válido: {len(contenido)} caracteres", 'exito')

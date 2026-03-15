@@ -1483,7 +1483,7 @@ def main():
             log(f"      ❌ Rechazada: {razon}", 'debug')
             continue
         
-        if noticia.get('puntaje', 0) < 5:
+        if noticia.get('puntaje', 0) < 3:
             log(f"      ❌ Rechazada: Puntaje bajo ({noticia.get('puntaje', 0)})", 'debug')
             continue
         

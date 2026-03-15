@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - VERSIÓN 3.1 CORREGIDA
+Bot de Noticias Internacionales para Facebook - VERSIÓN 3.2 CORREGIDA
 - ✅ CORRECCIÓN: Sistema de puntuación por palabras individuales
 - ✅ CORRECCIÓN: Resolución de redirecciones Google News
 - ✅ CORRECCIÓN: Continuar buscando si una noticia falla
+- ✅ CORRECCIÓN: Evitar imágenes de logos (Google News, etc.)
 - Persistencia de historial extendida a 72 horas
 - Detección de títulos similares (70% de coincidencia)
 """
@@ -375,12 +376,10 @@ def es_noticia_excluible(titulo, descripcion=""):
             return True
     return False
 
-# ✅ CORREGIDO: Sistema de puntuación por palabras individuales
 def calcular_puntaje_internacional(titulo, descripcion):
     texto = f"{titulo} {descripcion}".lower()
     puntaje = 0
     
-    # Buscar palabras individuales de alta prioridad
     for frase in PALABRAS_ALTA_PRIORIDAD:
         palabras = frase.lower().split()
         for palabra in palabras:
@@ -391,7 +390,6 @@ def calcular_puntaje_internacional(titulo, descripcion):
         if frase.lower() in texto:
             puntaje += 7
     
-    # Buscar palabras de media prioridad
     for frase in PALABRAS_MEDIA_PRIORIDAD:
         palabras = frase.lower().split()
         for palabra in palabras:
@@ -399,15 +397,12 @@ def calcular_puntaje_internacional(titulo, descripcion):
                 puntaje += 1
                 break
     
-    # Bonus por longitud óptima
     if 30 <= len(titulo) <= 150:
         puntaje += 2
     
-    # Bonus por descripción sustancial
     if len(descripcion) >= 50:
         puntaje += 2
     
-    # Bonus por múltiples palabras clave
     palabras_encontradas = len([p for p in PALABRAS_ALTA_PRIORIDAD 
                                 if any(word in texto for word in p.lower().split() if len(word) >= 4)])
     if palabras_encontradas >= 3:
@@ -1163,11 +1158,7 @@ def obtener_gnews_internacional():
     log(f"GNews: {len(noticias)} noticias", 'info')
     return noticias
 
-# ✅ NUEVA FUNCIÓN: Resolver redirecciones de Google News
 def resolver_redireccion_google_news(url_google):
-    """
-    Resuelve las redirecciones de Google News RSS para obtener URL real del artículo.
-    """
     if not url_google:
         return None
     
@@ -1213,7 +1204,6 @@ def resolver_redireccion_google_news(url_google):
         log(f"   ⚠️ Error resolviendo redirección: {e}", 'debug')
         return None
 
-# ✅ CORREGIDO: Google News RSS con resolución de redirecciones
 def obtener_google_news_rss():
     feeds = [
         'https://news.google.com/rss?hl=es&gl=US&ceid=US:es',
@@ -1237,12 +1227,10 @@ def obtener_google_news_rss():
                 
                 link = entry.get('link', '')
                 
-                # ✅ Resolver redirección para obtener URL real
                 url_real = resolver_redireccion_google_news(link)
                 if not url_real:
                     continue
                 
-                # ✅ Obtener descripción del RSS
                 descripcion = entry.get('summary', '') or entry.get('description', '')
                 descripcion = re.sub(r'<[^>]+>', '', descripcion)
                 descripcion = limpiar_texto(descripcion)
@@ -1267,52 +1255,133 @@ def obtener_google_news_rss():
     return noticias
 
 # =============================================================================
-# PROCESAMIENTO DE IMAGEN
+# PROCESAMIENTO DE IMAGEN - CORREGIDO
 # =============================================================================
 
 def extraer_imagen_web(url):
+    if not url:
+        return None
+        
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        resp = requests.get(url, headers=headers, timeout=10)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        }
+        
+        resp = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(resp.content, 'html.parser')
         
-        for meta in ['og:image', 'twitter:image']:
+        for meta in ['og:image:secure_url', 'og:image', 'twitter:image:src', 'twitter:image']:
             tag = soup.find('meta', property=meta) or soup.find('meta', attrs={'name': meta})
             if tag:
-                img_url = tag.get('content', '')
-                if img_url and img_url.startswith('http'):
+                img_url = tag.get('content', '').strip()
+                if img_url and img_url.startswith('http') and 'google.com' not in img_url and 'gstatic.com' not in img_url:
+                    log(f"   🖼️  Imagen encontrada (meta {meta}): {img_url[:60]}...", 'debug')
                     return img_url
         
-        img = soup.find('img')
-        if img:
+        article = soup.find('article') or soup.find('main') or soup.find('div', class_=re.compile(r'article|content|story', re.I))
+        if article:
+            imgs = article.find_all('img')
+            for img in imgs:
+                src = img.get('data-src') or img.get('src', '')
+                if src and src.startswith('http'):
+                    width = img.get('width', '0')
+                    height = img.get('height', '0')
+                    if width.isdigit() and int(width) >= 300:
+                        if 'google' not in src.lower() and 'logo' not in src.lower():
+                            log(f"   🖼️  Imagen encontrada (artículo): {src[:60]}...", 'debug')
+                            return src
+                    elif 'upload' in src or 'wp-content' in src or 'cdn' in src:
+                        if 'google' not in src.lower() and 'logo' not in src.lower():
+                            log(f"   🖼️  Imagen encontrada (CDN): {src[:60]}...", 'debug')
+                            return src
+        
+        all_imgs = soup.find_all('img', src=re.compile(r'^https?://'))
+        for img in all_imgs:
             src = img.get('src', '')
-            if src and src.startswith('http'):
-                return src
-    except:
-        pass
-    return None
+            if src and len(src) > 20:
+                if any(bad in src.lower() for bad in ['logo', 'icon', 'button', 'avatar', 'user', 'profile', 'google', 'gstatic']):
+                    continue
+                if any(good in src.lower() for good in ['photo', 'image', 'pic', 'upload', 'asset', 'cdn', 'media']):
+                    log(f"   🖼️  Imagen encontrada (fallback): {src[:60]}...", 'debug')
+                    return src
+        
+        log("   ⚠️ No se encontró imagen válida en el artículo", 'debug')
+        return None
+        
+    except Exception as e:
+        log(f"   ⚠️ Error extrayendo imagen: {e}", 'debug')
+        return None
 
 def descargar_imagen(url):
     if not url or not url.startswith('http'):
         return None
+    
+    blocked_patterns = [
+        'google.com', 'gstatic.com', 'googleapis.com',
+        'facebook.com', 'fbcdn.net',
+        'twitter.com', 'twimg.com',
+        'logo', 'icon', 'favicon', 'avatar', 'button', 'sprite'
+    ]
+    
+    url_lower = url.lower()
+    for pattern in blocked_patterns:
+        if pattern in url_lower:
+            log(f"   ⚠️ URL bloqueada (logo/icon): {pattern}", 'debug')
+            return None
+    
     try:
         from PIL import Image
         from io import BytesIO
         
-        resp = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+        }
+        
+        resp = requests.get(url, headers=headers, timeout=20, stream=True)
+        
         if resp.status_code != 200:
             return None
         
-        img = Image.open(BytesIO(resp.content))
+        content_type = resp.headers.get('content-type', '')
+        if 'image' not in content_type:
+            log(f"   ⚠️ Content-Type no es imagen: {content_type}", 'debug')
+            return None
+        
+        img_data = BytesIO(resp.content)
+        img = Image.open(img_data)
+        
+        width, height = img.size
+        
+        if width < 400 or height < 300:
+            log(f"   ⚠️ Imagen muy pequeña: {width}x{height}", 'debug')
+            return None
+        
+        ratio = width / height
+        if ratio > 4 or ratio < 0.2:
+            log(f"   ⚠️ Proporción sospechosa: {ratio:.2f}", 'debug')
+            return None
+        
         if img.mode in ('RGBA', 'P'):
             img = img.convert('RGB')
         
-        img.thumbnail((1200, 1200))
+        img.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
         
         temp_path = f'/tmp/noticia_{generar_hash(url)}.jpg'
-        img.save(temp_path, 'JPEG', quality=85)
+        img.save(temp_path, 'JPEG', quality=85, optimize=True)
+        
+        file_size = os.path.getsize(temp_path)
+        if file_size < 5000:
+            log(f"   ⚠️ Archivo muy pequeño: {file_size} bytes", 'debug')
+            os.remove(temp_path)
+            return None
+        
+        log(f"   ✅ Imagen descargada: {width}x{height}, {file_size/1024:.1f}KB", 'debug')
         return temp_path
-    except:
+        
+    except Exception as e:
+        log(f"   ⚠️ Error descargando imagen: {e}", 'debug')
         return None
 
 def crear_imagen_titulo(titulo):
@@ -1320,25 +1389,56 @@ def crear_imagen_titulo(titulo):
         from PIL import Image, ImageDraw, ImageFont
         import textwrap
         
-        img = Image.new('RGB', (1200, 630), color='#1e3a8a')
+        img = Image.new('RGB', (1200, 630), color='#0f172a')
         draw = ImageDraw.Draw(img)
         
         try:
-            font_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
-            font_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
-        except:
+            font_paths = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+                "/System/Library/Fonts/Helvetica.ttc",
+                "C:/Windows/Fonts/arialbd.ttf",
+            ]
+            
+            font_big = None
+            font_small = None
+            
+            for path in font_paths:
+                if os.path.exists(path):
+                    font_big = ImageFont.truetype(path, 44)
+                    font_small = ImageFont.truetype(path, 24)
+                    break
+            
+            if not font_big:
+                font_big = ImageFont.load_default()
+                font_small = font_big
+                
+        except Exception as e:
             font_big = ImageFont.load_default()
             font_small = font_big
         
-        titulo_envuelto = textwrap.fill(titulo[:130], width=38)
-        draw.text((50, 80), titulo_envuelto, font=font_big, fill='white')
+        draw.rectangle([(0, 0), (1200, 8)], fill='#3b82f6')
         
-        draw.text((50, 550), "🌍 Noticias Internacionales • Verdad Hoy", font=font_small, fill='#93c5fd')
+        titulo_envuelto = textwrap.fill(titulo[:140], width=36)
+        
+        lineas = titulo_envuelto.split('\n')
+        altura_texto = len(lineas) * 50
+        y_inicio = (630 - altura_texto) // 2 - 50
+        
+        draw.text((60, y_inicio), titulo_envuelto, font=font_big, fill='white')
+        
+        draw.text((60, 550), "🌍 Noticias Internacionales", font=font_small, fill='#94a3b8')
+        draw.text((60, 580), "Verdad Hoy • Agencia de Noticias", font=font_small, fill='#64748b')
         
         temp_path = f'/tmp/noticia_gen_{generar_hash(titulo)}.jpg'
-        img.save(temp_path, 'JPEG', quality=85)
+        img.save(temp_path, 'JPEG', quality=90, optimize=True)
+        
+        log(f"   ✅ Imagen generada: {temp_path}", 'debug')
         return temp_path
-    except:
+        
+    except Exception as e:
+        log(f"   ❌ Error creando imagen: {e}", 'debug')
         return None
 
 def generar_hashtags(titulo, contenido):
@@ -1414,7 +1514,7 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V3.1 CORREGIDO")
+    print("🌍 BOT DE NOTICIAS INTERNACIONALES - V3.2 CORREGIDO")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -1429,7 +1529,6 @@ def main():
     log(f"📊 Historial: {len(historial.get('urls', []))} URLs recientes (72h)")
     log(f"📊 Hashes permanentes: {len(historial.get('hashes_permanentes', []))} guardados")
     
-    # Recolectar noticias
     todas_noticias = []
     
     if NEWS_API_KEY:
@@ -1447,10 +1546,8 @@ def main():
         log("ERROR: No se encontraron noticias", 'error')
         return False
     
-    # Ordenar por puntaje y fecha
     todas_noticias.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
     
-    # ✅ CORREGIDO: Buscar noticia válida con reintentos
     noticia_seleccionada = None
     intentos = 0
     max_intentos = len(todas_noticias)
@@ -1467,20 +1564,17 @@ def main():
         
         log(f"   [{intentos}] Probando: {titulo[:50]}...", 'debug')
         
-        # Verificar duplicados
         es_dup, razon = noticia_ya_publicada(historial, url, titulo, descripcion)
         if es_dup:
             log(f"      ❌ Rechazada: {razon}", 'debug')
             continue
         
-        # ✅ CORREGIDO: Umbral de puntaje bajado a 3
         if noticia.get('puntaje', 0) < 3:
             log(f"      ❌ Rechazada: Puntaje bajo ({noticia.get('puntaje', 0)})", 'debug')
             continue
         
         log(f"      ✅ Aceptada: Noticia válida encontrada", 'debug')
         
-        # Intentar extraer contenido
         log(f"\n📝 NOTICIA SELECCIONADA:")
         log(f"   Título: {noticia['titulo'][:60]}...")
         log(f"   Fuente: {noticia['fuente']}")
@@ -1503,7 +1597,6 @@ def main():
                 break
             else:
                 log(f"   ❌ Descripción insuficiente ({len(contenido)} chars), probando siguiente...", 'advertencia')
-                # ✅ Guardar como usada para no repetir y continuar
                 historial = guardar_historial(
                     historial, 
                     noticia['url'], 
@@ -1517,7 +1610,6 @@ def main():
         log("💡 Sugerencia: Esperar a que las APIs actualicen su contenido o ampliar ventana de tiempo", 'info')
         return False
     
-    # Construir publicación
     log("📝 Construyendo publicación con formato validado...")
     texto_publicacion = construir_publicacion_validada(
         noticia_seleccionada['titulo'],
@@ -1526,33 +1618,34 @@ def main():
         noticia_seleccionada['fuente']
     )
     
-    # Mostrar preview
     log("   📄 Preview de la publicación:", 'debug')
     for linea in texto_publicacion.split('\n')[:8]:
         log(f"      {linea[:65]}{'...' if len(linea) > 65 else ''}", 'debug')
     
-    # Procesar imagen y publicar
     hashtags = generar_hashtags(noticia_seleccionada['titulo'], contenido)
     
     log("🖼️  Procesando imagen...")
     imagen_path = None
+    fuente = noticia_seleccionada.get('fuente', '')
     
-    if noticia_seleccionada.get('imagen'):
+    if noticia_seleccionada.get('imagen') and 'Google News' not in fuente:
+        log("   🔍 Intentando imagen de API...", 'debug')
         imagen_path = descargar_imagen(noticia_seleccionada['imagen'])
     
     if not imagen_path:
+        log("   🔍 Extrayendo imagen del artículo web...", 'debug')
         img_url = extraer_imagen_web(noticia_seleccionada['url'])
         if img_url:
             imagen_path = descargar_imagen(img_url)
     
     if not imagen_path:
+        log("   🎨 Generando imagen con título...", 'debug')
         imagen_path = crear_imagen_titulo(noticia_seleccionada['titulo'])
     
     if not imagen_path:
-        log("ERROR: No se pudo crear imagen", 'error')
+        log("ERROR: No se pudo obtener ni generar imagen", 'error')
         return False
     
-    # Publicar
     exito = publicar_facebook(
         noticia_seleccionada['titulo'],
         texto_publicacion,
@@ -1560,14 +1653,12 @@ def main():
         hashtags
     )
     
-    # Limpieza
     try:
         if os.path.exists(imagen_path):
             os.remove(imagen_path)
     except:
         pass
     
-    # Guardar estado
     if exito:
         guardar_historial(
             historial, 

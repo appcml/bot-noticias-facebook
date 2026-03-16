@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - V3.5 (CORREGIDO)
+Bot de Noticias Internacionales para Facebook - V3.6 (CORREGIDO - Anti-duplicados mejorado)
 """
 
 import requests
@@ -13,6 +13,7 @@ import os
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
+from urllib.parse import urlparse, urlunparse
 
 # CONFIGURACIÓN
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
@@ -23,12 +24,11 @@ FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json')
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
 TIEMPO_ENTRE_PUBLICACIONES = 60
-VENTANA_DUPLICADOS_HORAS = 72
-UMBRAL_SIMILITUD_TITULO = 0.70
+UMBRAL_SIMILITUD_TITULO = 0.75  # Aumentado de 0.70
+UMBRAL_SIMILITUD_CONTENIDO = 0.65  # Nuevo: para detectar mismas noticias con títulos diferentes
 MAX_TITULOS_HISTORIA = 150
 
 BLACKLIST_TITULOS = [r'^\s*última hora\s*$', r'^\s*breaking news\s*$', r'^\s*noticias de hoy\s*$']
-FRASES_PROHIBIDAS = ['cookies', 'política de privacidad', 'suscríbete', 'newsletter', 'redes sociales']
 PALABRAS_ALTA_PRIORIDAD = ["guerra hoy", "conflicto armado", "dictadura", "sanciones", "ucrania", "rusia", "gaza", "israel", "hamas", "iran", "china", "taiwan", "otan", "brics", "economia mundial", "inflacion", "crisis humanitaria", "refugiados", "derechos humanos", "protestas", "coup", "minerales estrategicos", "tierras raras", "drones", "inteligencia artificial guerra", "ciberataque", "zelensky", "netanyahu", "trump", "biden", "putin"]
 PALABRAS_MEDIA_PRIORIDAD = ['economía', 'mercados', 'FMI', 'China', 'EEUU', 'Alemania', 'petroleo', 'gas']
 
@@ -70,19 +70,88 @@ def generar_hash(texto):
     t = re.sub(r'\s+', ' ', t)
     return hashlib.md5(t.encode()).hexdigest()
 
-def normalizar_url_v2(url):
+def normalizar_url_v3(url):
+    """
+    V3: Normalización más agresiva para detectar URLs duplicadas
+    """
     if not url: return ""
-    url = url.lower().strip()
-    url = re.sub(r'^https?://', '', url)
-    url = re.sub(r'^(www\.|m\.|mobile\.)', '', url)
-    url = re.sub(r'\?.*$', '', url)
-    url = re.sub(r'#.*$', '', url)
-    return url.rstrip('/')
+    
+    # Parsear URL
+    try:
+        parsed = urlparse(url)
+    except:
+        return url.lower().strip()
+    
+    # Forzar lowercase
+    scheme = parsed.scheme.lower()
+    netloc = parsed.netloc.lower()
+    path = parsed.path.lower()
+    
+    # Remover www, m, mobile, amp
+    netloc = re.sub(r'^(www\.|m\.|mobile\.|amp\.)', '', netloc)
+    
+    # Remover index.html, index.php, etc.
+    path = re.sub(r'/index\.(html|php|htm|asp)$', '/', path)
+    
+    # Remover barras finales
+    path = path.rstrip('/')
+    
+    # Remover extensiones comunes de tracking
+    path = re.sub(r'\.html?$', '', path)
+    
+    # Reconstruir URL base (sin query ni fragment)
+    url_base = f"{netloc}{path}"
+    
+    # Extraer solo parámetros esenciales (id, article, post, p)
+    query_params = []
+    if parsed.query:
+        params = parsed.query.split('&')
+        for p in params:
+            if '=' in p:
+                key = p.split('=')[0].lower()
+                if key in ['id', 'article', 'post', 'p', 'noticia', 'newsid', 'story']:
+                    query_params.append(p.lower())
+    
+    if query_params:
+        url_base += '?' + '&'.join(sorted(query_params))
+    
+    return url_base
+
+def extraer_dominio_principal(url):
+    """Extrae el dominio principal para agrupar noticias del mismo sitio"""
+    try:
+        parsed = urlparse(url)
+        netloc = parsed.netloc.lower()
+        # Remover subdominios
+        parts = netloc.split('.')
+        if len(parts) > 2:
+            return '.'.join(parts[-2:])
+        return netloc
+    except:
+        return ""
 
 def calcular_similitud_titulos(t1, t2):
     if not t1 or not t2: return 0.0
-    def n(t): return re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', '', t.lower().strip()))
+    def n(t): 
+        # Normalizar: quitar puntuación, espacios extra, lowercase
+        t = re.sub(r'[^\w\s]', '', t.lower().strip())
+        t = re.sub(r'\s+', ' ', t)
+        # Quitar palabras comunes que no aportan
+        t = re.sub(r'\b(el|la|los|las|un|una|en|de|del|al|y|o|que|con|por|para|sobre|entre|hacia|desde|hasta|durante|mediante|segun|según|hace|mas|más|muy|tan|tanto|como|cómo|cuando|donde|quien|cual|cuales|cuál|cuáles|esto|eso|aquello|este|ese|aquel|esta|esa|aquella|estos|esos|aquellos|estas|esas|aquellas|mi|tu|su|nuestro|vuestro|sus|mis|tus|nuestros|vuestros|me|te|se|nos|os|lo|le|les|ya|aun|aún|tambien|también|ademas|además|sin|embargo|porque|pues|asi|así|luego|entonces|aunque|a pesar|sin embargo|no obstante|the|of|and|to|in|is|that|for|it|with|as|on|be|this|was|are|at|by|from|have|has|had|not|been|or|an|but|their|more|will|would|could|should|may|might|can|shall)\b', '', t)
+        return t.strip()
     return SequenceMatcher(None, n(t1), n(t2)).ratio()
+
+def calcular_similitud_contenido(c1, c2, longitud=100):
+    """
+    Compara los primeros N caracteres del contenido para detectar mismas noticias
+    con títulos diferentes
+    """
+    if not c1 or not c2: return 0.0
+    def n(c):
+        c = re.sub(r'[^\w\s]', '', c.lower().strip())
+        c = re.sub(r'\s+', ' ', c)
+        return c[:longitud]
+    return SequenceMatcher(None, n(c1), n(c2)).ratio()
 
 def es_titulo_generico(titulo):
     if not titulo: return True
@@ -177,6 +246,7 @@ def construir_publicacion(titulo, contenido, creditos, fuente):
 def cargar_historial():
     d = {
         'urls': [], 
+        'urls_normalizadas': [],  # NUEVO: guardar URLs ya normalizadas
         'hashes': [], 
         'timestamps': [], 
         'titulos': [], 
@@ -202,7 +272,7 @@ def limpiar_historial_antiguo(h):
                     indices_a_mantener.append(i)
             except:
                 continue
-        for key in ['urls', 'hashes', 'timestamps', 'titulos', 'descripciones', 'hashes_contenido']:
+        for key in ['urls', 'urls_normalizadas', 'hashes', 'timestamps', 'titulos', 'descripciones', 'hashes_contenido']:
             if key in h and isinstance(h[key], list):
                 h[key] = [h[key][i] for i in indices_a_mantener if i < len(h[key])]
         if len(h.get('hashes_permanentes', [])) > 100:
@@ -212,62 +282,96 @@ def limpiar_historial_antiguo(h):
 
 def noticia_ya_publicada(h, url, titulo, desc=""):
     if not h: return False, "sin_historial"
-    url_n = normalizar_url_v2(url)
+    
+    url_n = normalizar_url_v3(url)
     hash_t = generar_hash(titulo)
     hash_d = generar_hash(desc) if desc else ""
+    dominio = extraer_dominio_principal(url)
     
     log(f"   🔍 Verificando duplicados:", 'debug')
-    log(f"      URL norm: {url_n[:60]}...", 'debug')
+    log(f"      URL norm: {url_n[:80]}...", 'debug')
+    log(f"      Dominio: {dominio}", 'debug')
     log(f"      Hash titulo: {hash_t[:16]}...", 'debug')
     
     if es_titulo_generico(titulo): 
         log(f"      ❌ Título genérico detectado", 'debug')
         return True, "titulo_generico"
     
-    for uh in h.get('urls', []):
+    # 1. Verificar URL normalizada exacta
+    for uh in h.get('urls_normalizadas', []):
         if not isinstance(uh, str): 
             continue
-        if url_n == normalizar_url_v2(uh): 
-            log(f"      ❌ URL duplicada: {uh[:60]}...", 'debug')
-            return True, "url_exacta"
+        if url_n == uh: 
+            log(f"      ❌ URL normalizada duplicada", 'debug')
+            return True, "url_normalizada_exacta"
     
+    # 2. Verificar dominio + similitud de título (misma noticia, URL diferente)
+    for i, uh in enumerate(h.get('urls', [])):
+        if not isinstance(uh, str):
+            continue
+        # Mismo dominio y título muy similar = misma noticia
+        if extraer_dominio_principal(uh) == dominio:
+            titulo_h = h.get('titulos', [])[i] if i < len(h.get('titulos', [])) else ""
+            if titulo_h:
+                sim = calcular_similitud_titulos(titulo, titulo_h)
+                if sim >= 0.85:  # Muy alta similitud en mismo sitio
+                    log(f"      ❌ Misma noticia en {dominio} (sim {sim:.1%})", 'debug')
+                    return True, f"misma_noticia_sitio_{sim:.2f}"
+    
+    # 3. Verificar hash de título
     todos_h = list(dict.fromkeys(h.get('hashes', []) + h.get('hashes_permanentes', [])))
     if hash_t in todos_h: 
         log(f"      ❌ Hash título duplicado", 'debug')
         return True, "hash_titulo_exacto"
     
+    # 4. Verificar hash de descripción/contenido
     if hash_d and hash_d in h.get('hashes_contenido', []):
         log(f"      ❌ Hash contenido duplicado", 'debug')
         return True, "hash_contenido_exacto"
     
+    # 5. Verificar similitud de títulos con umbral más alto
     max_sim = 0.0
+    titulo_cercano = ""
     for th in h.get('titulos', []):
         if not isinstance(th, str): 
             continue
         sim = calcular_similitud_titulos(titulo, th)
         if sim > max_sim:
             max_sim = sim
+            titulo_cercano = th[:50]
         if sim >= UMBRAL_SIMILITUD_TITULO: 
-            log(f"      ❌ Similitud {sim:.1%} con: {th[:50]}...", 'debug')
-            return True, f"similitud_{sim:.2f}"
+            log(f"      ❌ Similitud título {sim:.1%} con: {th[:50]}...", 'debug')
+            return True, f"similitud_titulo_{sim:.2f}"
     
-    log(f"   ✅ NUEVO: Max similitud {max_sim:.1%}", 'debug')
+    # 6. Verificar similitud de descripción (detecta mismas noticias, títulos diferentes)
+    if desc:
+        for dh in h.get('descripciones', []):
+            if not isinstance(dh, str) or not dh:
+                continue
+            sim_cont = calcular_similitud_contenido(desc, dh, 150)
+            if sim_cont >= UMBRAL_SIMILITUD_CONTENIDO:
+                log(f"      ❌ Similitud contenido {sim_cont:.1%} con noticia anterior", 'debug')
+                return True, f"similitud_contenido_{sim_cont:.2f}"
+    
+    log(f"   ✅ NUEVO: Max similitud título {max_sim:.1%}", 'debug')
     return False, "nuevo"
 
 def guardar_historial(h, url, titulo, desc=""):
-    for k in ['urls','hashes','timestamps','titulos','descripciones','hashes_contenido','hashes_permanentes','estadisticas']:
+    for k in ['urls','urls_normalizadas','hashes','timestamps','titulos','descripciones','hashes_contenido','hashes_permanentes','estadisticas']:
         if k not in h: 
             h[k] = [] if k != 'estadisticas' else {'total_publicadas': 0}
     
-    url_n = normalizar_url_v2(url)
+    url_n = normalizar_url_v3(url)
     hash_t = generar_hash(titulo)
     
-    for uh in h.get('urls', []):
-        if isinstance(uh, str) and normalizar_url_v2(uh) == url_n:
+    # Doble verificación antes de guardar
+    for uh in h.get('urls_normalizadas', []):
+        if isinstance(uh, str) and uh == url_n:
             log(f"⚠️ Intento de duplicado detectado en guardar_historial", 'advertencia')
             return h
     
-    h['urls'].append(url_n)
+    h['urls'].append(url)
+    h['urls_normalizadas'].append(url_n)  # NUEVO: guardar URL normalizada
     h['hashes'].append(hash_t)
     h['timestamps'].append(datetime.now().isoformat())
     h['titulos'].append(titulo)
@@ -278,7 +382,7 @@ def guardar_historial(h, url, titulo, desc=""):
     
     if len(h['hashes_permanentes']) > 300: 
         h['hashes_permanentes'] = h['hashes_permanentes'][-300:]
-    for k in ['urls','hashes','timestamps','titulos','descripciones','hashes_contenido']:
+    for k in ['urls','urls_normalizadas','hashes','timestamps','titulos','descripciones','hashes_contenido']:
         if len(h[k]) > MAX_TITULOS_HISTORIA: 
             h[k] = h[k][-MAX_TITULOS_HISTORIA:]
     
@@ -307,11 +411,24 @@ def obtener_newsapi():
     if not NEWS_API_KEY: 
         return []
     n = []
-    for q in ['war Ukraine Russia Gaza Israel', 'Trump Biden Putin', 'economy inflation IMF', 'NATO UN EU']:
+    # Más queries específicas para variedad
+    queries = [
+        'Ukraine war Russia Putin Zelensky',
+        'Israel Gaza Hamas Iran conflict',
+        'China Taiwan US tensions',
+        'Trump Biden US politics',
+        'economy inflation recession',
+        'NATO EU Europe',
+        'India Pakistan Asia',
+        'climate change COP',
+        'cyberattack hacking',
+        'coup dictatorship sanctions'
+    ]
+    for q in queries:
         try:
             r = requests.get('https://newsapi.org/v2/everything', 
                            params={'apiKey': NEWS_API_KEY, 'q': q, 'language': 'es', 
-                                  'sortBy': 'publishedAt', 'pageSize': 10}, 
+                                  'sortBy': 'publishedAt', 'pageSize': 5}, 
                            timeout=15).json()
             if r.get('status') == 'ok':
                 for a in r.get('articles', []):
@@ -336,25 +453,28 @@ def obtener_newsdata():
     if not NEWSDATA_API_KEY: 
         return []
     try:
-        r = requests.get('https://newsdata.io/api/1/news', 
-                        params={'apikey': NEWSDATA_API_KEY, 'language': 'es', 
-                               'category': 'world,politics', 'size': 30}, 
-                        timeout=15).json()
+        # Múltiples categorías para más variedad
+        categorias = ['world', 'politics', 'business', 'technology']
         n = []
-        if r.get('status') == 'success':
-            for a in r.get('results', []):
-                t = a.get('title', '')
-                if t:
-                    d = a.get('description', '')
-                    n.append({
-                        'titulo': limpiar_texto(t), 
-                        'descripcion': limpiar_texto(d), 
-                        'url': a.get('link', ''), 
-                        'imagen': a.get('image_url'), 
-                        'fuente': f"NewsData:{a.get('source_id', 'Unknown')}", 
-                        'fecha': a.get('pubDate'), 
-                        'puntaje': calcular_puntaje(t, d)
-                    })
+        for cat in categorias:
+            r = requests.get('https://newsdata.io/api/1/news', 
+                            params={'apikey': NEWSDATA_API_KEY, 'language': 'es', 
+                                   'category': cat, 'size': 10}, 
+                            timeout=15).json()
+            if r.get('status') == 'success':
+                for a in r.get('results', []):
+                    t = a.get('title', '')
+                    if t:
+                        d = a.get('description', '')
+                        n.append({
+                            'titulo': limpiar_texto(t), 
+                            'descripcion': limpiar_texto(d), 
+                            'url': a.get('link', ''), 
+                            'imagen': a.get('image_url'), 
+                            'fuente': f"NewsData:{a.get('source_id', 'Unknown')}", 
+                            'fecha': a.get('pubDate'), 
+                            'puntaje': calcular_puntaje(t, d)
+                        })
         log(f"NewsData: {len(n)} noticias", 'info')
         return n
     except: 
@@ -364,23 +484,26 @@ def obtener_gnews():
     if not GNEWS_API_KEY: 
         return []
     try:
-        r = requests.get('https://gnews.io/api/v4/top-headlines', 
-                        params={'apikey': GNEWS_API_KEY, 'lang': 'es', 'max': 20, 'topic': 'world'}, 
-                        timeout=15).json()
+        # Múltiples tópicos
+        topicos = ['world', 'nation', 'business', 'technology']
         n = []
-        for a in r.get('articles', []):
-            t = a.get('title', '')
-            if t:
-                d = a.get('description', '')
-                n.append({
-                    'titulo': limpiar_texto(t), 
-                    'descripcion': limpiar_texto(d), 
-                    'url': a.get('url', ''), 
-                    'imagen': a.get('image'), 
-                    'fuente': f"GNews:{a.get('source', {}).get('name', 'Unknown')}", 
-                    'fecha': a.get('publishedAt'), 
-                    'puntaje': calcular_puntaje(t, d)
-                })
+        for topic in topicos:
+            r = requests.get('https://gnews.io/api/v4/top-headlines', 
+                            params={'apikey': GNEWS_API_KEY, 'lang': 'es', 'max': 10, 'topic': topic}, 
+                            timeout=15).json()
+            for a in r.get('articles', []):
+                t = a.get('title', '')
+                if t:
+                    d = a.get('description', '')
+                    n.append({
+                        'titulo': limpiar_texto(t), 
+                        'descripcion': limpiar_texto(d), 
+                        'url': a.get('url', ''), 
+                        'imagen': a.get('image'), 
+                        'fuente': f"GNews:{a.get('source', {}).get('name', 'Unknown')}", 
+                        'fecha': a.get('publishedAt'), 
+                        'puntaje': calcular_puntaje(t, d)
+                    })
         log(f"GNews: {len(n)} noticias", 'info')
         return n
     except: 
@@ -403,7 +526,9 @@ def resolver_redireccion_google(url):
 def obtener_google_news():
     feeds = [
         'https://news.google.com/rss?hl=es&gl=US&ceid=US:es', 
-        'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=US&ceid=US:es'
+        'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=US&ceid=US:es',  # Mundo
+        'https://news.google.com/rss/topics/CAAqJQgKIh9DQkFTRVFvSUwyMHZNRE55YXpBU0JXVnVMVWRDS0FBUAE?hl=es&gl=US&ceid=US:es',  # Política
+        'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=US&ceid=US:es',  # Negocios
     ]
     n = []
     for f in feeds:
@@ -411,7 +536,7 @@ def obtener_google_news():
             feed = feedparser.parse(f, request_headers={'User-Agent': 'Mozilla/5.0'})
             if not feed or not feed.entries: 
                 continue
-            for e in feed.entries[:8]:
+            for e in feed.entries[:10]:
                 t = e.get('title', '')
                 if not t or '[Removed]' in t: 
                     continue
@@ -441,7 +566,10 @@ def obtener_rss_alternativos():
     feeds = [
         'http://feeds.bbci.co.uk/mundo/rss.xml', 
         'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada', 
-        'https://www.infobae.com/arc/outboundfeeds/rss/mundo/'
+        'https://www.infobae.com/arc/outboundfeeds/rss/mundo/',
+        'https://feeds.reuters.com/reuters/hotnews',  # NUEVO
+        'https://feeds.france24.com/es/',  # NUEVO
+        'https://www.efe.com/efe/espana/1/rss',  # NUEVO
     ]
     n = []
     for f in feeds:
@@ -453,7 +581,7 @@ def obtener_rss_alternativos():
             if not feed or not feed.entries: 
                 continue
             fn = feed.feed.get('title', 'RSS')[:20]
-            for e in feed.entries[:5]:
+            for e in feed.entries[:8]:
                 t = e.get('title', '')
                 if not t: 
                     continue
@@ -612,7 +740,7 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS - V3.5 (CORREGIDO)")
+    print("🌍 BOT DE NOTICIAS - V3.6 (CORREGIDO - Anti-duplicados)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -624,32 +752,53 @@ def main():
         return False
     
     h = cargar_historial()
-    log(f"📊 Historial cargado: {len(h.get('urls', []))} URLs, {len(h.get('hashes_permanentes', []))} hashes permanentes")
+    log(f"📊 Historial cargado: {len(h.get('urls', []))} URLs, {len(h.get('urls_normalizadas', []))} URLs normalizadas")
     
     n = []
     if NEWS_API_KEY: 
         n.extend(obtener_newsapi())
-    if NEWSDATA_API_KEY and len(n) < 15: 
+    if NEWSDATA_API_KEY and len(n) < 20: 
         n.extend(obtener_newsdata())
-    if GNEWS_API_KEY and len(n) < 20: 
+    if GNEWS_API_KEY and len(n) < 30: 
         n.extend(obtener_gnews())
-    if len(n) < 25:
+    if len(n) < 30:
         gn = obtener_google_news()
         if gn: 
             n.extend(gn)
-    if len(n) < 10:
+    if len(n) < 15:
         log("⚠️ Intentando RSS alternativos...", 'advertencia')
         alt = obtener_rss_alternativos()
         if alt: 
             n.extend(alt)
     
+    # Deduplicación fuerte antes de procesar
     urls_vistas = set()
+    titulos_vistos = {}
     n_unicas = []
+    
     for nt in n:
-        url_n = normalizar_url_v2(nt.get('url', ''))
-        if url_n and url_n not in urls_vistas:
-            urls_vistas.add(url_n)
-            n_unicas.append(nt)
+        url_n = normalizar_url_v3(nt.get('url', ''))
+        titulo_norm = re.sub(r'[^\w]', '', nt.get('titulo', '').lower())
+        
+        # Skip si URL ya vista
+        if url_n in urls_vistas:
+            continue
+            
+        # Skip si título muy similar ya visto en esta ejecución
+        duplicado_temp = False
+        for t_existente, url_existente in titulos_vistos.items():
+            if calcular_similitud_titulos(nt.get('titulo', ''), t_existente) > 0.8:
+                log(f"   ⚠️ Duplicado temporal detectado: {nt.get('titulo', '')[:50]}...", 'debug')
+                duplicado_temp = True
+                break
+        
+        if duplicado_temp:
+            continue
+            
+        urls_vistas.add(url_n)
+        titulos_vistos[nt.get('titulo', '')] = url_n
+        n_unicas.append(nt)
+    
     n = n_unicas
     
     log(f"📰 Total únicas: {len(n)} noticias (después de deduplicar fuentes)")
@@ -658,6 +807,7 @@ def main():
         log("ERROR: No se encontraron noticias", 'error')
         return False
     
+    # Ordenar por puntaje y recencia
     n.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
     
     sel = None

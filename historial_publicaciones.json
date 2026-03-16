@@ -1,6 +1,9 @@
-{
-  "urls": [],
-  "titulos": [],
-  "hashes": [],
-  "ultima_publicacion": null
-}
+import json
+with open('data/historial_publicaciones.json', 'r') as f:
+    h = json.load(f)
+    
+print(f"Total URLs: {len(h['urls'])}")
+print(f"Total hashes permanentes: {len(h['hashes_permanentes'])}")
+print(f"Últimas 5 URLs:")
+for url in h['urls'][-5:]:
+    print(f"  - {url}")

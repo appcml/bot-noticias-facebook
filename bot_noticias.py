@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - V3.4 (CORREGIDO)
+Bot de Noticias Internacionales para Facebook - V3.5 (CORREGIDO)
 """
 
 import requests
@@ -11,7 +11,7 @@ import hashlib
 import json
 import os
 from datetime import datetime, timedelta
-from bs4 import BeautifulSoup, Comment
+from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 
 # CONFIGURACIÓN
@@ -45,7 +45,6 @@ def cargar_json(ruta, default=None):
                 return json.loads(content) if content else default.copy()
         except Exception as e:
             log(f"Error cargando JSON {ruta}: {e}", 'error')
-            # CORRECCIÓN: Backup del archivo corrupto
             try:
                 backup = f"{ruta}.backup.{datetime.now().strftime('%Y%m%d%H%M%S')}"
                 os.rename(ruta, backup)
@@ -56,11 +55,10 @@ def cargar_json(ruta, default=None):
 def guardar_json(ruta, datos):
     try:
         os.makedirs(os.path.dirname(ruta), exist_ok=True)
-        # CORRECCIÓN: Escritura atómica para evitar corrupción
         temp_path = f"{ruta}.tmp"
         with open(temp_path, 'w', encoding='utf-8') as f:
             json.dump(datos, f, ensure_ascii=False, indent=2)
-        os.replace(temp_path, ruta)  # Atómico en POSIX
+        os.replace(temp_path, ruta)
         return True
     except Exception as e:
         log(f"Error guardando JSON: {e}", 'error')
@@ -190,34 +188,25 @@ def cargar_historial():
     h = cargar_json(HISTORIAL_PATH, d)
     for k in d: 
         if k not in h: h[k] = d[k]
-    
-    # CORRECCIÓN: Limpiar entradas antiguas de hashes_permanentes (más de 7 días)
     limpiar_historial_antiguo(h)
     return h
 
 def limpiar_historial_antiguo(h):
-    """Elimina entradas antiguas de hashes_permanentes para evitar bloqueo infinito"""
     try:
         ahora = datetime.now()
         indices_a_mantener = []
-        
         for i, ts in enumerate(h.get('timestamps', [])):
             try:
                 fecha = datetime.fromisoformat(ts)
-                if (ahora - fecha).days < 7:  # Mantener solo 7 días
+                if (ahora - fecha).days < 7:
                     indices_a_mantener.append(i)
             except:
                 continue
-        
-        # Reconstruir listas manteniendo solo índices válidos
         for key in ['urls', 'hashes', 'timestamps', 'titulos', 'descripciones', 'hashes_contenido']:
             if key in h and isinstance(h[key], list):
                 h[key] = [h[key][i] for i in indices_a_mantener if i < len(h[key])]
-        
-        # Para hashes_permanentes, mantener solo los últimos 100 con timestamp reciente
         if len(h.get('hashes_permanentes', [])) > 100:
             h['hashes_permanentes'] = h['hashes_permanentes'][-100:]
-            
     except Exception as e:
         log(f"Error limpiando historial: {e}", 'error')
 
@@ -235,7 +224,6 @@ def noticia_ya_publicada(h, url, titulo, desc=""):
         log(f"      ❌ Título genérico detectado", 'debug')
         return True, "titulo_generico"
     
-    # Verificar URL exacta
     for uh in h.get('urls', []):
         if not isinstance(uh, str): 
             continue
@@ -243,27 +231,22 @@ def noticia_ya_publicada(h, url, titulo, desc=""):
             log(f"      ❌ URL duplicada: {uh[:60]}...", 'debug')
             return True, "url_exacta"
     
-    # Verificar hash de título
     todos_h = list(dict.fromkeys(h.get('hashes', []) + h.get('hashes_permanentes', [])))
     if hash_t in todos_h: 
         log(f"      ❌ Hash título duplicado", 'debug')
         return True, "hash_titulo_exacto"
     
-    # CORRECCIÓN: Verificar también hash de descripción si existe
     if hash_d and hash_d in h.get('hashes_contenido', []):
         log(f"      ❌ Hash contenido duplicado", 'debug')
         return True, "hash_contenido_exacto"
     
-    # Verificar similitud de títulos
     max_sim = 0.0
-    titulo_cercano = ""
     for th in h.get('titulos', []):
         if not isinstance(th, str): 
             continue
         sim = calcular_similitud_titulos(titulo, th)
         if sim > max_sim:
             max_sim = sim
-            titulo_cercano = th[:50]
         if sim >= UMBRAL_SIMILITUD_TITULO: 
             log(f"      ❌ Similitud {sim:.1%} con: {th[:50]}...", 'debug')
             return True, f"similitud_{sim:.2f}"
@@ -272,20 +255,17 @@ def noticia_ya_publicada(h, url, titulo, desc=""):
     return False, "nuevo"
 
 def guardar_historial(h, url, titulo, desc=""):
-    """CORREGIDO: Solo guardar SI la publicación fue exitosa"""
     for k in ['urls','hashes','timestamps','titulos','descripciones','hashes_contenido','hashes_permanentes','estadisticas']:
         if k not in h: 
             h[k] = [] if k != 'estadisticas' else {'total_publicadas': 0}
     
-    # CORRECCIÓN: Verificar que no exista antes de agregar (doble verificación)
     url_n = normalizar_url_v2(url)
     hash_t = generar_hash(titulo)
     
-    # Verificar duplicado antes de guardar
     for uh in h.get('urls', []):
         if isinstance(uh, str) and normalizar_url_v2(uh) == url_n:
             log(f"⚠️ Intento de duplicado detectado en guardar_historial", 'advertencia')
-            return h  # No guardar, retornar historial sin cambios
+            return h
     
     h['urls'].append(url_n)
     h['hashes'].append(hash_t)
@@ -296,7 +276,6 @@ def guardar_historial(h, url, titulo, desc=""):
     h['estadisticas']['total_publicadas'] = h['estadisticas'].get('total_publicadas', 0) + 1
     h['hashes_permanentes'].append(hash_t)
     
-    # Limitar tamaño
     if len(h['hashes_permanentes']) > 300: 
         h['hashes_permanentes'] = h['hashes_permanentes'][-300:]
     for k in ['urls','hashes','timestamps','titulos','descripciones','hashes_contenido']:
@@ -633,7 +612,7 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS - V3.4 (CORREGIDO)")
+    print("🌍 BOT DE NOTICIAS - V3.5 (CORREGIDO)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -644,7 +623,6 @@ def main():
     if not verificar_tiempo():
         return False
     
-    # CORRECCIÓN: Recargar historial fresco desde disco antes de procesar
     h = cargar_historial()
     log(f"📊 Historial cargado: {len(h.get('urls', []))} URLs, {len(h.get('hashes_permanentes', []))} hashes permanentes")
     
@@ -665,7 +643,6 @@ def main():
         if alt: 
             n.extend(alt)
     
-    # CORRECCIÓN: Eliminar duplicados de la lista antes de procesar
     urls_vistas = set()
     n_unicas = []
     for nt in n:
@@ -687,7 +664,7 @@ def main():
     cont = None
     cred = None
     intentos = 0
-    max_intentos = 50  # CORRECCIÓN: Límite de intentos para evitar bucle infinito
+    max_intentos = 50
     
     for i, nt in enumerate(n):
         if intentos >= max_intentos:
@@ -704,7 +681,6 @@ def main():
         intentos += 1
         log(f"   [{i+1}] Probando: {t[:50]}...", 'debug')
         
-        # CORRECCIÓN: Recargar historial antes de cada verificación crítica
         if intentos % 10 == 0:
             h = cargar_historial()
             log(f"   🔄 Historial recargado: {len(h.get('urls', []))} URLs", 'debug')
@@ -724,21 +700,19 @@ def main():
         
         cont, cred = extraer_contenido(url)
         
-        if cont and len(cont) >= 200:  # CORRECCIÓN: Mínimo de 200 caracteres
+        if cont and len(cont) >= 200:
             log(f"   ✅ Contenido: {len(cont)} chars", 'exito')
             sel = nt
             break
         else:
-            log("   ⚠️ Sin contenido suficiente, usando descripción", 'advertencia')
+            log("   ⚠️ Sin contenido suficiente, probando descripción...", 'advertencia')
             cont = d
-            if len(cont) >= 150:  # CORRECCIÓN: Mínimo más alto para descripción
+            if len(cont) >= 150:
                 log(f"   ✅ Descripción: {len(cont)} chars", 'exito')
                 sel = nt
                 break
             else:
                 log(f"   ❌ Descripción corta ({len(cont)}), siguiente...", 'advertencia')
-                # CORRECCIÓN CRÍTICA: NO guardar en historial si no se publicó
-                # Solo marcar como "visto" temporalmente, no como publicado
                 continue
     
     if not sel:
@@ -766,7 +740,6 @@ def main():
         log("ERROR: Sin imagen", 'error')
         return False
     
-    # CORRECCIÓN CRÍTICA: Solo guardar en historial DESPUÉS de publicar exitosamente
     ok = publicar_facebook(sel['titulo'], pub, img_path, ht)
     
     try:
@@ -776,7 +749,6 @@ def main():
         pass
     
     if ok:
-        # CORRECCIÓN: Guardar historial SOLO si la publicación fue exitosa
         h = guardar_historial(h, sel['url'], sel['titulo'], sel.get('descripcion', '') + ' ' + cont[:400])
         guardar_json(ESTADO_PATH, {'ultima_publicacion': datetime.now().isoformat()})
         log(f"✅ ÉXITO - Total histórico: {h.get('estadisticas', {}).get('total_publicadas', 0)} noticias publicadas", 'exito')

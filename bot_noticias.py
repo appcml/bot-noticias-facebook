@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - V4.4 (CORREGIDO - DETECTOR SUAVIZADO)
+Bot de Noticias Internacionales para Facebook - V4.5 (VERIFICACIÓN PREVIA ANTES DE PUBLICAR)
 """
 
 import requests
@@ -46,6 +46,29 @@ FUENTES_MEDIOS = [
     'wall street journal', 'al jazeera', 'rt', 'russia today', 'france 24', 
     'deutsche welle', 'dw', 'china daily', 'xinhua', 'tass', 'agenzia nova', 
     'ansa', 'efe', ' Europa Press', 'meneame', 'meneame.net'
+]
+
+# Patrones de truncamiento/corte
+PATRONES_CORTE = [
+    r'…$',           # Termina con ellipsis
+    r'\.\.\.$',      # Termina con tres puntos
+    r'\.\s*\.\s*\.$', # Puntos separados por espacios al final
+    r'\s+de…$',      # "de..." al final (cortado)
+    r'\s+de\.\.\.$', # "de..." al final variante
+    r'\s+a…$',       # "a..." al final
+    r'\s+en…$',      # "en..." al final
+    r'\s+que…$',     # "que..." al final
+    r'\s+con…$',     # "con..." al final
+    r'\s+por…$',     # "por..." al final
+    r'\s+para…$',    # "para..." al final
+    r'\s+un…$',      # "un..." al final
+    r'\s+una…$',     # "una..." al final
+    r'\s+los…$',     # "los..." al final
+    r'\s+las…$',     # "las..." al final
+    r'\s+del…$',     # "del..." al final
+    r'\s+al…$',      # "al..." al final
+    r'[a-záéíóúñ]\…$', # Termina con letra minúscula + ellipsis (palabra cortada)
+    r'[a-záéíóúñ]\.\.\.$', # Termina con letra minúscula + puntos (palabra cortada)
 ]
 
 def log(mensaje, tipo='info'):
@@ -141,22 +164,107 @@ def es_titulo_generico(titulo):
     return len(set(pal)) < 4
 
 # ============================================================================
-# LIMPIEZA DE TEXTO - VERSIÓN CORREGIDA
+# SISTEMA DE VERIFICACIÓN PREVIA ANTES DE PUBLICAR
 # ============================================================================
 
-def separar_palabras_pegadas(texto):
+def verificar_contenido_completo(texto, titulo=""):
     """
-    Separa palabras en camelCase/PascalCase sin romper palabras existentes.
-    Ej: "EspañolIsrael" → "Español Israel", pero NO toca "expertos"
+    Verifica que el contenido esté completo y no tenga cortes/truncamientos.
+    Retorna: (es_valido, problema_detectado, texto_corregido)
     """
     if not texto:
-        return texto
+        return False, "texto_vacio", ""
     
-    # Solo separar cuando hay cambio de minúscula a mayúscula
-    patron = r'([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])'
-    texto = re.sub(patron, r'\1 \2', texto)
+    problemas = []
+    texto_corregido = texto
     
-    return texto
+    # Verificación 1: Detectar puntos suspensivos al final de párrafos (indica corte)
+    parrafos = [p.strip() for p in texto.split('\n\n') if p.strip()]
+    
+    parrafos_con_corte = 0
+    for i, parrafo in enumerate(parrafos):
+        # Verificar si termina con patrón de corte
+        for patron in PATRONES_CORTE:
+            if re.search(patron, parrafo):
+                parrafos_con_corte += 1
+                # Intentar reparar: eliminar el corte y buscar punto final anterior
+                if parrafo.endswith('…') or parrafo.endswith('...'):
+                    # Buscar si hay un punto antes para cerrar la oración
+                    ultimo_punto = max(parrafo.rfind('.'), parrafo.rfind('!'), parrafo.rfind('?'))
+                    if ultimo_punto > len(parrafo) * 0.5:  # Si hay punto antes del 50%
+                        texto_corregido = texto_corregido.replace(parrafo, parrafo[:ultimo_punto+1])
+                        parrafos[i] = parrafo[:ultimo_punto+1]
+                break
+    
+    if parrafos_con_corte > 0:
+        problemas.append(f"{parrafos_con_corte} párrafos con cortes detectados")
+    
+    # Verificación 2: Detectar palabras partidas (patrones como "expert os")
+    # Buscar palabras de 2-3 letras que parezcan fragmentos
+    palabras_sueltas = re.findall(r'\b\w{1,3}\b', texto)
+    palabras_comunes_cortas = {'el', 'la', 'de', 'y', 'en', 'un', 'al', 'del', 'con', 'por', 'que', 'los', 'las', 'una', 'su', 'se', 'me', 'te', 'lo', 'le', 'ya', 'no', 'si', 'es', 'as', 'os', 'ha', 'he', 'mi', 'tu', 'yo'}
+    
+    palabras_raras = [p for p in palabras_sueltas if p.lower() not in palabras_comunes_cortas and len(p) <= 2]
+    if len(palabras_raras) > 3:
+        problemas.append(f"Posibles palabras partidas: {palabras_raras[:3]}")
+    
+    # Verificación 3: Verificar que el último párrafo termine en punto (oración completa)
+    if parrafos:
+        ultimo = parrafos[-1]
+        if not re.search(r'[.!?]$', ultimo):
+            # Intentar arreglar: buscar el último punto válido
+            ultimo_punto = max(ultimo.rfind('.'), ultimo.rfind('!'), ultimo.rfind('?'))
+            if ultimo_punto > len(ultimo) * 0.6:
+                # Podemos cortar aquí y terminar el párrafo
+                nuevo_ultimo = ultimo[:ultimo_punto+1]
+                texto_corregido = texto_corregido.replace(ultimo, nuevo_ultimo)
+                problemas.append("Último párrafo sin terminación, corregido")
+            else:
+                problemas.append("Último párrafo incompleto sin punto final claro")
+    
+    # Verificación 4: Detectar si es solo una descripción corta (menos de 2 párrafos sustanciales)
+    parrafos_sustanciales = [p for p in parrafos if len(p.split()) > 20]
+    if len(parrafos_sustanciales) < 2 and len(texto.split()) < 80:
+        problemas.append("Contenido muy corto, posible descripción no artículo completo")
+    
+    # Verificación 5: Detectar múltiples fuentes mezcladas (indica agregador)
+    fuentes_encontradas = []
+    texto_lower = texto.lower()
+    for fuente in FUENTES_MEDIOS:
+        if fuente.lower() in texto_lower:
+            fuentes_encontradas.append(fuente)
+    
+    if len(fuentes_encontradas) >= 4:
+        problemas.append(f"Mezcla de {len(fuentes_encontradas)} fuentes diferentes")
+    
+    # Decisión final
+    es_valido = len(problemas) <= 1  # Permitir 1 problema menor si se pudo corregir
+    
+    # Si hay problemas graves de corte, intentar reparación más agresiva
+    if parrafos_con_corte > 0:
+        # Reconstruir texto solo con párrafos completos
+        parrafos_validos = []
+        for parrafo in parrafos:
+            # Solo incluir si no termina con corte o si podemos cerrarlo
+            if not any(re.search(p, parrafo) for p in PATRONES_CORTE):
+                parrafos_validos.append(parrafo)
+            else:
+                # Intentar cerrar el párrafo en el último punto válido
+                ultimo_punto = max(parrafo.rfind('.'), parrafo.rfind('!'), parrafo.rfind('?'))
+                if ultimo_punto > len(parrafo) * 0.5:
+                    cerrado = parrafo[:ultimo_punto+1].strip()
+                    if len(cerrado.split()) > 10:
+                        parrafos_validos.append(cerrado)
+        
+        if len(parrafos_validos) >= 2:
+            texto_corregido = '\n\n'.join(parrafos_validos)
+            log(f"   🔧 Texto reconstruido con {len(parrafos_validos)} párrafos válidos", 'debug')
+            es_valido = True
+        else:
+            es_valido = False
+    
+    problema_str = "; ".join(problemas) if problemas else "ninguno"
+    return es_valido, problema_str, texto_corregido
 
 def limpiar_texto_mejorado(texto):
     """
@@ -181,78 +289,15 @@ def limpiar_texto_mejorado(texto):
     t = re.sub(r'[ \t]+', ' ', t)
     t = re.sub(r'\n+', '\n', t)
     
-    # Separar palabras pegadas por cambio de caso (solo casos obvios)
-    t = separar_palabras_pegadas(t)
+    # Separar palabras pegadas por cambio de caso (camelCase)
+    patron = r'([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])'
+    t = re.sub(patron, r'\1 \2', t)
     
-    # Limpiar espacios al inicio/final
+    # Limpiar espacios al inicio/final de líneas
     lineas = [linea.strip() for linea in t.split('\n') if linea.strip()]
     t = '\n'.join(lineas)
     
     return t.strip()
-
-def detectar_texto_incoherente(texto, debug=False):
-    """
-    Versión SUAVIZADA: Solo detecta casos obvios de mezcla de noticias.
-    Elimina la detección de "palabras partidas" que causaba falsos positivos.
-    """
-    if not texto or len(texto) < 100:
-        if debug:
-            log(f"   🔍 Texto muy corto ({len(texto) if texto else 0} chars)", 'debug')
-        return True
-    
-    # Solo criterio: múltiples fuentes de medios diferentes (indica mezcla de noticias)
-    fuentes_encontradas = []
-    texto_lower = texto.lower()
-    for fuente in FUENTES_MEDIOS:
-        if fuente.lower() in texto_lower:
-            fuentes_encontradas.append(fuente)
-    
-    # Solo rechazar si hay 4+ fuentes diferentes (indica agregador de noticias)
-    if len(fuentes_encontradas) >= 4:
-        if debug:
-            log(f"   🔍 Múltiples fuentes detectadas ({len(fuentes_encontradas)}): {fuentes_encontradas[:3]}", 'debug')
-        return True
-    
-    # Verificar que no sea solo una lista de fuentes/títulos (patrón de agregador)
-    lineas = [l.strip() for l in texto.split('\n') if l.strip()]
-    if len(lineas) > 3:
-        # Si más de la mitad de las líneas son cortas (< 40 chars), puede ser lista de titulares
-        lineas_cortas = sum(1 for l in lineas if len(l) < 40)
-        if lineas_cortas > len(lineas) * 0.6:
-            if debug:
-                log(f"   🔍 Parece lista de titulares ({lineas_cortas}/{len(lineas)} líneas cortas)", 'debug')
-            return True
-    
-    if debug:
-        log(f"   🔍 Texto coherente: {len(fuentes_encontradas)} fuentes, {len(lineas)} líneas", 'debug')
-    
-    return False
-
-def cortar_por_palabras_completas(texto, max_palabras=300):
-    """
-    Corta el texto respetando límites de palabras completas.
-    """
-    if not texto:
-        return texto
-    
-    palabras = texto.split()
-    if len(palabras) <= max_palabras:
-        return texto
-    
-    # Cortar en palabra completa
-    texto_cortado = ' '.join(palabras[:max_palabras])
-    
-    # Buscar el último punto para terminar en oración completa
-    ultimo_punto = max(
-        texto_cortado.rfind('.'),
-        texto_cortado.rfind('!'),
-        texto_cortado.rfind('?')
-    )
-    
-    if ultimo_punto > len(texto_cortado) * 0.8:  # 80% para asegurar que no cortamos mucho
-        return texto_cortado[:ultimo_punto + 1]
-    
-    return texto_cortado + "..."
 
 def calcular_puntaje(titulo, desc):
     txt = f"{titulo} {desc}".lower()
@@ -274,150 +319,148 @@ def calcular_puntaje(titulo, desc):
     return p
 
 # ============================================================================
-# EXTRACCIÓN DE CONTENIDO - VERSIÓN CORREGIDA CON DEBUG
+# EXTRACCIÓN DE CONTENIDO CON VERIFICACIÓN
 # ============================================================================
 
-def extraer_contenido_completo(url, descripcion_original="", debug=True):
+def extraer_contenido_verificado(url, descripcion_original="", max_intentos=3):
     """
-    Extrae el contenido completo de la noticia.
-    Versión con logging detallado para diagnóstico.
+    Extrae contenido y lo verifica antes de retornar.
+    Si no pasa la verificación, intenta extraer de nuevo con estrategias diferentes.
     """
     if not url: 
         return None, None
     
-    if debug:
-        log(f"   🔍 Extrayendo: {url[:60]}...", 'debug')
-    
-    # Si es Google News, resolver redirección
-    if 'news.google.com' in url:
-        url_resuelto = resolver_redireccion_google(url)
-        if url_resuelto:
-            url = url_resuelto
-            log(f"   🔀 Redirigido a: {url[:60]}...", 'debug')
+    intento = 0
+    while intento < max_intentos:
+        intento += 1
+        log(f"   🔍 Intento {intento}/{max_intentos}: {url[:50]}...", 'debug')
+        
+        contenido, cred = extraer_contenido_raw(url, descripcion_original, estrategia=intento)
+        
+        if not contenido:
+            continue
+        
+        # VERIFICACIÓN PREVIA ANTES DE RETORNAR
+        es_valido, problema, contenido_corregido = verificar_contenido_completo(contenido)
+        
+        if es_valido:
+            log(f"   ✅ Verificación exitosa: {len(contenido_corregido.split())} palabras", 'exito')
+            return contenido_corregido, cred
         else:
-            log("   ⚠️ No se pudo resolver redirección", 'advertencia')
-            desc_expandida = expandir_descripcion(descripcion_original)
-            if desc_expandida:
-                return desc_expandida, "Resumen de la noticia"
-            return None, None
+            log(f"   ⚠️ Verificación fallida: {problema}", 'advertencia')
+            if contenido_corregido and len(contenido_corregido.split()) > 40:
+                # Si tenemos una corrección aceptable, usarla
+                log(f"   🔧 Usando versión corregida", 'debug')
+                return contenido_corregido, cred + " (corregido)"
+        
+        # Si es Google News, intentar con URL alternativa
+        if 'news.google.com' in url and intento == 1:
+            url_resuelto = resolver_redireccion_google(url)
+            if url_resuelto:
+                url = url_resuelto
+                log(f"   🔀 Intentando con URL resuelta: {url[:50]}...", 'debug')
+    
+    # Si todos los intentos fallaron, usar descripción expandida como último recurso
+    if descripcion_original and len(descripcion_original) > 80:
+        log("   ⚠️ Usando descripción expandida como último recurso", 'advertencia')
+        desc_expandida = expandir_descripcion(descripcion_original)
+        es_valido, problema, desc_corregida = verificar_contenido_completo(desc_expandida)
+        if es_valido or len(desc_corregida.split()) > 30:
+            return desc_corregida, "Resumen de la noticia"
+    
+    return None, None
+
+def extraer_contenido_raw(url, descripcion_original="", estrategia=1):
+    """
+    Extracción básica sin verificación.
+    Estrategia 1: Artículo y clases estándar
+    Estrategia 2: Body completo con filtros estrictos
+    Estrategia 3: Meta descripción y estructura alternativa
+    """
+    if not url:
+        return None, None
     
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=25)
         s = BeautifulSoup(r.content, 'html.parser')
         
-        # Eliminar elementos no deseados
         for e in s(['script','style','nav','header','footer','aside','form','button','iframe','noscript']): 
             e.decompose()
         
         contenido_parrafos = []
         
-        # Estrategia 1: Artículo
-        art = s.find('article')
-        if art:
-            ps = art.find_all('p')
-            for p in ps:
-                texto_p = p.get_text().strip()
-                if 60 < len(texto_p) < 600:  # Filtro de longitud
-                    if not any(nav in texto_p.lower() for nav in ['cookie', 'términos', 'privacidad', 'suscribir']):
-                        limpio = limpiar_texto_mejorado(texto_p)
-                        if limpio and limpio not in contenido_parrafos:
-                            contenido_parrafos.append(limpio)
-            if debug:
-                log(f"   📄 Artículo: {len(contenido_parrafos)} párrafos", 'debug')
-        
-        # Estrategia 2: Clases de contenido
-        if len(contenido_parrafos) < 3:
-            for clase in ['article-content', 'entry-content', 'post-content', 'content-body', 
-                         'story-body', 'article-body', 'news-text']:
-                div = s.find(['div', 'section'], class_=lambda x: x and clase in str(x).lower())
-                if div:
-                    ps = div.find_all('p')
-                    nuevos = 0
-                    for p in ps:
-                        texto_p = p.get_text().strip()
-                        if 60 < len(texto_p) < 600:
-                            if not any(nav in texto_p.lower() for nav in ['cookie', 'términos', 'privacidad']):
+        if estrategia == 1:
+            # Estrategia 1: Artículo y clases comunes
+            art = s.find('article')
+            if art:
+                ps = art.find_all('p')
+                for p in ps:
+                    texto_p = p.get_text().strip()
+                    if 60 < len(texto_p) < 600:
+                        if not any(nav in texto_p.lower() for nav in ['cookie', 'términos', 'privacidad', 'suscribir']):
+                            limpio = limpiar_texto_mejorado(texto_p)
+                            if limpio and limpio not in contenido_parrafos:
+                                contenido_parrafos.append(limpio)
+            
+            if len(contenido_parrafos) < 3:
+                for clase in ['article-content', 'entry-content', 'post-content', 'content-body', 'story-body']:
+                    div = s.find(['div', 'section'], class_=lambda x: x and clase in str(x).lower())
+                    if div:
+                        ps = div.find_all('p')
+                        for p in ps:
+                            texto_p = p.get_text().strip()
+                            if 60 < len(texto_p) < 600:
                                 limpio = limpiar_texto_mejorado(texto_p)
                                 if limpio and limpio not in contenido_parrafos:
                                     contenido_parrafos.append(limpio)
-                                    nuevos += 1
-                    if debug:
-                        log(f"   📄 Clase {clase}: +{nuevos} párrafos", 'debug')
-                    if len(contenido_parrafos) >= 3:
-                        break
+                        if len(contenido_parrafos) >= 3:
+                            break
         
-        # Estrategia 3: Body (último recurso)
-        if len(contenido_parrafos) < 2:
+        elif estrategia == 2:
+            # Estrategia 2: Body con filtros estrictos
             body = s.find('body')
             if body:
                 ps = body.find_all('p')
                 for p in ps:
                     texto_p = p.get_text().strip()
-                    if 80 < len(texto_p) < 500:
-                        if any(c in texto_p for c in ['.', ',']) and len(texto_p.split()) > 12:
-                            if not any(nav in texto_p.lower() for nav in ['cookie', 'suscribir', 'newsletter']):
+                    # Filtros más estrictos para evitar menús y navegación
+                    if 100 < len(texto_p) < 500:
+                        if any(c in texto_p for c in ['.', ',', ';']) and len(texto_p.split()) > 15:
+                            if not any(nav in texto_p.lower() for nav in ['cookie', 'suscribir', 'newsletter', 'compartir', 'facebook', 'twitter']):
                                 limpio = limpiar_texto_mejorado(texto_p)
                                 if limpio and limpio not in contenido_parrafos:
                                     contenido_parrafos.append(limpio)
-                if debug:
-                    log(f"   📄 Body: {len(contenido_parrafos)} párrafos total", 'debug')
         
-        # Procesar párrafos encontrados
+        elif estrategia == 3:
+            # Estrategia 3: Meta descripción + párrafos del header/hero
+            meta_desc = s.find('meta', attrs={'name': 'description'}) or s.find('meta', property='og:description')
+            if meta_desc:
+                desc = meta_desc.get('content', '')
+                if desc and len(desc) > 100:
+                    contenido_parrafos.append(limpiar_texto_mejorado(desc))
+            
+            # Buscar párrafos destacados
+            for clase in ['lead', 'summary', 'excerpt', 'subtitle', 'intro']:
+                elem = s.find(['p', 'div', 'h2'], class_=lambda x: x and clase in str(x).lower())
+                if elem:
+                    texto = elem.get_text().strip()
+                    if len(texto) > 80:
+                        contenido_parrafos.append(limpiar_texto_mejorado(texto))
+        
+        # Unir párrafos
         if len(contenido_parrafos) >= 2:
-            # Unir con doble salto de línea
             texto_completo = '\n\n'.join(contenido_parrafos[:8])
-            
-            if debug:
-                log(f"   📊 Total: {len(texto_completo)} chars, {len(texto_completo.split())} palabras", 'debug')
-            
-            # Validar coherencia (modo debug activado)
-            if detectar_texto_incoherente(texto_completo, debug=debug):
-                log("   ⚠️ Contenido marcado como incoherente, intentando limpieza...", 'advertencia')
-                texto_limpio = limpiar_fuentes_pegadas(texto_completo)
-                if not detectar_texto_incoherente(texto_limpio, debug=False):
-                    log("   ✅ Limpieza exitosa", 'exito')
-                    return cortar_por_palabras_completas(texto_limpio, 300), None
-                # Si aún es incoherente pero tenemos contenido, usarlo de todos modos
-                # (el detector es conservador, mejor usar contenido que no publicar nada)
-                if len(texto_completo.split()) > 50:
-                    log("   ⚠️ Usando contenido a pesar de advertencia", 'advertencia')
-                    return cortar_por_palabras_completas(texto_completo, 300), None
-                return None, None
-            
-            return cortar_por_palabras_completas(texto_completo, 300), None
-        
-        # Fallback a descripción
-        if descripcion_original and len(descripcion_original) > 60:
-            log("   ⚠️ Usando descripción expandida como fallback", 'advertencia')
-            desc_expandida = expandir_descripcion(descripcion_original)
-            if desc_expandida:
-                return desc_expandida, "Resumen de la noticia"
+            return texto_completo, None
         
         return None, None
         
     except Exception as e:
-        log(f"   Error extrayendo: {str(e)[:100]}", 'error')
-        if descripcion_original and len(descripcion_original) > 60:
-            return expandir_descripcion(descripcion_original), "Resumen (error de conexión)"
+        log(f"   Error en extracción: {str(e)[:80]}", 'error')
         return None, None
-
-def limpiar_fuentes_pegadas(texto):
-    """
-    Separa nombres de fuentes que quedaron pegados al texto.
-    """
-    if not texto:
-        return texto
-    
-    # Separar fuentes pegadas a mayúscula
-    for fuente in FUENTES_MEDIOS:
-        # "CNN en EspañolEsta es la noticia" → "CNN en Español. Esta es la noticia"
-        texto = re.sub(rf'(\b{re.escape(fuente)}\b)([A-ZÁÉÍÓÚÑ])', r'\1. \2', texto, flags=re.IGNORECASE)
-    
-    return texto
 
 def expandir_descripcion(descripcion):
     """
-    Convierte una descripción corta en párrafos estructurados.
+    Convierte descripción en párrafos estructurados.
     """
     if not descripcion:
         return ""
@@ -426,22 +469,18 @@ def expandir_descripcion(descripcion):
     if not limpia:
         return ""
     
-    # Si ya tiene buena longitud, devolver formateada
-    palabras = limpia.split()
-    if len(palabras) > 60:
+    # Si ya es larga, devolver formateada
+    if len(limpia.split()) > 60:
         return limpia
     
-    # Si es corta, estructurar en párrafos
+    # Dividir en oraciones y crear párrafos
     oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', limpia) if len(o.strip()) > 20]
     
     if len(oraciones) <= 1:
         return limpia
     
-    # Dividir en 2 párrafos
+    # Crear 2 párrafos balanceados
     mitad = len(oraciones) // 2
-    if mitad == 0:
-        mitad = 1
-    
     parrafo1 = ' '.join(oraciones[:mitad])
     parrafo2 = ' '.join(oraciones[mitad:])
     
@@ -449,32 +488,29 @@ def expandir_descripcion(descripcion):
 
 def dividir_en_parrafos_presentacion(texto):
     """
-    Divide el texto en párrafos para la presentación final.
+    Divide texto en párrafos para presentación final.
     """
     if not texto:
         return []
     
-    # Si ya tiene saltos de línea dobles, usarlos
+    # Si ya tiene doble salto, usarlo
     if '\n\n' in texto:
-        parrafos = [p.strip() for p in texto.split('\n\n') if len(p.strip()) > 20]
-        return parrafos[:6]
+        return [p.strip() for p in texto.split('\n\n') if len(p.strip()) > 20][:6]
     
-    # Si tiene saltos simples, usarlos como separadores de párrafo
+    # Si tiene saltos simples
     if '\n' in texto:
-        parrafos = [p.strip() for p in texto.split('\n') if len(p.strip()) > 20]
-        if len(parrafos) >= 2:
-            return parrafos[:6]
+        pars = [p.strip() for p in texto.split('\n') if len(p.strip()) > 20]
+        if len(pars) >= 2:
+            return pars[:6]
     
-    # Dividir por oraciones y agrupar
+    # Dividir por oraciones
     oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', texto) if len(o.strip()) > 15]
-    
     if len(oraciones) < 2:
         return [texto] if len(texto) > 50 else []
     
     parrafos = []
     i = 0
     while i < len(oraciones):
-        # Grupo de 2-3 oraciones
         grupo = oraciones[i:i+2] if i + 2 < len(oraciones) else oraciones[i:]
         parrafo = ' '.join(grupo)
         if len(parrafo.split()) >= 12:
@@ -487,13 +523,13 @@ def dividir_en_parrafos_presentacion(texto):
 
 def construir_publicacion(titulo, contenido, creditos, fuente):
     """
-    Construye la publicación final con párrafos completos.
+    Construye publicación final con párrafos completos.
     """
     t = limpiar_texto_mejorado(titulo)
     pars = dividir_en_parrafos_presentacion(contenido)
     
     if not pars:
-        pars = [contenido[:800]] if contenido else []
+        pars = [contenido[:700]] if contenido else []
     
     lineas = [f"📰 ÚLTIMA HORA | {t}", ""]
     
@@ -685,7 +721,7 @@ def obtener_newsapi():
     log(f"NewsAPI.org: {len(n)} noticias", 'info')
     return n
 
-# [Otras fuentes se mantienen similares...]
+# [Otras fuentes...]
 
 def extraer_imagen_web(url):
     if not url: 
@@ -827,12 +863,12 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
     return False
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL
+# FUNCIÓN PRINCIPAL CON VERIFICACIÓN ESTRICTA
 # ============================================================================
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS - V4.4 (CORREGIDO - DETECTOR SUAVIZADO)")
+    print("🌍 BOT DE NOTICIAS - V4.5 (VERIFICACIÓN PREVIA ANTES DE PUBLICAR)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -868,12 +904,12 @@ def main():
     # Ordenar por puntaje
     n.sort(key=lambda x: x.get('puntaje', 0), reverse=True)
     
-    # Buscar noticia válida
+    # Buscar noticia válida con verificación previa
     sel = None
     cont = None
     cred = None
     
-    for i, nt in enumerate(n[:20]):
+    for i, nt in enumerate(n[:25]):  # Aumentado a 25 intentos
         url = nt.get('url', '')
         t = nt.get('titulo', '')
         d = nt.get('descripcion', '')
@@ -888,27 +924,26 @@ def main():
         
         log(f"   [{i+1}] ✅ Candidata: {t[:50]}...")
         
-        # Extraer contenido con debug activado
-        cont, cred = extraer_contenido_completo(url, d, debug=True)
+        # EXTRAER CON VERIFICACIÓN PREVIA (3 intentos automáticos)
+        cont, cred = extraer_contenido_verificado(url, d, max_intentos=3)
         
-        if cont and len(cont.split()) >= 25:  # Mínimo 25 palabras (reducido de 30)
-            # Solo rechazar si es obviamente incoherente (4+ fuentes)
-            if not detectar_texto_incoherente(cont, debug=True):
+        if cont and len(cont.split()) >= 30:
+            # Verificación final antes de aceptar
+            es_valido, problema, cont_corregido = verificar_contenido_completo(cont)
+            
+            if es_valido:
                 sel = nt
-                log(f"   ✅ Contenido válido: {len(cont.split())} palabras", 'exito')
+                cont = cont_corregido  # Usar versión corregida si hubo mejoras
+                log(f"   ✅ Contenido verificado: {len(cont.split())} palabras, {len(cont.split(chr(10)))} párrafos", 'exito')
                 break
             else:
-                # Si tiene contenido suficiente, usarlo de todos modos
-                if len(cont.split()) > 50:
-                    log(f"   ⚠️ Usando contenido con advertencia de incoherencia", 'advertencia')
-                    sel = nt
-                    break
-                log(f"   ❌ Contenido descartado por incoherencia", 'error')
+                log(f"   ❌ Falló verificación final: {problema}", 'error')
+                # Continuar con siguiente noticia
         else:
             log(f"   ❌ Sin contenido suficiente ({len(cont.split()) if cont else 0} palabras)", 'error')
     
     if not sel:
-        log("ERROR: No hay noticias válidas nuevas", 'error')
+        log("ERROR: No se encontró ninguna noticia que pase la verificación de calidad", 'error')
         return False
     
     # Construir y publicar

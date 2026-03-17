@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - V4.5 (VERIFICACIÓN PREVIA ANTES DE PUBLICAR)
+Bot de Noticias Internacionales para Facebook - V4.6 (FILTRO ANTI-AGREGADORES)
 """
 
 import requests
@@ -35,40 +35,28 @@ BLACKLIST_TITULOS = [r'^\s*última hora\s*$', r'^\s*breaking news\s*$', r'^\s*no
 PALABRAS_ALTA_PRIORIDAD = ["guerra hoy", "conflicto armado", "dictadura", "sanciones", "ucrania", "rusia", "gaza", "israel", "hamas", "iran", "china", "taiwan", "otan", "brics", "economia mundial", "inflacion", "crisis humanitaria", "refugiados", "derechos humanos", "protestas", "coup", "minerales estrategicos", "tierras raras", "drones", "inteligencia artificial guerra", "ciberataque", "zelensky", "netanyahu", "trump", "biden", "putin", "elecciones", "fraude", "corrupcion", "crisis", "ataque", "bombardeo", "invasion"]
 PALABRAS_MEDIA_PRIORIDAD = ['economía', 'mercados', 'FMI', 'China', 'EEUU', 'Alemania', 'petroleo', 'gas', 'europa', 'asia', 'latinoamerica', 'mexico', 'brasil', 'argentina']
 
-FUENTES_MEDIOS = [
-    'cnn', 'bbc', 'fox news', 'msnbc', 'abc news', 'cbs news', 'nbc news', 
-    'reuters', 'associated press', 'ap news', 'bloomberg', 'the guardian', 
-    'the new york times', 'new york times', 'the washington post', 'washington post',
-    'los angeles times', 'la times', 'el país', 'el mundo', 'el diario', 
-    'univision', 'telemundo', 'caracol', 'rcn', 'clarín', 'infobae', 
-    'cnn en español', 'cnn español', 'el nuevo día', 'el nuevo dia', 
-    'la nación', 'la nacion', 'financial times', 'the wall street journal', 
-    'wall street journal', 'al jazeera', 'rt', 'russia today', 'france 24', 
-    'deutsche welle', 'dw', 'china daily', 'xinhua', 'tass', 'agenzia nova', 
-    'ansa', 'efe', ' Europa Press', 'meneame', 'meneame.net'
+# Palabras que indican contenido de agregador/sitio de noticias sociales
+PALABRAS_AGREGADOR = [
+    'meneos', 'clics', 'clicks', 'menéalo', 'enviado:', 'hace', 'horas', 'días',
+    'comentarios', 'compartir en facebook', 'compartir en twitter', 'compartir por correo',
+    'etiquetas:', 'tags:', 'karma', 'puntos', 'votos', 'positivo', 'negativo',
+    'reddit', 'upvotes', 'downvotes', 'submitted', 'posted by', 'u/', 'r/',
+    'hacker news', 'hn', 'points', 'ycombinator',
+    'slashdot', 'firehose', 'mod', 'score',
+    'digg', 'dugg', 'bury',
+    'fark', 'totalfark', 'ultrafark',
+    '4chan', 'anon', 'thread', 'replies', 'bump',
+    '9gag', 'upvote', 'downvote', 'hot', 'trending', 'viral',
+    'whatsapp', 'telegram', 'compartir', 'share', 'tweet', 'like', 'follow'
 ]
 
 # Patrones de truncamiento/corte
 PATRONES_CORTE = [
-    r'…$',           # Termina con ellipsis
-    r'\.\.\.$',      # Termina con tres puntos
-    r'\.\s*\.\s*\.$', # Puntos separados por espacios al final
-    r'\s+de…$',      # "de..." al final (cortado)
-    r'\s+de\.\.\.$', # "de..." al final variante
-    r'\s+a…$',       # "a..." al final
-    r'\s+en…$',      # "en..." al final
-    r'\s+que…$',     # "que..." al final
-    r'\s+con…$',     # "con..." al final
-    r'\s+por…$',     # "por..." al final
-    r'\s+para…$',    # "para..." al final
-    r'\s+un…$',      # "un..." al final
-    r'\s+una…$',     # "una..." al final
-    r'\s+los…$',     # "los..." al final
-    r'\s+las…$',     # "las..." al final
-    r'\s+del…$',     # "del..." al final
-    r'\s+al…$',      # "al..." al final
-    r'[a-záéíóúñ]\…$', # Termina con letra minúscula + ellipsis (palabra cortada)
-    r'[a-záéíóúñ]\.\.\.$', # Termina con letra minúscula + puntos (palabra cortada)
+    r'…$', r'\.\.\.$', r'\.\s*\.\s*\.$',
+    r'\s+de…$', r'\s+de\.\.\.$', r'\s+a…$', r'\s+en…$',
+    r'\s+que…$', r'\s+con…$', r'\s+por…$', r'\s+para…$',
+    r'\s+un…$', r'\s+una…$', r'\s+los…$', r'\s+las…$',
+    r'\s+del…$', r'\s+al…$', r'[a-záéíóúñ]\…$', r'[a-záéíóúñ]\.\.\.$',
 ]
 
 def log(mensaje, tipo='info'):
@@ -164,12 +152,78 @@ def es_titulo_generico(titulo):
     return len(set(pal)) < 4
 
 # ============================================================================
-# SISTEMA DE VERIFICACIÓN PREVIA ANTES DE PUBLICAR
+# SISTEMA ANTI-AGREGADORES Y FILTROS DE CALIDAD
 # ============================================================================
 
-def verificar_contenido_completo(texto, titulo=""):
+def detectar_contenido_agregador(texto):
     """
-    Verifica que el contenido esté completo y no tenga cortes/truncamientos.
+    Detecta si el texto contiene elementos típicos de agregadores (Meneame, Reddit, etc.)
+    Retorna (es_agregador, palabras_detectadas)
+    """
+    if not texto:
+        return False, []
+    
+    texto_lower = texto.lower()
+    palabras_detectadas = []
+    
+    for palabra in PALABRAS_AGREGADOR:
+        # Buscar palabra completa
+        if re.search(rf'\b{re.escape(palabra)}\b', texto_lower):
+            palabras_detectadas.append(palabra)
+    
+    # Si encontramos 3+ palabras de agregador, es probable que sea contenido de agregador
+    es_agregador = len(palabras_detectadas) >= 3
+    
+    return es_agregador, palabras_detectadas
+
+def limpiar_contenido_agregador(texto):
+    """
+    Intenta limpiar el texto eliminando secciones típicas de agregadores.
+    """
+    if not texto:
+        return texto
+    
+    lineas = texto.split('\n')
+    lineas_limpias = []
+    
+    for linea in lineas:
+        linea_lower = linea.lower()
+        
+        # Saltar líneas que son puramente metadata de agregador
+        skip = False
+        
+        # Detectar líneas cortas con números (votos, clics, etc.)
+        if re.match(r'^\s*\d+\s+\w+\s*$', linea):  # "8 meneos", "434 clics"
+            skip = True
+        
+        # Detectar "Compartir en..."
+        if 'compartir en' in linea_lower or 'compartir por' in linea_lower:
+            skip = True
+        
+        # Detectar etiquetas/tags con formato de agregador
+        if re.match(r'^\s*\|\s*etiquetas:', linea_lower) or linea_lower.startswith('etiquetas:'):
+            skip = True
+        
+        # Detectar líneas con solo números y espacios (puntuaciones)
+        if re.match(r'^\s*[\d\s]+\s*$', linea) and len(linea.strip()) < 20:
+            skip = True
+        
+        # Detectar "enviado:", "hace X horas/días"
+        if re.match(r'^\s*enviado:', linea_lower) or re.match(r'^\s*hace\s+\d+\s+(horas?|días?|minutos?)', linea_lower):
+            skip = True
+        
+        # Detectar líneas con "K" y números (karma/puntos)
+        if re.match(r'^\s*\d+[\d\sK]+\s*(comentarios?)?\s*$', linea_lower):
+            skip = True
+        
+        if not skip:
+            lineas_limpias.append(linea)
+    
+    return '\n'.join(lineas_limpias)
+
+def verificar_contenido_completo(texto, url=""):
+    """
+    Verificación completa: detecta agregadores, cortes, y calidad general.
     Retorna: (es_valido, problema_detectado, texto_corregido)
     """
     if not texto:
@@ -178,97 +232,58 @@ def verificar_contenido_completo(texto, titulo=""):
     problemas = []
     texto_corregido = texto
     
-    # Verificación 1: Detectar puntos suspensivos al final de párrafos (indica corte)
-    parrafos = [p.strip() for p in texto.split('\n\n') if p.strip()]
+    # PASO 1: Detectar y limpiar contenido de agregador
+    es_agregador, palabras_agregador = detectar_contenido_agregador(texto)
+    if es_agregador:
+        problemas.append(f"Contenido de agregador detectado: {palabras_agregador[:3]}")
+        texto_corregido = limpiar_contenido_agregador(texto)
+        
+        # Re-verificar después de limpiar
+        es_agregador_2, _ = detectar_contenido_agregador(texto_corregido)
+        if es_agregador_2:
+            problemas.append("No se pudo limpiar completamente el contenido de agregador")
     
+    # PASO 2: Detectar cortes/truncamientos
+    parrafos = [p.strip() for p in texto_corregido.split('\n\n') if p.strip()]
     parrafos_con_corte = 0
-    for i, parrafo in enumerate(parrafos):
-        # Verificar si termina con patrón de corte
+    
+    for parrafo in parrafos:
         for patron in PATRONES_CORTE:
             if re.search(patron, parrafo):
                 parrafos_con_corte += 1
-                # Intentar reparar: eliminar el corte y buscar punto final anterior
-                if parrafo.endswith('…') or parrafo.endswith('...'):
-                    # Buscar si hay un punto antes para cerrar la oración
-                    ultimo_punto = max(parrafo.rfind('.'), parrafo.rfind('!'), parrafo.rfind('?'))
-                    if ultimo_punto > len(parrafo) * 0.5:  # Si hay punto antes del 50%
-                        texto_corregido = texto_corregido.replace(parrafo, parrafo[:ultimo_punto+1])
-                        parrafos[i] = parrafo[:ultimo_punto+1]
+                # Intentar reparar: buscar último punto válido
+                ultimo_punto = max(parrafo.rfind('.'), parrafo.rfind('!'), parrafo.rfind('?'))
+                if ultimo_punto > len(parrafo) * 0.6:
+                    nuevo_parrafo = parrafo[:ultimo_punto+1].strip()
+                    texto_corregido = texto_corregido.replace(parrafo, nuevo_parrafo)
                 break
     
     if parrafos_con_corte > 0:
-        problemas.append(f"{parrafos_con_corte} párrafos con cortes detectados")
+        problemas.append(f"{parrafos_con_corte} párrafos con cortes")
     
-    # Verificación 2: Detectar palabras partidas (patrones como "expert os")
-    # Buscar palabras de 2-3 letras que parezcan fragmentos
-    palabras_sueltas = re.findall(r'\b\w{1,3}\b', texto)
-    palabras_comunes_cortas = {'el', 'la', 'de', 'y', 'en', 'un', 'al', 'del', 'con', 'por', 'que', 'los', 'las', 'una', 'su', 'se', 'me', 'te', 'lo', 'le', 'ya', 'no', 'si', 'es', 'as', 'os', 'ha', 'he', 'mi', 'tu', 'yo'}
+    # PASO 3: Verificar longitud mínima después de limpieza
+    palabras = texto_corregido.split()
+    if len(palabras) < 40:
+        problemas.append(f"Texto muy corto ({len(palabras)} palabras)")
     
-    palabras_raras = [p for p in palabras_sueltas if p.lower() not in palabras_comunes_cortas and len(p) <= 2]
-    if len(palabras_raras) > 3:
-        problemas.append(f"Posibles palabras partidas: {palabras_raras[:3]}")
-    
-    # Verificación 3: Verificar que el último párrafo termine en punto (oración completa)
-    if parrafos:
-        ultimo = parrafos[-1]
-        if not re.search(r'[.!?]$', ultimo):
-            # Intentar arreglar: buscar el último punto válido
-            ultimo_punto = max(ultimo.rfind('.'), ultimo.rfind('!'), ultimo.rfind('?'))
-            if ultimo_punto > len(ultimo) * 0.6:
-                # Podemos cortar aquí y terminar el párrafo
-                nuevo_ultimo = ultimo[:ultimo_punto+1]
-                texto_corregido = texto_corregido.replace(ultimo, nuevo_ultimo)
-                problemas.append("Último párrafo sin terminación, corregido")
-            else:
-                problemas.append("Último párrafo incompleto sin punto final claro")
-    
-    # Verificación 4: Detectar si es solo una descripción corta (menos de 2 párrafos sustanciales)
-    parrafos_sustanciales = [p for p in parrafos if len(p.split()) > 20]
-    if len(parrafos_sustanciales) < 2 and len(texto.split()) < 80:
-        problemas.append("Contenido muy corto, posible descripción no artículo completo")
-    
-    # Verificación 5: Detectar múltiples fuentes mezcladas (indica agregador)
-    fuentes_encontradas = []
-    texto_lower = texto.lower()
-    for fuente in FUENTES_MEDIOS:
-        if fuente.lower() in texto_lower:
-            fuentes_encontradas.append(fuente)
-    
-    if len(fuentes_encontradas) >= 4:
-        problemas.append(f"Mezcla de {len(fuentes_encontradas)} fuentes diferentes")
+    # PASO 4: Verificar estructura de párrafos
+    parrafos_finales = [p for p in texto_corregido.split('\n\n') if len(p.strip()) > 30]
+    if len(parrafos_finales) < 2:
+        problemas.append("Menos de 2 párrafos sustanciales")
     
     # Decisión final
-    es_valido = len(problemas) <= 1  # Permitir 1 problema menor si se pudo corregir
+    es_valido = len(problemas) == 0 or (len(problemas) == 1 and not es_agregador)
     
-    # Si hay problemas graves de corte, intentar reparación más agresiva
-    if parrafos_con_corte > 0:
-        # Reconstruir texto solo con párrafos completos
-        parrafos_validos = []
-        for parrafo in parrafos:
-            # Solo incluir si no termina con corte o si podemos cerrarlo
-            if not any(re.search(p, parrafo) for p in PATRONES_CORTE):
-                parrafos_validos.append(parrafo)
-            else:
-                # Intentar cerrar el párrafo en el último punto válido
-                ultimo_punto = max(parrafo.rfind('.'), parrafo.rfind('!'), parrafo.rfind('?'))
-                if ultimo_punto > len(parrafo) * 0.5:
-                    cerrado = parrafo[:ultimo_punto+1].strip()
-                    if len(cerrado.split()) > 10:
-                        parrafos_validos.append(cerrado)
-        
-        if len(parrafos_validos) >= 2:
-            texto_corregido = '\n\n'.join(parrafos_validos)
-            log(f"   🔧 Texto reconstruido con {len(parrafos_validos)} párrafos válidos", 'debug')
-            es_valido = True
-        else:
-            es_valido = False
+    # Si es agregador y no se pudo limpiar bien, rechazar
+    if es_agregador and len(palabras) < 60:
+        es_valido = False
     
     problema_str = "; ".join(problemas) if problemas else "ninguno"
     return es_valido, problema_str, texto_corregido
 
 def limpiar_texto_mejorado(texto):
     """
-    Limpieza completa que preserva la estructura de párrafos.
+    Limpieza básica que preserva estructura.
     """
     if not texto: 
         return ""
@@ -276,7 +291,7 @@ def limpiar_texto_mejorado(texto):
     import html
     t = html.unescape(texto)
     
-    # Preservar estructura de párrafos
+    # Preservar estructura
     t = re.sub(r'<br\s*/?>', '\n', t, flags=re.IGNORECASE)
     t = re.sub(r'<p>', '\n', t, flags=re.IGNORECASE)
     t = re.sub(r'</p>', '\n', t, flags=re.IGNORECASE)
@@ -285,19 +300,17 @@ def limpiar_texto_mejorado(texto):
     # Eliminar URLs
     t = re.sub(r'https?://\S*', '', t)
     
-    # Normalizar espacios pero preservar saltos de línea
+    # Normalizar espacios
     t = re.sub(r'[ \t]+', ' ', t)
     t = re.sub(r'\n+', '\n', t)
     
-    # Separar palabras pegadas por cambio de caso (camelCase)
+    # Separar camelCase
     patron = r'([a-záéíóúñ])([A-ZÁÉÍÓÚÑ])'
     t = re.sub(patron, r'\1 \2', t)
     
-    # Limpiar espacios al inicio/final de líneas
+    # Limpiar líneas
     lineas = [linea.strip() for linea in t.split('\n') if linea.strip()]
-    t = '\n'.join(lineas)
-    
-    return t.strip()
+    return '\n'.join(lineas).strip()
 
 def calcular_puntaje(titulo, desc):
     txt = f"{titulo} {desc}".lower()
@@ -319,63 +332,64 @@ def calcular_puntaje(titulo, desc):
     return p
 
 # ============================================================================
-# EXTRACCIÓN DE CONTENIDO CON VERIFICACIÓN
+# EXTRACCIÓN INTELIGENTE CON DETECCIÓN DE AGREGADORES
 # ============================================================================
 
-def extraer_contenido_verificado(url, descripcion_original="", max_intentos=3):
+def extraer_contenido_inteligente(url, descripcion_original="", max_intentos=3):
     """
-    Extrae contenido y lo verifica antes de retornar.
-    Si no pasa la verificación, intenta extraer de nuevo con estrategias diferentes.
+    Extrae contenido con detección específica de sitios agregadores.
     """
     if not url: 
         return None, None
     
+    # Detectar si es agregador conocido por URL
+    es_url_agregador = any(agg in url.lower() for agg in ['meneame', 'reddit', 'news.ycombinator', 'slashdot'])
+    if es_url_agregador:
+        log(f"   ⚠️ URL de agregador detectada: {url[:50]}...", 'advertencia')
+    
     intento = 0
     while intento < max_intentos:
         intento += 1
-        log(f"   🔍 Intento {intento}/{max_intentos}: {url[:50]}...", 'debug')
+        log(f"   🔍 Intento {intento}/{max_intentos}...", 'debug')
         
         contenido, cred = extraer_contenido_raw(url, descripcion_original, estrategia=intento)
         
         if not contenido:
             continue
         
-        # VERIFICACIÓN PREVIA ANTES DE RETORNAR
-        es_valido, problema, contenido_corregido = verificar_contenido_completo(contenido)
+        # Verificación completa
+        es_valido, problema, contenido_corregido = verificar_contenido_completo(contenido, url)
         
-        if es_valido:
-            log(f"   ✅ Verificación exitosa: {len(contenido_corregido.split())} palabras", 'exito')
-            return contenido_corregido, cred
-        else:
-            log(f"   ⚠️ Verificación fallida: {problema}", 'advertencia')
-            if contenido_corregido and len(contenido_corregido.split()) > 40:
-                # Si tenemos una corrección aceptable, usarla
-                log(f"   🔧 Usando versión corregida", 'debug')
-                return contenido_corregido, cred + " (corregido)"
+        # Si es agregador pero se limpió bien, aceptar con advertencia
+        es_agregador, _ = detectar_contenido_agregador(contenido)
         
-        # Si es Google News, intentar con URL alternativa
-        if 'news.google.com' in url and intento == 1:
-            url_resuelto = resolver_redireccion_google(url)
-            if url_resuelto:
-                url = url_resuelto
-                log(f"   🔀 Intentando con URL resuelta: {url[:50]}...", 'debug')
+        if es_valido and len(contenido_corregido.split()) >= 40:
+            if es_agregador:
+                log(f"   ✅ Contenido de agregador limpiado: {len(contenido_corregido.split())} palabras", 'exito')
+            else:
+                log(f"   ✅ Contenido verificado: {len(contenido_corregido.split())} palabras", 'exito')
+            return contenido_corregido, cred or "Agencias"
+        
+        log(f"   ⚠️ {problema}", 'advertencia')
+        
+        # Si es agregador y no se pudo limpiar, no seguir intentando con esta URL
+        if es_agregador and intento >= 2:
+            log(f"   ❌ Agregador no limpiable, pasando a siguiente noticia", 'error')
+            break
     
-    # Si todos los intentos fallaron, usar descripción expandida como último recurso
-    if descripcion_original and len(descripcion_original) > 80:
-        log("   ⚠️ Usando descripción expandida como último recurso", 'advertencia')
+    # Fallback a descripción expandida
+    if descripcion_original and len(descripcion_original) > 100:
+        log("   ⚠️ Usando descripción como fallback", 'advertencia')
         desc_expandida = expandir_descripcion(descripcion_original)
-        es_valido, problema, desc_corregida = verificar_contenido_completo(desc_expandida)
-        if es_valido or len(desc_corregida.split()) > 30:
+        es_valido, problema, desc_corregida = verificar_contenido_completo(desc_expandida, url)
+        if len(desc_corregida.split()) >= 35:
             return desc_corregida, "Resumen de la noticia"
     
     return None, None
 
 def extraer_contenido_raw(url, descripcion_original="", estrategia=1):
     """
-    Extracción básica sin verificación.
-    Estrategia 1: Artículo y clases estándar
-    Estrategia 2: Body completo con filtros estrictos
-    Estrategia 3: Meta descripción y estructura alternativa
+    Extracción con filtros anti-agregador.
     """
     if not url:
         return None, None
@@ -384,83 +398,110 @@ def extraer_contenido_raw(url, descripcion_original="", estrategia=1):
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=25)
         s = BeautifulSoup(r.content, 'html.parser')
         
-        for e in s(['script','style','nav','header','footer','aside','form','button','iframe','noscript']): 
+        # Eliminar elementos no deseados (incluyendo específicos de agregadores)
+        for e in s(['script','style','nav','header','footer','aside','form','button','iframe','noscript',
+                   'div[class*="comments"]', 'div[class*="votos"]', 'div[class*="karma"]',
+                   'div[class*="share"]', 'div[class*="social"]', 'div[class*="metadata"]']): 
             e.decompose()
         
         contenido_parrafos = []
         
         if estrategia == 1:
-            # Estrategia 1: Artículo y clases comunes
+            # Estrategia 1: Buscar article y clases de contenido principal
             art = s.find('article')
             if art:
                 ps = art.find_all('p')
                 for p in ps:
                     texto_p = p.get_text().strip()
-                    if 60 < len(texto_p) < 600:
-                        if not any(nav in texto_p.lower() for nav in ['cookie', 'términos', 'privacidad', 'suscribir']):
+                    # Filtros estrictos anti-agregador
+                    if 70 < len(texto_p) < 700:
+                        if not contiene_texto_agregador(texto_p):
                             limpio = limpiar_texto_mejorado(texto_p)
-                            if limpio and limpio not in contenido_parrafos:
+                            if limpio and len(limpio.split()) > 12 and limpio not in contenido_parrafos:
                                 contenido_parrafos.append(limpio)
             
+            # Si no hay suficiente, buscar clases específicas
             if len(contenido_parrafos) < 3:
-                for clase in ['article-content', 'entry-content', 'post-content', 'content-body', 'story-body']:
+                for clase in ['article-content', 'entry-content', 'post-content', 'content-body', 
+                             'story-body', 'news-text', 'text-content', 'body-content']:
                     div = s.find(['div', 'section'], class_=lambda x: x and clase in str(x).lower())
                     if div:
                         ps = div.find_all('p')
                         for p in ps:
                             texto_p = p.get_text().strip()
-                            if 60 < len(texto_p) < 600:
-                                limpio = limpiar_texto_mejorado(texto_p)
-                                if limpio and limpio not in contenido_parrafos:
-                                    contenido_parrafos.append(limpio)
+                            if 70 < len(texto_p) < 700:
+                                if not contiene_texto_agregador(texto_p):
+                                    limpio = limpiar_texto_mejorado(texto_p)
+                                    if limpio and len(limpio.split()) > 12 and limpio not in contenido_parrafos:
+                                        contenido_parrafos.append(limpio)
                         if len(contenido_parrafos) >= 3:
                             break
         
         elif estrategia == 2:
-            # Estrategia 2: Body con filtros estrictos
+            # Estrategia 2: Filtros aún más estrictos
             body = s.find('body')
             if body:
                 ps = body.find_all('p')
                 for p in ps:
                     texto_p = p.get_text().strip()
-                    # Filtros más estrictos para evitar menús y navegación
-                    if 100 < len(texto_p) < 500:
-                        if any(c in texto_p for c in ['.', ',', ';']) and len(texto_p.split()) > 15:
-                            if not any(nav in texto_p.lower() for nav in ['cookie', 'suscribir', 'newsletter', 'compartir', 'facebook', 'twitter']):
+                    # Solo párrafos sustanciales
+                    if 100 < len(texto_p) < 600 and len(texto_p.split()) > 15:
+                        # Verificar que no sea metadata
+                        if not contiene_texto_agregador(texto_p):
+                            # Verificar que tenga puntuación normal (no solo números)
+                            if any(c in texto_p for c in ['.', ',', ';']) and not re.match(r'^[\d\sK]+$', texto_p):
                                 limpio = limpiar_texto_mejorado(texto_p)
                                 if limpio and limpio not in contenido_parrafos:
                                     contenido_parrafos.append(limpio)
         
         elif estrategia == 3:
-            # Estrategia 3: Meta descripción + párrafos del header/hero
+            # Estrategia 3: Meta descripción + párrafos destacados
             meta_desc = s.find('meta', attrs={'name': 'description'}) or s.find('meta', property='og:description')
             if meta_desc:
                 desc = meta_desc.get('content', '')
-                if desc and len(desc) > 100:
+                if desc and len(desc) > 100 and not contiene_texto_agregador(desc):
                     contenido_parrafos.append(limpiar_texto_mejorado(desc))
             
-            # Buscar párrafos destacados
-            for clase in ['lead', 'summary', 'excerpt', 'subtitle', 'intro']:
-                elem = s.find(['p', 'div', 'h2'], class_=lambda x: x and clase in str(x).lower())
+            # Buscar párrafos con clases de texto principal
+            for clase in ['lead', 'summary', 'excerpt', 'intro', 'abstract']:
+                elem = s.find(['p', 'div'], class_=lambda x: x and clase in str(x).lower())
                 if elem:
                     texto = elem.get_text().strip()
-                    if len(texto) > 80:
+                    if 80 < len(texto) < 500 and not contiene_texto_agregador(texto):
                         contenido_parrafos.append(limpiar_texto_mejorado(texto))
         
         # Unir párrafos
         if len(contenido_parrafos) >= 2:
-            texto_completo = '\n\n'.join(contenido_parrafos[:8])
-            return texto_completo, None
+            return '\n\n'.join(contenido_parrafos[:8]), None
         
         return None, None
         
     except Exception as e:
-        log(f"   Error en extracción: {str(e)[:80]}", 'error')
+        log(f"   Error: {str(e)[:80]}", 'error')
         return None, None
+
+def contiene_texto_agregador(texto):
+    """
+    Verifica si un texto específico contiene palabras de agregador.
+    """
+    texto_lower = texto.lower()
+    palabras_encontradas = 0
+    
+    for palabra in PALABRAS_AGREGADOR:
+        if palabra in texto_lower:
+            palabras_encontradas += 1
+            if palabras_encontradas >= 2:  # Si tiene 2+ palabras, es suficiente
+                return True
+    
+    # También detectar patrones numéricos típicos de agregadores
+    if re.search(r'\b\d+\s+(meneos|clics|clicks|puntos|votos|comentarios)\b', texto_lower):
+        return True
+    
+    return False
 
 def expandir_descripcion(descripcion):
     """
-    Convierte descripción en párrafos estructurados.
+    Expande descripción en párrafos estructurados.
     """
     if not descripcion:
         return ""
@@ -469,22 +510,15 @@ def expandir_descripcion(descripcion):
     if not limpia:
         return ""
     
-    # Si ya es larga, devolver formateada
     if len(limpia.split()) > 60:
         return limpia
     
-    # Dividir en oraciones y crear párrafos
     oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', limpia) if len(o.strip()) > 20]
-    
     if len(oraciones) <= 1:
         return limpia
     
-    # Crear 2 párrafos balanceados
     mitad = len(oraciones) // 2
-    parrafo1 = ' '.join(oraciones[:mitad])
-    parrafo2 = ' '.join(oraciones[mitad:])
-    
-    return f"{parrafo1}\n\n{parrafo2}"
+    return ' '.join(oraciones[:mitad]) + '\n\n' + ' '.join(oraciones[mitad:])
 
 def dividir_en_parrafos_presentacion(texto):
     """
@@ -493,17 +527,14 @@ def dividir_en_parrafos_presentacion(texto):
     if not texto:
         return []
     
-    # Si ya tiene doble salto, usarlo
     if '\n\n' in texto:
-        return [p.strip() for p in texto.split('\n\n') if len(p.strip()) > 20][:6]
+        return [p.strip() for p in texto.split('\n\n') if len(p.strip()) > 25][:6]
     
-    # Si tiene saltos simples
     if '\n' in texto:
-        pars = [p.strip() for p in texto.split('\n') if len(p.strip()) > 20]
+        pars = [p.strip() for p in texto.split('\n') if len(p.strip()) > 25]
         if len(pars) >= 2:
             return pars[:6]
     
-    # Dividir por oraciones
     oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', texto) if len(o.strip()) > 15]
     if len(oraciones) < 2:
         return [texto] if len(texto) > 50 else []
@@ -523,13 +554,13 @@ def dividir_en_parrafos_presentacion(texto):
 
 def construir_publicacion(titulo, contenido, creditos, fuente):
     """
-    Construye publicación final con párrafos completos.
+    Construye publicación final.
     """
     t = limpiar_texto_mejorado(titulo)
     pars = dividir_en_parrafos_presentacion(contenido)
     
     if not pars:
-        pars = [contenido[:700]] if contenido else []
+        pars = [contenido[:600]] if contenido else []
     
     lineas = [f"📰 ÚLTIMA HORA | {t}", ""]
     
@@ -863,12 +894,12 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
     return False
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL CON VERIFICACIÓN ESTRICTA
+# FUNCIÓN PRINCIPAL CON FILTRO ANTI-AGREGADORES
 # ============================================================================
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS - V4.5 (VERIFICACIÓN PREVIA ANTES DE PUBLICAR)")
+    print("🌍 BOT DE NOTICIAS - V4.6 (FILTRO ANTI-AGREGADORES)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -904,17 +935,23 @@ def main():
     # Ordenar por puntaje
     n.sort(key=lambda x: x.get('puntaje', 0), reverse=True)
     
-    # Buscar noticia válida con verificación previa
+    # Buscar noticia válida con filtro anti-agregadores
     sel = None
     cont = None
     cred = None
     
-    for i, nt in enumerate(n[:25]):  # Aumentado a 25 intentos
+    for i, nt in enumerate(n[:30]):  # Aumentado a 30 intentos
         url = nt.get('url', '')
         t = nt.get('titulo', '')
         d = nt.get('descripcion', '')
         
         if not url or not t: 
+            continue
+        
+        # Detectar URL de agregador antes de procesar
+        es_agregador_url = any(agg in url.lower() for agg in ['meneame', 'reddit', 'news.ycombinator'])
+        if es_agregador_url:
+            log(f"   [{i+1}] ⚠️ Saltando agregador conocido: {url[:40]}...", 'advertencia')
             continue
         
         dup, rz = noticia_ya_publicada(h, url, t, d)
@@ -924,26 +961,25 @@ def main():
         
         log(f"   [{i+1}] ✅ Candidata: {t[:50]}...")
         
-        # EXTRAER CON VERIFICACIÓN PREVIA (3 intentos automáticos)
-        cont, cred = extraer_contenido_verificado(url, d, max_intentos=3)
+        # Extraer con sistema anti-agregadores
+        cont, cred = extraer_contenido_inteligente(url, d, max_intentos=3)
         
-        if cont and len(cont.split()) >= 30:
-            # Verificación final antes de aceptar
-            es_valido, problema, cont_corregido = verificar_contenido_completo(cont)
+        if cont and len(cont.split()) >= 40:
+            # Verificación final estricta
+            es_valido, problema, cont_corregido = verificar_contenido_completo(cont, url)
             
-            if es_valido:
+            if es_valido and len(cont_corregido.split()) >= 40:
                 sel = nt
-                cont = cont_corregido  # Usar versión corregida si hubo mejoras
-                log(f"   ✅ Contenido verificado: {len(cont.split())} palabras, {len(cont.split(chr(10)))} párrafos", 'exito')
+                cont = cont_corregido
+                log(f"   ✅ Contenido validado: {len(cont.split())} palabras", 'exito')
                 break
             else:
-                log(f"   ❌ Falló verificación final: {problema}", 'error')
-                # Continuar con siguiente noticia
+                log(f"   ❌ Falló validación: {problema}", 'error')
         else:
-            log(f"   ❌ Sin contenido suficiente ({len(cont.split()) if cont else 0} palabras)", 'error')
+            log(f"   ❌ Sin contenido suficiente", 'error')
     
     if not sel:
-        log("ERROR: No se encontró ninguna noticia que pase la verificación de calidad", 'error')
+        log("ERROR: No se encontró noticia válida sin contenido de agregador", 'error')
         return False
     
     # Construir y publicar

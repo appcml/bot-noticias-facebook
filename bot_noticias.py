@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - V4.0 (MULTI-FUENTE)
-Fuentes: NewsAPI, NewsData, GNews, Google News RSS, RSS Alternativos
-+ NUEVO: ApiTube.io, TheNewsAPI.com, Currents API
+Bot de Noticias Internacionales para Facebook - V4.1 (FALLBACK ROBUSTO)
+Fuentes: NewsAPI, NewsData, GNews, ApiTube, TheNewsAPI, Currents, Google News, RSS
 """
 
 import requests
@@ -17,23 +16,23 @@ from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from urllib.parse import urlparse, urlunparse
 
-# CONFIGURACIÓN - Añade estas nuevas variables de entorno
+# CONFIGURACIÓN
 NEWS_API_KEY = os.getenv('NEWS_API_KEY')
 NEWSDATA_API_KEY = os.getenv('NEWSDATA_API_KEY')
 GNEWS_API_KEY = os.getenv('GNEWS_API_KEY')
-# NUEVAS API KEYS REQUERIDAS:
-APITUBE_API_KEY = os.getenv('APITUBE_API_KEY')           # Nueva
-THENEWSAPI_TOKEN = os.getenv('THENEWSAPI_TOKEN')         # Nueva
-CURRENTS_API_KEY = os.getenv('CURRENTS_API_KEY')         # Nueva
+APITUBE_API_KEY = os.getenv('APITUBE_API_KEY')
+THENEWSAPI_TOKEN = os.getenv('THENEWSAPI_TOKEN')
+CURRENTS_API_KEY = os.getenv('CURRENTS_API_KEY')
 
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')
 HISTORIAL_PATH = os.getenv('HISTORIAL_PATH', 'data/historial_publicaciones.json')
 ESTADO_PATH = os.getenv('ESTADO_PATH', 'data/estado_bot.json')
-TIEMPO_ENTRE_PUBLICACIONES = 30  # CAMBIADO: 30 minutos para publicación constante
+TIEMPO_ENTRE_PUBLICACIONES = 30  # 30 minutos
 UMBRAL_SIMILITUD_TITULO = 0.75
 UMBRAL_SIMILITUD_CONTENIDO = 0.65
-MAX_TITULOS_HISTORIA = 200  # Aumentado para soportar más volumen
+MAX_TITULOS_HISTORIA = 200
+MIN_NOTICIAS_POR_FUENTE = 3  # Mínimo para considerar fuente como "funcional"
 
 BLACKLIST_TITULOS = [r'^\s*última hora\s*$', r'^\s*breaking news\s*$', r'^\s*noticias de hoy\s*$']
 PALABRAS_ALTA_PRIORIDAD = ["guerra hoy", "conflicto armado", "dictadura", "sanciones", "ucrania", "rusia", "gaza", "israel", "hamas", "iran", "china", "taiwan", "otan", "brics", "economia mundial", "inflacion", "crisis humanitaria", "refugiados", "derechos humanos", "protestas", "coup", "minerales estrategicos", "tierras raras", "drones", "inteligencia artificial guerra", "ciberataque", "zelensky", "netanyahu", "trump", "biden", "putin", "elecciones", "fraude", "corrupcion", "crisis", "ataque", "bombardeo", "invasion"]
@@ -223,15 +222,9 @@ def construir_publicacion(titulo, contenido, creditos, fuente):
 
 def cargar_historial():
     d = {
-        'urls': [], 
-        'urls_normalizadas': [],
-        'hashes': [], 
-        'timestamps': [], 
-        'titulos': [], 
-        'descripciones': [], 
-        'hashes_contenido': [], 
-        'hashes_permanentes': [],
-        'estadisticas': {'total_publicadas': 0}
+        'urls': [], 'urls_normalizadas': [], 'hashes': [], 'timestamps': [], 
+        'titulos': [], 'descripciones': [], 'hashes_contenido': [], 
+        'hashes_permanentes': [], 'estadisticas': {'total_publicadas': 0}
     }
     h = cargar_json(HISTORIAL_PATH, d)
     for k in d: 
@@ -248,8 +241,7 @@ def limpiar_historial_antiguo(h):
                 fecha = datetime.fromisoformat(ts)
                 if (ahora - fecha).days < 7:
                     indices_a_mantener.append(i)
-            except:
-                continue
+            except: continue
         for key in ['urls', 'urls_normalizadas', 'hashes', 'timestamps', 'titulos', 'descripciones', 'hashes_contenido']:
             if key in h and isinstance(h[key], list):
                 h[key] = [h[key][i] for i in indices_a_mantener if i < len(h[key])]
@@ -264,64 +256,56 @@ def noticia_ya_publicada(h, url, titulo, desc=""):
     hash_t = generar_hash(titulo)
     hash_d = generar_hash(desc) if desc else ""
     dominio = extraer_dominio_principal(url)
+    
     log(f"   🔍 Verificando duplicados:", 'debug')
     log(f"      URL norm: {url_n[:80]}...", 'debug')
-    log(f"      Dominio: {dominio}", 'debug')
-    log(f"      Hash titulo: {hash_t[:16]}...", 'debug')
+    
     if es_titulo_generico(titulo): 
-        log(f"      ❌ Título genérico detectado", 'debug')
         return True, "titulo_generico"
+    
     for uh in h.get('urls_normalizadas', []):
-        if not isinstance(uh, str): continue
-        if url_n == uh: 
-            log(f"      ❌ URL normalizada duplicada", 'debug')
+        if isinstance(uh, str) and url_n == uh: 
             return True, "url_normalizada_exacta"
+    
     for i, uh in enumerate(h.get('urls', [])):
         if not isinstance(uh, str): continue
         if extraer_dominio_principal(uh) == dominio:
             titulo_h = h.get('titulos', [])[i] if i < len(h.get('titulos', [])) else ""
-            if titulo_h:
-                sim = calcular_similitud_titulos(titulo, titulo_h)
-                if sim >= 0.85:
-                    log(f"      ❌ Misma noticia en {dominio} (sim {sim:.1%})", 'debug')
-                    return True, f"misma_noticia_sitio_{sim:.2f}"
+            if titulo_h and calcular_similitud_titulos(titulo, titulo_h) >= 0.85:
+                return True, f"misma_noticia_sitio"
+    
     todos_h = list(dict.fromkeys(h.get('hashes', []) + h.get('hashes_permanentes', [])))
     if hash_t in todos_h: 
-        log(f"      ❌ Hash título duplicado", 'debug')
         return True, "hash_titulo_exacto"
+    
     if hash_d and hash_d in h.get('hashes_contenido', []):
-        log(f"      ❌ Hash contenido duplicado", 'debug')
         return True, "hash_contenido_exacto"
-    max_sim = 0.0
-    titulo_cercano = ""
+    
     for th in h.get('titulos', []):
         if not isinstance(th, str): continue
-        sim = calcular_similitud_titulos(titulo, th)
-        if sim > max_sim:
-            max_sim = sim
-            titulo_cercano = th[:50]
-        if sim >= UMBRAL_SIMILITUD_TITULO: 
-            log(f"      ❌ Similitud título {sim:.1%} con: {th[:50]}...", 'debug')
-            return True, f"similitud_titulo_{sim:.2f}"
+        if calcular_similitud_titulos(titulo, th) >= UMBRAL_SIMILITUD_TITULO: 
+            return True, f"similitud_titulo"
+    
     if desc:
         for dh in h.get('descripciones', []):
             if not isinstance(dh, str) or not dh: continue
-            sim_cont = calcular_similitud_contenido(desc, dh, 150)
-            if sim_cont >= UMBRAL_SIMILITUD_CONTENIDO:
-                log(f"      ❌ Similitud contenido {sim_cont:.1%} con noticia anterior", 'debug')
-                return True, f"similitud_contenido_{sim_cont:.2f}"
-    log(f"   ✅ NUEVO: Max similitud título {max_sim:.1%}", 'debug')
+            if calcular_similitud_contenido(desc, dh, 150) >= UMBRAL_SIMILITUD_CONTENIDO:
+                return True, f"similitud_contenido"
+    
     return False, "nuevo"
 
 def guardar_historial(h, url, titulo, desc=""):
     for k in ['urls','urls_normalizadas','hashes','timestamps','titulos','descripciones','hashes_contenido','hashes_permanentes','estadisticas']:
         if k not in h: h[k] = [] if k != 'estadisticas' else {'total_publicadas': 0}
+    
     url_n = normalizar_url_v3(url)
     hash_t = generar_hash(titulo)
+    
     for uh in h.get('urls_normalizadas', []):
         if isinstance(uh, str) and uh == url_n:
             log(f"⚠️ Intento de duplicado detectado en guardar_historial", 'advertencia')
             return h
+    
     h['urls'].append(url)
     h['urls_normalizadas'].append(url_n)
     h['hashes'].append(hash_t)
@@ -331,15 +315,14 @@ def guardar_historial(h, url, titulo, desc=""):
     h['hashes_contenido'].append(generar_hash(desc) if desc else "")
     h['estadisticas']['total_publicadas'] = h['estadisticas'].get('total_publicadas', 0) + 1
     h['hashes_permanentes'].append(hash_t)
+    
     if len(h['hashes_permanentes']) > 300: 
         h['hashes_permanentes'] = h['hashes_permanentes'][-300:]
     for k in ['urls','urls_normalizadas','hashes','timestamps','titulos','descripciones','hashes_contenido']:
         if len(h[k]) > MAX_TITULOS_HISTORIA: 
             h[k] = h[k][-MAX_TITULOS_HISTORIA:]
-    if guardar_json(HISTORIAL_PATH, h):
-        log(f"💾 Historial guardado: {len(h['urls'])} URLs totales", 'exito')
-    else:
-        log(f"❌ Error guardando historial", 'error')
+    
+    guardar_json(HISTORIAL_PATH, h)
     return h
 
 def verificar_tiempo():
@@ -355,87 +338,200 @@ def verificar_tiempo():
     return True
 
 # ============================================================================
-# FUENTES DE NOTICIAS EXISTENTES (ya en tu código)
+# TODAS LAS FUENTES DE NOTICIAS (7 APIs + RSS)
 # ============================================================================
 
 def obtener_newsapi():
-    if not NEWS_API_KEY: return []
+    if not NEWS_API_KEY: 
+        log("NewsAPI: No API key configurada", 'debug')
+        return []
     n = []
     queries = [
-        'Ukraine war Russia Putin Zelensky', 'Israel Gaza Hamas Iran conflict',
-        'China Taiwan US tensions', 'Trump Biden US politics',
-        'economy inflation recession', 'NATO EU Europe',
-        'India Pakistan Asia', 'climate change COP',
-        'cyberattack hacking', 'coup dictatorship sanctions'
+        'Ukraine war Russia', 'Israel Gaza conflict', 'China Taiwan',
+        'economy inflation', 'NATO Europe', 'cyberattack', 'coup'
     ]
-    for q in queries:
+    for q in queries[:3]:  # Limitar para no exceder rate limits
         try:
             r = requests.get('https://newsapi.org/v2/everything', 
                            params={'apiKey': NEWS_API_KEY, 'q': q, 'language': 'es', 
                                   'sortBy': 'publishedAt', 'pageSize': 5}, 
-                           timeout=15).json()
-            if r.get('status') == 'ok':
-                for a in r.get('articles', []):
-                    t = a.get('title', '')
-                    if t and '[Removed]' not in t:
-                        d = a.get('description', '')
-                        n.append({
-                            'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 
-                            'url': a.get('url', ''), 'imagen': a.get('urlToImage'), 
-                            'fuente': f"NewsAPI:{a.get('source', {}).get('name', 'Unknown')}", 
-                            'fecha': a.get('publishedAt'), 'puntaje': calcular_puntaje(t, d)
-                        })
-        except: continue
-    log(f"NewsAPI: {len(n)} noticias", 'info')
+                           timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get('status') == 'ok':
+                    for a in data.get('articles', []):
+                        t = a.get('title', '')
+                        if t and '[Removed]' not in t:
+                            d = a.get('description', '')
+                            n.append({
+                                'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 
+                                'url': a.get('url', ''), 'imagen': a.get('urlToImage'), 
+                                'fuente': f"NewsAPI:{a.get('source', {}).get('name', 'Unknown')}", 
+                                'fecha': a.get('publishedAt'), 'puntaje': calcular_puntaje(t, d)
+                            })
+            else:
+                log(f"NewsAPI error {r.status_code}", 'error')
+        except Exception as e:
+            log(f"NewsAPI excepción: {e}", 'error')
+    log(f"NewsAPI.org: {len(n)} noticias", 'info')
     return n
 
 def obtener_newsdata():
-    if not NEWSDATA_API_KEY: return []
-    try:
-        categorias = ['world', 'politics', 'business', 'technology']
-        n = []
-        for cat in categorias:
+    if not NEWSDATA_API_KEY: 
+        log("NewsData: No API key configurada", 'debug')
+        return []
+    n = []
+    categorias = ['world', 'politics', 'business']
+    for cat in categorias:
+        try:
             r = requests.get('https://newsdata.io/api/1/news', 
                             params={'apikey': NEWSDATA_API_KEY, 'language': 'es', 
                                    'category': cat, 'size': 10}, 
-                            timeout=15).json()
-            if r.get('status') == 'success':
-                for a in r.get('results', []):
+                            timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get('status') == 'success':
+                    for a in data.get('results', []):
+                        t = a.get('title', '')
+                        if t:
+                            d = a.get('description', '')
+                            n.append({
+                                'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 
+                                'url': a.get('link', ''), 'imagen': a.get('image_url'), 
+                                'fuente': f"NewsData:{a.get('source_id', 'Unknown')}", 
+                                'fecha': a.get('pubDate'), 'puntaje': calcular_puntaje(t, d)
+                            })
+            else:
+                log(f"NewsData error {r.status_code}", 'error')
+        except Exception as e:
+            log(f"NewsData excepción: {e}", 'error')
+    log(f"NewsData.io: {len(n)} noticias", 'info')
+    return n
+
+def obtener_gnews():
+    if not GNEWS_API_KEY: 
+        log("GNews: No API key configurada", 'debug')
+        return []
+    n = []
+    topicos = ['world', 'nation', 'business']
+    for topic in topicos:
+        try:
+            r = requests.get('https://gnews.io/api/v4/top-headlines', 
+                            params={'apikey': GNEWS_API_KEY, 'lang': 'es', 'max': 10, 'topic': topic}, 
+                            timeout=15)
+            if r.status_code == 200:
+                data = r.json()
+                for a in data.get('articles', []):
                     t = a.get('title', '')
                     if t:
                         d = a.get('description', '')
                         n.append({
                             'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 
-                            'url': a.get('link', ''), 'imagen': a.get('image_url'), 
-                            'fuente': f"NewsData:{a.get('source_id', 'Unknown')}", 
-                            'fecha': a.get('pubDate'), 'puntaje': calcular_puntaje(t, d)
+                            'url': a.get('url', ''), 'imagen': a.get('image'), 
+                            'fuente': f"GNews:{a.get('source', {}).get('name', 'Unknown')}", 
+                            'fecha': a.get('publishedAt'), 'puntaje': calcular_puntaje(t, d)
                         })
-        log(f"NewsData: {len(n)} noticias", 'info')
-        return n
-    except: return []
+            else:
+                log(f"GNews error {r.status_code}", 'error')
+        except Exception as e:
+            log(f"GNews excepción: {e}", 'error')
+    log(f"GNews.io: {len(n)} noticias", 'info')
+    return n
 
-def obtener_gnews():
-    if not GNEWS_API_KEY: return []
+def obtener_apitube():
+    if not APITUBE_API_KEY: 
+        log("ApiTube: No API key configurada", 'debug')
+        return []
+    n = []
     try:
-        topicos = ['world', 'nation', 'business', 'technology']
-        n = []
-        for topic in topicos:
-            r = requests.get('https://gnews.io/api/v4/top-headlines', 
-                            params={'apikey': GNEWS_API_KEY, 'lang': 'es', 'max': 10, 'topic': topic}, 
-                            timeout=15).json()
-            for a in r.get('articles', []):
-                t = a.get('title', '')
-                if t:
-                    d = a.get('description', '')
+        headers = {'X-API-Key': APITUBE_API_KEY}
+        params = {'language.code': 'es', 'per_page': 20}
+        r = requests.get('https://api.apitube.io/v1/news/everything', 
+                        headers=headers, params=params, timeout=20)
+        if r.status_code == 200:
+            data = r.json()
+            for item in data.get('data', []):
+                t = item.get('title', '')
+                if not t or '[Removed]' in t: continue
+                d = item.get('description', '') or item.get('summary', {}).get('sentence', '')
+                url = item.get('url', '')
+                if 'apitube.io' in url:
+                    url = item.get('source', {}).get('url', url)
+                n.append({
+                    'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d),
+                    'url': url, 'imagen': item.get('image', None),
+                    'fuente': f"ApiTube:{item.get('source', {}).get('domain', 'Unknown')}",
+                    'fecha': item.get('published_at', ''),
+                    'puntaje': calcular_puntaje(t, d)
+                })
+        else:
+            log(f"ApiTube error {r.status_code}: {r.text[:100]}", 'error')
+    except Exception as e:
+        log(f"ApiTube excepción: {e}", 'error')
+    log(f"ApiTube.io: {len(n)} noticias", 'info')
+    return n
+
+def obtener_thenewsapi():
+    if not THENEWSAPI_TOKEN: 
+        log("TheNewsAPI: No API key configurada", 'debug')
+        return []
+    n = []
+    endpoints = [
+        ('https://api.thenewsapi.com/v1/news/top', {'locale': 'us,es,latam', 'language': 'es', 'limit': 15}),
+        ('https://api.thenewsapi.com/v1/news/all', {'language': 'es', 'limit': 10}),
+    ]
+    for url, params in endpoints:
+        try:
+            params['api_token'] = THENEWSAPI_TOKEN
+            r = requests.get(url, params=params, timeout=20)
+            if r.status_code == 200:
+                data = r.json()
+                for item in data.get('data', []):
+                    t = item.get('title', '')
+                    if not t: continue
+                    d = item.get('description', '') or item.get('snippet', '')
                     n.append({
-                        'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d), 
-                        'url': a.get('url', ''), 'imagen': a.get('image'), 
-                        'fuente': f"GNews:{a.get('source', {}).get('name', 'Unknown')}", 
-                        'fecha': a.get('publishedAt'), 'puntaje': calcular_puntaje(t, d)
+                        'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d),
+                        'url': item.get('url', ''), 'imagen': item.get('image_url', None),
+                        'fuente': f"TheNewsAPI:{item.get('source', 'Unknown')}",
+                        'fecha': item.get('published_at', ''),
+                        'puntaje': calcular_puntaje(t, d)
                     })
-        log(f"GNews: {len(n)} noticias", 'info')
-        return n
-    except: return []
+            else:
+                log(f"TheNewsAPI error {r.status_code}: {r.text[:100]}", 'error')
+        except Exception as e:
+            log(f"TheNewsAPI excepción: {e}", 'error')
+    log(f"TheNewsAPI.com: {len(n)} noticias", 'info')
+    return n
+
+def obtener_currents():
+    if not CURRENTS_API_KEY: 
+        log("Currents: No API key configurada", 'debug')
+        return []
+    n = []
+    try:
+        headers = {'Authorization': CURRENTS_API_KEY}
+        r = requests.get('https://api.currentsapi.services/v1/latest-news',
+                        headers=headers, params={'language': 'es'}, timeout=20)
+        if r.status_code == 200:
+            data = r.json()
+            for item in data.get('news', []):
+                t = item.get('title', '')
+                if not t: continue
+                d = item.get('description', '')
+                n.append({
+                    'titulo': limpiar_texto(t), 'descripcion': limpiar_texto(d),
+                    'url': item.get('url', ''), 'imagen': item.get('image', None),
+                    'fuente': f"Currents:{item.get('author', item.get('source', 'Unknown'))}",
+                    'fecha': item.get('published', ''),
+                    'puntaje': calcular_puntaje(t, d)
+                })
+        else:
+            log(f"Currents error {r.status_code}: {r.text[:100]}", 'error')
+    except Exception as e:
+        log(f"Currents excepción: {e}", 'error')
+    log(f"CurrentsAPI: {len(n)} noticias", 'info')
+    return n
 
 def resolver_redireccion_google(url):
     if not url or not url.startswith('https://news.google.com'): return url
@@ -453,7 +549,6 @@ def obtener_google_news():
         'https://news.google.com/rss?hl=es&gl=US&ceid=US:es', 
         'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=US&ceid=US:es',
         'https://news.google.com/rss/topics/CAAqJQgKIh9DQkFTRVFvSUwyMHZNRE55YXpBU0JXVnVMVWRDS0FBUAE?hl=es&gl=US&ceid=US:es',
-        'https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=es&gl=US&ceid=US:es',
     ]
     n = []
     for f in feeds:
@@ -484,8 +579,6 @@ def obtener_rss_alternativos():
         'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada',
         'https://www.infobae.com/arc/outboundfeeds/rss/mundo/',
         'https://feeds.reuters.com/reuters/hotnews',
-        'https://feeds.france24.com/es/',
-        'https://www.efe.com/efe/espana/1/rss',
     ]
     n = []
     for f in feeds:
@@ -520,156 +613,7 @@ def obtener_rss_alternativos():
     return n
 
 # ============================================================================
-# NUEVAS FUENTES DE NOTICIAS (AÑADIDAS EN V4.0)
-# ============================================================================
-
-def obtener_apitube():
-    """
-    ApiTube.io - API con 500,000+ fuentes, análisis de sentimiento y detección de duplicados
-    Endpoint: https://api.apitube.io/v1/news/everything
-    Autenticación: Header X-API-Key
-    """
-    if not APITUBE_API_KEY: return []
-    try:
-        n = []
-        # Múltiples consultas para diversidad
-        consultas = [
-            {'language.code': 'es', 'per_page': 15},
-            {'language.code': 'es', 'category': 'politics', 'per_page': 10},
-            {'language.code': 'es', 'category': 'business', 'per_page': 10},
-            {'language.code': 'es', 'category': 'world', 'per_page': 10},
-        ]
-        for params in consultas:
-            headers = {'X-API-Key': APITUBE_API_KEY}
-            r = requests.get('https://api.apitube.io/v1/news/everything', 
-                           headers=headers, params=params, timeout=20)
-            if r.status_code == 200:
-                data = r.json()
-                for item in data.get('data', []):
-                    t = item.get('title', '')
-                    if not t or '[Removed]' in t: continue
-                    d = item.get('description', '') or item.get('summary', {}).get('sentence', '')
-                    url_original = item.get('url', '')
-                    # ApiTube a veces devuelve URLs de su propio dominio, verificar
-                    if 'apitube.io' in url_original:
-                        url_original = item.get('source', {}).get('url', url_original)
-                    n.append({
-                        'titulo': limpiar_texto(t),
-                        'descripcion': limpiar_texto(d),
-                        'url': url_original,
-                        'imagen': item.get('image', None),
-                        'fuente': f"ApiTube:{item.get('source', {}).get('domain', 'Unknown')}",
-                        'fecha': item.get('published_at', ''),
-                        'puntaje': calcular_puntaje(t, d) + 2  # Bonus por calidad de NLP
-                    })
-            else:
-                log(f"ApiTube error {r.status_code}: {r.text[:100]}", 'error')
-        log(f"ApiTube.io: {len(n)} noticias", 'info')
-        return n
-    except Exception as e:
-        log(f"Error ApiTube: {e}", 'error')
-        return []
-
-def obtener_thenewsapi():
-    """
-    TheNewsAPI.com - API con 1M+ artículos semanales, headlines y búsqueda avanzada
-    Endpoints: /v1/news/headlines, /v1/news/top, /v1/news/all
-    Autenticación: Query param api_token
-    """
-    if not THENEWSAPI_TOKEN: return []
-    try:
-        n = []
-        # Probar múltiples endpoints
-        endpoints = [
-            ('https://api.thenewsapi.com/v1/news/headlines', {'locale': 'us,es,latam', 'language': 'es', 'headlines_per_category': 8}),
-            ('https://api.thenewsapi.com/v1/news/top', {'locale': 'us,es,latam', 'language': 'es', 'limit': 15}),
-            ('https://api.thenewsapi.com/v1/news/all', {'language': 'es', 'limit': 10}),
-        ]
-        for url, params in endpoints:
-            params['api_token'] = THENEWSAPI_TOKEN
-            r = requests.get(url, params=params, timeout=20)
-            if r.status_code == 200:
-                data = r.json()
-                for item in data.get('data', []):
-                    t = item.get('title', '')
-                    if not t: continue
-                    d = item.get('description', '') or item.get('snippet', '')
-                    n.append({
-                        'titulo': limpiar_texto(t),
-                        'descripcion': limpiar_texto(d),
-                        'url': item.get('url', ''),
-                        'imagen': item.get('image_url', None),
-                        'fuente': f"TheNewsAPI:{item.get('source', 'Unknown')}",
-                        'fecha': item.get('published_at', ''),
-                        'puntaje': calcular_puntaje(t, d)
-                    })
-            else:
-                log(f"TheNewsAPI error {r.status_code}: {r.text[:100]}", 'error')
-        log(f"TheNewsAPI.com: {len(n)} noticias", 'info')
-        return n
-    except Exception as e:
-        log(f"Error TheNewsAPI: {e}", 'error')
-        return []
-
-def obtener_currents():
-    """
-    Currents API - Noticias en tiempo real de miles de fuentes, 18 idiomas, 70+ países
-    Endpoints: /v1/latest-news, /v1/search
-    Autenticación: Header Authorization
-    """
-    if not CURRENTS_API_KEY: return []
-    try:
-        n = []
-        # Endpoint latest-news para noticias frescas
-        headers = {'Authorization': CURRENTS_API_KEY}
-        # Obtener últimas noticias en español
-        r = requests.get('https://api.currentsapi.services/v1/latest-news',
-                        headers=headers, params={'language': 'es'}, timeout=20)
-        if r.status_code == 200:
-            data = r.json()
-            for item in data.get('news', []):
-                t = item.get('title', '')
-                if not t: continue
-                d = item.get('description', '')
-                n.append({
-                    'titulo': limpiar_texto(t),
-                    'descripcion': limpiar_texto(d),
-                    'url': item.get('url', ''),
-                    'imagen': item.get('image', None),
-                    'fuente': f"Currents:{item.get('author', item.get('source', 'Unknown'))}",
-                    'fecha': item.get('published', ''),
-                    'puntaje': calcular_puntaje(t, d)
-                })
-        # También buscar noticias específicas de alto impacto
-        keywords_alto_impacto = ['war', 'conflict', 'economy', 'elections', 'crisis']
-        for kw in keywords_alto_impacto[:2]:  # Limitar para no exceder rate limits
-            r = requests.get('https://api.currentsapi.services/v1/search',
-                            headers=headers, 
-                            params={'keywords': kw, 'language': 'es', 'limit': 5},
-                            timeout=15)
-            if r.status_code == 200:
-                data = r.json()
-                for item in data.get('news', []):
-                    t = item.get('title', '')
-                    if not t: continue
-                    d = item.get('description', '')
-                    n.append({
-                        'titulo': limpiar_texto(t),
-                        'descripcion': limpiar_texto(d),
-                        'url': item.get('url', ''),
-                        'imagen': item.get('image', None),
-                        'fuente': f"Currents:{item.get('author', 'Unknown')}",
-                        'fecha': item.get('published', ''),
-                        'puntaje': calcular_puntaje(t, d) + 1
-                    })
-        log(f"Currents API: {len(n)} noticias", 'info')
-        return n
-    except Exception as e:
-        log(f"Error Currents API: {e}", 'error')
-        return []
-
-# ============================================================================
-# PROCESAMIENTO DE IMÁGENES Y PUBLICACIÓN (sin cambios)
+# PROCESAMIENTO DE IMÁGENES Y PUBLICACIÓN
 # ============================================================================
 
 def extraer_imagen_web(url):
@@ -783,12 +727,59 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
     return False
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL OPTIMIZADA
+# FUNCIÓN PRINCIPAL CON FALLBACK ROBUSTO
 # ============================================================================
+
+def recolectar_noticias_todas_fuentes():
+    """
+    Intenta TODAS las fuentes siempre, sin importar cuántas noticias tenga.
+    Esto garantiza máxima cobertura y redundancia.
+    """
+    todas_noticias = []
+    estadisticas_fuentes = {}
+    
+    # Lista de todas las fuentes disponibles
+    fuentes = [
+        ('NewsAPI', obtener_newsapi, NEWS_API_KEY),
+        ('NewsData', obtener_newsdata, NEWSDATA_API_KEY),
+        ('GNews', obtener_gnews, GNEWS_API_KEY),
+        ('ApiTube', obtener_apitube, APITUBE_API_KEY),
+        ('TheNewsAPI', obtener_thenewsapi, THENEWSAPI_TOKEN),
+        ('Currents', obtener_currents, CURRENTS_API_KEY),
+        ('Google News', obtener_google_news, True),  # No requiere API key
+        ('RSS Alternativos', obtener_rss_alternativos, True),  # No requiere API key
+    ]
+    
+    for nombre, funcion, tiene_credencial in fuentes:
+        if not tiene_credencial:
+            estadisticas_fuentes[nombre] = 0
+            continue
+            
+        try:
+            noticias = funcion()
+            count = len(noticias)
+            estadisticas_fuentes[nombre] = count
+            if count > 0:
+                todas_noticias.extend(noticias)
+                log(f"✅ {nombre}: {count} noticias añadidas", 'exito')
+            else:
+                log(f"⚠️ {nombre}: Sin noticias", 'advertencia')
+        except Exception as e:
+            log(f"❌ {nombre}: Error - {e}", 'error')
+            estadisticas_fuentes[nombre] = 0
+    
+    # Log resumen
+    log(f"\n📊 RESUMEN FUENTES:", 'info')
+    for fuente, count in estadisticas_fuentes.items():
+        status = "✅" if count > 0 else "❌"
+        log(f"   {status} {fuente}: {count} noticias", 'info')
+    log(f"📰 TOTAL: {len(todas_noticias)} noticias de todas las fuentes\n", 'info')
+    
+    return todas_noticias
 
 def main():
     print("\n" + "="*60)
-    print("🌍 BOT DE NOTICIAS - V4.0 (MULTI-FUENTE - 8 FUENTES)")
+    print("🌍 BOT DE NOTICIAS - V4.1 (FALLBACK ROBUSTO - 8 FUENTES)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
     
@@ -800,54 +791,28 @@ def main():
         return False
     
     h = cargar_historial()
-    log(f"📊 Historial cargado: {len(h.get('urls', []))} URLs, {len(h.get('urls_normalizadas', []))} URLs normalizadas")
+    log(f"📊 Historial: {len(h.get('urls', []))} URLs previas")
     
-    # Recolectar de TODAS las fuentes disponibles
-    n = []
+    # NUEVO: Recolectar de TODAS las fuentes siempre
+    n = recolectar_noticias_todas_fuentes()
     
-    # Fuentes primarias (APIs directas)
-    if NEWS_API_KEY: 
-        n.extend(obtener_newsapi())
-    if NEWSDATA_API_KEY and len(n) < 30: 
-        n.extend(obtener_newsdata())
-    if GNEWS_API_KEY and len(n) < 40: 
-        n.extend(obtener_gnews())
+    if not n:
+        log("ERROR CRÍTICO: Ninguna fuente devolvió noticias", 'error')
+        return False
     
-    # NUEVAS FUENTES (añadidas en V4.0)
-    if APITUBE_API_KEY and len(n) < 50:
-        n.extend(obtener_apitube())
-    if THENEWSAPI_TOKEN and len(n) < 60:
-        n.extend(obtener_thenewsapi())
-    if CURRENTS_API_KEY and len(n) < 70:
-        n.extend(obtener_currents())
-    
-    # Fuentes secundarias (RSS)
-    if len(n) < 30:
-        gn = obtener_google_news()
-        if gn: n.extend(gn)
-    if len(n) < 20:
-        log("⚠️ Intentando RSS alternativos...", 'advertencia')
-        alt = obtener_rss_alternativos()
-        if alt: n.extend(alt)
-    
-    log(f"📰 Total recolectado: {len(n)} noticias crudas de todas las fuentes")
-    
-    # Deduplicación fuerte antes de procesar
+    # Deduplicación
     urls_vistas = set()
     titulos_vistos = {}
     n_unicas = []
     
     for nt in n:
         url_n = normalizar_url_v3(nt.get('url', ''))
-        titulo_norm = re.sub(r'[^\w]', '', nt.get('titulo', '').lower())
-        
         if url_n in urls_vistas:
             continue
             
         duplicado_temp = False
-        for t_existente, url_existente in titulos_vistos.items():
+        for t_existente in titulos_vistos.keys():
             if calcular_similitud_titulos(nt.get('titulo', ''), t_existente) > 0.8:
-                log(f"   ⚠️ Duplicado temporal detectado: {nt.get('titulo', '')[:50]}...", 'debug')
                 duplicado_temp = True
                 break
         
@@ -859,73 +824,46 @@ def main():
         n_unicas.append(nt)
     
     n = n_unicas
-    log(f"📰 Total únicas: {len(n)} noticias (después de deduplicar fuentes)")
+    log(f"📰 Únicas tras deduplicación: {len(n)} noticias")
     
-    if not n:
-        log("ERROR: No se encontraron noticias en ninguna fuente", 'error')
-        return False
-    
-    # Ordenar por puntaje y recencia
+    # Ordenar por puntaje
     n.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
     
+    # Buscar noticia válida
     sel = None
     cont = None
     cred = None
-    intentos = 0
-    max_intentos = min(100, len(n))  # Aumentado para más oportunidades
     
-    for i, nt in enumerate(n):
-        if intentos >= max_intentos:
-            log(f"⚠️ Máximo de intentos alcanzado ({max_intentos})", 'advertencia')
-            break
-            
+    for i, nt in enumerate(n[:50]):  # Revisar top 50
         url = nt.get('url', '')
         t = nt.get('titulo', '')
         d = nt.get('descripcion', '')
         
-        if not url or not t: continue
-        
-        intentos += 1
-        log(f"   [{i+1}] Probando: {t[:50]}...", 'debug')
-        
-        if intentos % 15 == 0:
-            h = cargar_historial()
-            log(f"   🔄 Historial recargado: {len(h.get('urls', []))} URLs", 'debug')
+        if not url or not t: 
+            continue
         
         dup, rz = noticia_ya_publicada(h, url, t, d)
         if dup:
-            log(f"      ❌ {rz}", 'debug')
+            log(f"   [{i+1}] ❌ Duplicada: {t[:50]}... ({rz})", 'debug')
             continue
         
-        if nt.get('puntaje', 0) < 2:  # Reducido umbral mínimo para más opciones
-            log(f"      ❌ Puntaje bajo ({nt.get('puntaje', 0)})", 'debug')
-            continue
-        
-        log(f"      ✅ Aceptada", 'debug')
-        log(f"\n📝 NOTICIA: {t[:60]}...")
-        log(f"   Fuente: {nt['fuente']} | Puntaje: {nt.get('puntaje', 0)}")
+        log(f"   [{i+1}] ✅ Candidata: {t[:50]}... (Puntaje: {nt.get('puntaje', 0)})")
         
         cont, cred = extraer_contenido(url)
         
-        if cont and len(cont) >= 150:  # Reducido requisito mínimo
-            log(f"   ✅ Contenido: {len(cont)} chars", 'exito')
+        if cont and len(cont) >= 150:
             sel = nt
             break
-        else:
-            log("   ⚠️ Sin contenido suficiente, probando descripción...", 'advertencia')
+        elif d and len(d) >= 100:
             cont = d
-            if len(cont) >= 100:
-                log(f"   ✅ Descripción: {len(cont)} chars", 'exito')
-                sel = nt
-                break
-            else:
-                log(f"   ❌ Descripción corta ({len(cont)}), siguiente...", 'advertencia')
-                continue
+            sel = nt
+            break
     
     if not sel:
-        log("ERROR: No hay noticias válidas después de revisar todas las fuentes", 'error')
+        log("ERROR: No hay noticias válidas nuevas", 'error')
         return False
     
+    # Construir y publicar
     pub = construir_publicacion(sel['titulo'], cont, cred, sel['fuente'])
     ht = generar_hashtags(sel['titulo'], cont)
     
@@ -937,7 +875,8 @@ def main():
     
     if not img_path:
         iu = extraer_imagen_web(sel['url'])
-        if iu: img_path = descargar_imagen(iu)
+        if iu: 
+            img_path = descargar_imagen(iu)
     
     if not img_path:
         img_path = crear_imagen_titulo(sel['titulo'])
@@ -949,16 +888,18 @@ def main():
     ok = publicar_facebook(sel['titulo'], pub, img_path, ht)
     
     try:
-        if os.path.exists(img_path): os.remove(img_path)
-    except: pass
+        if os.path.exists(img_path): 
+            os.remove(img_path)
+    except: 
+        pass
     
     if ok:
         h = guardar_historial(h, sel['url'], sel['titulo'], sel.get('descripcion', '') + ' ' + cont[:400])
         guardar_json(ESTADO_PATH, {'ultima_publicacion': datetime.now().isoformat()})
-        log(f"✅ ÉXITO - Total histórico: {h.get('estadisticas', {}).get('total_publicadas', 0)} noticias publicadas", 'exito')
+        log(f"✅ ÉXITO - Total histórico: {h.get('estadisticas', {}).get('total_publicadas', 0)} noticias", 'exito')
         return True
     else:
-        log("❌ Publicación fallida, NO se guarda en historial", 'error')
+        log("❌ Publicación fallida", 'error')
         return False
 
 if __name__ == "__main__":

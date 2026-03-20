@@ -395,6 +395,70 @@ def obtener_newsapi():
         'climate change COP',
         'cyberattack hacking',
         'coup dictatorship sanctions'
+        # 🪖 GUERRAS Y CONFLICTOS
+"guerra", "conflicto armado", "invasion", "ofensiva militar", "ataque aereo",
+"bombardeo", "misiles", "drones militares", "tropas", "despliegue militar",
+"movilizacion", "escalada de tension", "crisis internacional", "combate",
+"guerra urbana", "guerra naval", "guerra aerea", "inteligencia militar",
+"espionaje", "ciber guerra", "guerra hibrida", "amenaza nuclear",
+"armas nucleares", "disuasion nuclear", "alianza militar", "OTAN",
+"bases militares", "ejercicios militares", "defensa aerea", "sistema antimisiles",
+"conflicto prolongado", "intervencion extranjera", "guerra proxy",
+"insurgencia", "milicias", "paramilitares", "terrorismo", "atentado",
+"ataque terrorista", "extremismo", "seguridad internacional",
+
+# 🌍 REGIONES CLAVE
+"ucrania rusia", "israel gaza", "israel iran", "medio oriente conflicto",
+"china taiwan", "corea del norte misiles", "siria guerra", "yemen conflicto",
+"sudan guerra", "africa conflicto armado", "india pakistan frontera",
+"mar de china meridional", "europa del este tension", "balcanes conflicto",
+"caucaso guerra",
+
+# 💥 CONSECUENCIAS
+"crisis humanitaria", "refugiados", "desplazados", "escasez alimentos",
+"crisis energetica", "crisis combustible", "impacto economico guerra",
+"sanciones economicas", "bloqueo comercial", "inflacion guerra",
+"destruccion infraestructura", "victimas civiles", "bajas militares",
+"hospital colapsado", "ayuda internacional", "misiones de paz",
+"reconstruccion", "derechos humanos violaciones",
+
+# 🏛️ POLÍTICA
+"decisiones presidenciales", "estado de emergencia", "ruptura diplomatica",
+"tensiones politicas", "sanciones internacionales", "cumbre internacional",
+"negociaciones de paz", "alto el fuego", "acuerdo militar",
+"crisis de gobierno", "caida de gobierno", "protestas", "disturbios",
+"golpe de estado", "regimen autoritario", "intervencion extranjera",
+
+# 💰 ECONOMÍA
+"inflacion global", "crisis economica", "recesion", "mercados en caida",
+"bolsa desplome", "precio del petroleo", "crisis energetica europa",
+"escasez de gas", "bloqueo financiero", "comercio internacional crisis",
+"cadenas de suministro", "crisis alimentaria", "subida de precios",
+"desempleo", "impacto economico global",
+
+# 🚨 SEGURIDAD
+"crimen organizado", "narcotrafico", "cartel drogas", "operativo policial",
+"red criminal", "trafico de armas", "violencia urbana", "homicidio",
+"secuestro", "ataque armado", "explosion", "investigacion policial",
+"juicio", "condena", "seguridad nacional",
+
+# 💻 TECNOLOGÍA
+"inteligencia artificial", "ciberataque", "hackeo", "guerra cibernetica",
+"espionaje digital", "vigilancia masiva", "tecnologia militar",
+"armas autonomas", "deepfake", "desinformacion", "satelites militares",
+
+# 🦠 SALUD
+"crisis sanitaria", "hospitales colapsados", "emergencia medica",
+"pandemia", "brote enfermedad", "escasez medicamentos",
+"salud mental crisis", "ayuda medica internacional",
+
+# 🌪️ DESASTRES
+"terremoto", "tsunami", "huracan", "inundaciones", "incendios forestales",
+"desastre natural", "emergencia climatica", "evacuacion", "victimas desastre",
+
+# ⚡ TRIGGERS (MUY IMPORTANTES)
+"ultima hora", "urgente", "en desarrollo", "breaking news",
+"latest update", "live", "hoy", "ahora", "alerta", "noticia mundial"
     ]
     for q in queries:
         try:

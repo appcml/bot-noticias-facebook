@@ -649,7 +649,7 @@ def obtener_gnews():
     except: 
         return []
 
-definición obtener_rss_alternativos():
+def obtener_rss_alternativos():
     fuentes = [
         'http://feeds.bbci.co.uk/mundo/rss.xml',
         'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada',
@@ -659,7 +659,7 @@ definición obtener_rss_alternativos():
         'https://www.efe.com/efe/espana/1/rss',
     ]
     n = []
-    for f in feeds:
+    for f in fuentes:
         try:
             r = requests.get(f, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             if r.status_code != 200: 

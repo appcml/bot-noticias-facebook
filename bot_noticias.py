@@ -651,12 +651,53 @@ def obtener_gnews():
 
 def obtener_rss_alternativos():
     feeds = [
-        'http://feeds.bbci.co.uk/mundo/rss.xml', 
-        'https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada', 
-        'https://www.infobae.com/arc/outboundfeeds/rss/mundo/',
-        'https://feeds.reuters.com/reuters/hotnews',
-        'https://feeds.france24.com/es/',
-        'https://www.efe.com/efe/espana/1/rss',
+        # 🌍 INTERNACIONALES
+"http://feeds.bbci.co.uk/mundo/rss.xml",
+"https://rss.cnn.com/rss/edition_world.rss",
+"https://feeds.skynews.com/feeds/rss/world.xml",
+"https://www.aljazeera.com/xml/rss/all.xml",
+"https://www.theguardian.com/world/rss",
+"https://www.nytimes.com/services/xml/rss/nyt/World.xml",
+"https://www.washingtonpost.com/rss/world",
+"https://abcnews.go.com/abcnews/internationalheadlines",
+"https://feeds.reuters.com/reuters/worldNews",
+"https://feeds.reuters.com/reuters/hotnews",
+"https://feeds.france24.com/es/",
+"https://www.dw.com/es/actualidad/s-30684?maca=spa-rss-sp-top-547-rdf",
+
+# 🌎 MEDIOS EN ESPAÑOL
+"https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada",
+"https://www.infobae.com/arc/outboundfeeds/rss/mundo/",
+"https://www.efe.com/efe/espana/1/rss",
+"https://www.elmundo.es/rss/internacional.xml",
+"https://www.20minutos.es/rss/internacional/",
+"https://www.lavanguardia.com/rss/internacional.xml",
+"https://www.clarin.com/rss/mundo/",
+"https://cnnespanol.cnn.com/feed/",
+"https://www.bbc.com/mundo/index.xml",
+
+# 🪖 GEOPOLÍTICA / MILITAR
+"https://www.defensenews.com/arc/outboundfeeds/rss/category/world/",
+"https://www.military.com/rss/news",
+"https://www.stripes.com/arc/outboundfeeds/rss/",
+"https://www.cfr.org/rss-feeds",
+"https://thediplomat.com/feed/",
+
+# 💰 ECONOMÍA
+"https://feeds.bloomberg.com/markets/news.rss",
+"https://www.ft.com/?format=rss",
+"https://www.economist.com/international/rss.xml",
+"https://feeds.a.dj.com/rss/RSSWorldNews.xml",
+
+# 💻 TECNOLOGÍA / CIBERSEGURIDAD
+"https://feeds.arstechnica.com/arstechnica/index",
+"https://www.theverge.com/rss/index.xml",
+"https://feeds.feedburner.com/TechCrunch/",
+"https://krebsonsecurity.com/feed/",
+
+# 🌪️ DESASTRES / EMERGENCIAS
+"https://www.nasa.gov/rss/dyn/breaking_news.rss",
+"https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.atom",
     ]
     n = []
     for f in feeds:

@@ -649,8 +649,8 @@ def obtener_gnews():
     except: 
         return []
 
-def obtener_rss_alternativos():
-    feeds = [
+definición obtener_rss_alternativos():
+    fuentes = [
 
         # 🌍 INTERNACIONALES
         'http://feeds.bbci.co.uk/mundo/rss.xml',

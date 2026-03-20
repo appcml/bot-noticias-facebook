@@ -29,8 +29,114 @@ UMBRAL_SIMILITUD_CONTENIDO = 0.65
 MAX_TITULOS_HISTORIA = 150
 
 BLACKLIST_TITULOS = [r'^\s*última hora\s*$', r'^\s*breaking news\s*$', r'^\s*noticias de hoy\s*$']
-PALABRAS_ALTA_PRIORIDAD = ["guerra hoy", "conflicto armado", "dictadura", "sanciones", "ucrania", "rusia", "gaza", "israel", "hamas", "iran", "china", "taiwan", "otan", "brics", "economia mundial", "inflacion", "crisis humanitaria", "refugiados", "derechos humanos", "protestas", "coup", "minerales estrategicos", "tierras raras", "drones", "inteligencia artificial guerra", "ciberataque", "zelensky", "netanyahu", "trump", "biden", "putin"]
-PALABRAS_MEDIA_PRIORIDAD = ['economía', 'mercados', 'FMI', 'China', 'EEUU', 'Alemania', 'petroleo', 'gas']
+PALABRAS_ALTA_PRIORIDAD = ["guerra", "guerra hoy", "conflicto armado", "invasion", "ofensiva militar",
+"bombardeo", "misiles", "ataque aereo", "drones militares",
+"movilizacion militar", "tropas", "escalada de tension",
+"amenaza nuclear", "armas nucleares", "guerra nuclear",
+"ciber guerra", "guerra hibrida", "intervencion militar",
+"terrorismo", "atentado", "ataque terrorista""ucrania", "rusia", "israel", "gaza", "iran",
+"china", "taiwan", "corea del norte",
+"otan", "nato", "brics",
+"medio oriente", "europa del este",
+"siria", "yemen", "sudan",
+"india pakistan""crisis humanitaria", "refugiados", "desplazados",
+"victimas civiles", "bajas militares",
+"destruccion", "infraestructura destruida",
+"crisis energetica", "escasez alimentos",
+"sanciones", "sanciones economicas",
+"bloqueo economico", "impacto economico guerra",
+"derechos humanos violaciones""crisis de gobierno", "caida de gobierno",
+"dictadura", "golpe de estado", "coup",
+"protestas", "disturbios", "estado de emergencia",
+"ruptura diplomatica", "tensiones politicas",
+"negociaciones de paz", "alto el fuego",
+"sanciones internacionales""economia mundial", "inflacion", "crisis economica",
+"recesion", "mercados en caida",
+"petroleo", "gas", "crisis energetica",
+"bloqueo financiero", "crisis alimentaria",
+"subida de precios", "impacto economico global""ciberataque", "hackeo", "guerra cibernetica",
+"inteligencia artificial guerra",
+"drones", "armas autonomas",
+"espionaje digital", "vigilancia",
+"satelites militares", "deepfake""ultima hora", "urgente", "en desarrollo",
+"breaking news", "latest",
+"hoy", "ahora", "alerta"# 🇷🇺 Rusia / Ucrania
+"putin", "vladimir putin",
+"zelensky", "volodymyr zelensky",
+"sergei shoigu", "lavrov",
+
+# 🇺🇸 Estados Unidos
+"biden", "joe biden",
+"trump", "donald trump",
+"kamala harris",
+"antony blinken",
+"lloyd austin",
+
+# 🇮🇱 Israel
+"netanyahu", "benjamin netanyahu",
+"yoav gallant",
+"herzi halevi",
+
+# 🇮🇷 Irán
+"khamenei", "ali khamenei",
+"ebrahim raisi",
+"iran lider supremo",
+
+# 🇨🇳 China
+"xi jinping",
+"li qiang",
+"china presidente",
+
+# 🇰🇵 Corea del Norte
+"kim jong un",
+
+# 🇪🇺 Europa
+"macron", "emmanuel macron",
+"olaf scholz",
+"ursula von der leyen",
+"charles michel",
+
+# 🇬🇧 Reino Unido
+"rishi sunak",
+
+# 🇮🇳 India
+"narendra modi",
+
+# 🇧🇷 Brasil
+"lula", "lula da silva",
+"bolsonaro",
+
+# 🇦🇷 Argentina
+"milei", "javier milei",
+
+# 🇲🇽 México
+"amlo", "lopez obrador",
+
+# 🌍 OTAN / Internacional
+"nato secretary general",
+"jens stoltenberg",
+
+# 🪖 MILITAR / SEGURIDAD
+"general", "comandante militar",
+"jefe del ejercito",
+"ministro de defensa",
+
+# 🧨 GRUPOS Y ACTORES NO ESTATALES
+"hamas", "hezbollah",
+"isis", "estado islamico",
+"taliban",
+"huties", "houthis",
+
+# 💰 EMPRESARIOS INFLUYENTES (TECNOLOGÍA / GUERRA INDIRECTA)
+"elon musk",
+"jeff bezos",
+"mark zuckerberg",]
+PALABRAS_MEDIA_PRIORIDAD = ["economia", "mercados", "FMI", "banco mundial",
+"china economia", "eeuu economia", "alemania economia",
+"comercio internacional", "empresas",
+"tecnologia", "innovacion",
+"salud", "educacion",
+"medio ambiente", "cambio climatico"]
 
 def log(mensaje, tipo='info'):
     iconos = {'info': 'ℹ️', 'exito': '✅', 'error': '❌', 'advertencia': '⚠️', 'debug': '🔍'}

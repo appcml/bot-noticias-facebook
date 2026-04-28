@@ -796,31 +796,97 @@ def crear_frame(titulo, resumen, logo_texto, ancho=1280, alto=720,
     return frame
 
 
+def crear_audio_noticia(titulo, resumen):
+    """
+    Genera audio TTS en español latino usando espeak (offline, sin API key).
+    Retorna la ruta del archivo .mp3 o None si falla.
+    """
+    try:
+        import subprocess
+        resumen_corto = resumen[:300]
+        for sep in ['. ', '! ', '? ']:
+            idx = resumen_corto.rfind(sep)
+            if idx > 80:
+                resumen_corto = resumen_corto[:idx + 1]
+                break
+
+        guion = (
+            f"Última hora. {titulo}. "
+            f"{resumen_corto} "
+            f"Lee todos los detalles en la publicación."
+        )
+        guion = re.sub(r'[#@\[\]<>*_]', '', guion)
+        guion = re.sub(r'https?://\S+', '', guion)
+        guion = re.sub(r'\s+', ' ', guion).strip()
+
+        hash_a    = generar_hash(titulo)
+        wav_path  = f'/tmp/noticia_audio_{hash_a}.wav'
+        mp3_path  = f'/tmp/noticia_audio_{hash_a}.mp3'
+
+        # Generar WAV con espeak (offline, español latinoamericano)
+        r = subprocess.run(
+            ['espeak', '-v', 'es-la', '-s', '145', '-p', '48', '-a', '180',
+             '-w', wav_path, guion],
+            capture_output=True, text=True, timeout=30
+        )
+        if r.returncode != 0 or not os.path.exists(wav_path):
+            log(f"⚠️ espeak falló: {r.stderr[:100]}", 'advertencia')
+            return None
+
+        # Convertir WAV → MP3 con ffmpeg
+        subprocess.run(
+            ['ffmpeg', '-y', '-i', wav_path, '-codec:a', 'libmp3lame', '-q:a', '4', mp3_path],
+            capture_output=True, timeout=30
+        )
+        try:
+            os.remove(wav_path)
+        except:
+            pass
+
+        if os.path.exists(mp3_path):
+            log(f"🔊 Audio TTS generado ({os.path.getsize(mp3_path)//1024} KB)", 'exito')
+            return mp3_path
+
+        return None
+    except FileNotFoundError:
+        log("⚠️ espeak no instalado — video sin audio", 'advertencia')
+        return None
+    except Exception as e:
+        log(f"⚠️ Error generando audio: {e} — video sin audio", 'advertencia')
+        return None
+
+
 def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
     """
-    Genera un video MP4 de tipo noticiario.
+    Genera un video MP4 de tipo noticiario con voz en español latino.
     Retorna la ruta del archivo o None si falla.
     """
     try:
-        from moviepy.editor import ImageSequenceClip
+        from moviepy.editor import ImageSequenceClip, AudioFileClip, CompositeAudioClip
         import numpy as np
         import textwrap
 
         log("🎬 Generando video noticiario...", 'info')
+
+        # ── Generar audio TTS ─────────────────────────────
+        audio_path = crear_audio_noticia(titulo, resumen)
+
+        # Si hay audio, ajustar duración del video al audio (mín 20s, máx 45s)
+        if audio_path:
+            try:
+                audio_clip = AudioFileClip(audio_path)
+                duracion = max(20, min(45, int(audio_clip.duration) + 3))
+                audio_clip.close()
+                log(f"⏱️ Duración ajustada al audio: {duracion}s", 'info')
+            except:
+                duracion = 28
 
         ancho, alto = 1280, 720
         total_frames = duracion * fps
         frames = []
 
         for i in range(total_frames):
-            t = i / total_frames  # 0.0 → 1.0
-
-            # Fases de animación:
-            # 0.00–0.08 → intro (solo fondo + barra roja)
-            # 0.08–0.50 → fade-in título
-            # 0.50–0.85 → título + resumen visibles
-            # 0.85–1.00 → fade-out suave
-
+            t = i / total_frames
             if t < 0.08:
                 progreso = 0.0
             elif t < 0.50:
@@ -840,20 +906,43 @@ def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
             )
             frames.append(np.array(frame_pil))
 
-        # Generar MP4
+        # ── Ensamblar video ───────────────────────────────
         clip = ImageSequenceClip(frames, fps=fps)
         hash_v = generar_hash(titulo)
         video_path = f'/tmp/noticia_video_{hash_v}.mp4'
-        clip.write_videofile(
-            video_path,
-            codec='libx264',
-            audio=False,
-            preset='ultrafast',
-            ffmpeg_params=['-crf', '28'],
-            logger=None,
-        )
-        clip.close()
 
+        if audio_path:
+            try:
+                audio_clip = AudioFileClip(audio_path).set_duration(duracion)
+                clip = clip.set_audio(audio_clip)
+                clip.write_videofile(
+                    video_path,
+                    codec='libx264',
+                    audio_codec='aac',
+                    preset='ultrafast',
+                    ffmpeg_params=['-crf', '28'],
+                    logger=None,
+                )
+                audio_clip.close()
+            except Exception as e:
+                log(f"⚠️ Error mezclando audio: {e} — generando sin audio", 'advertencia')
+                clip.write_videofile(
+                    video_path, codec='libx264', audio=False,
+                    preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None,
+                )
+            finally:
+                try:
+                    if os.path.exists(audio_path):
+                        os.remove(audio_path)
+                except:
+                    pass
+        else:
+            clip.write_videofile(
+                video_path, codec='libx264', audio=False,
+                preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None,
+            )
+
+        clip.close()
         size_mb = os.path.getsize(video_path) / (1024 * 1024)
         log(f"✅ Video generado: {video_path} ({size_mb:.1f} MB, {duracion}s)", 'exito')
         return video_path
@@ -866,7 +955,7 @@ def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
         return None
 
 
-def _truncar_mensaje(texto, hashtags, firma, limite=900):
+def _truncar_mensaje(texto, hashtags, firma, limite=2000):
     """Trunca el mensaje al límite seguro de Facebook conservando hashtags y firma."""
     sufijo = f"\n\n{hashtags}\n\n— {firma}"
     espacio = limite - len(sufijo)

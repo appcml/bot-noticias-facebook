@@ -40,7 +40,7 @@ MAX_TITULOS_HISTORIA       = 300  # aumentado para mejor cobertura
 DIAS_HISTORIAL             = 14   # guardar 2 semanas
 
 # ── ENGAGEMENT V5 ──────────────────────────────────────────
-MAX_POSTS_POR_DIA = 8  # Mas de 6/dia penaliza el alcance organico en Facebook
+MAX_POSTS_POR_DIA = 6  # Mas de 6/dia penaliza el alcance organico en Facebook
 
 # Horarios pico para audiencia hispanohablante (hora UTC)
 # Rangos amplios para cubrir distintas zonas horarias:
@@ -907,12 +907,15 @@ def crear_frame(titulo, resumen, logo_texto, ancho=1280, alto=720,
 
 def crear_audio_noticia(titulo, resumen):
     """
-    Genera audio TTS en español latino usando espeak (offline, sin API key).
-    Retorna la ruta del archivo .mp3 o None si falla.
+    Genera audio TTS con voz natural de presentadora latina (edge-tts, Microsoft).
+    Voz: es-MX-DaliaNeural — español México, femenina, natural.
+    Fallback: espeak si edge-tts no está disponible.
     """
     try:
-        import subprocess
-        resumen_corto = resumen[:300]
+        import asyncio
+        import edge_tts
+
+        resumen_corto = resumen[:350]
         for sep in ['. ', '! ', '? ']:
             idx = resumen_corto.rfind(sep)
             if idx > 80:
@@ -922,47 +925,72 @@ def crear_audio_noticia(titulo, resumen):
         guion = (
             f"Última hora. {titulo}. "
             f"{resumen_corto} "
-            f"Lee todos los detalles en la publicación."
+            f"Lee todos los detalles en la descripción de esta publicación."
         )
         guion = re.sub(r'[#@\[\]<>*_]', '', guion)
         guion = re.sub(r'https?://\S+', '', guion)
         guion = re.sub(r'\s+', ' ', guion).strip()
 
-        hash_a    = generar_hash(titulo)
-        wav_path  = f'/tmp/noticia_audio_{hash_a}.wav'
-        mp3_path  = f'/tmp/noticia_audio_{hash_a}.mp3'
+        hash_a   = generar_hash(titulo)
+        mp3_path = f'/tmp/noticia_audio_{hash_a}.mp3'
 
-        # Generar WAV con espeak (offline, español latinoamericano)
+        async def generar():
+            communicate = edge_tts.Communicate(
+                guion,
+                voice="es-MX-DaliaNeural",  # Presentadora latina natural
+                rate="+8%",                  # Ligeramente más rápido que normal
+                volume="+0%",
+            )
+            await communicate.save(mp3_path)
+
+        asyncio.run(generar())
+
+        if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 1000:
+            log(f"🔊 Audio edge-tts generado ({os.path.getsize(mp3_path)//1024} KB)", 'exito')
+            return mp3_path
+
+        log("⚠️ edge-tts no generó audio válido — usando espeak", 'advertencia')
+
+    except ImportError:
+        log("⚠️ edge-tts no instalado — usando espeak", 'advertencia')
+    except Exception as e:
+        log(f"⚠️ edge-tts falló ({e}) — usando espeak", 'advertencia')
+
+    # ── Fallback: espeak ──────────────────────────────────
+    try:
+        import subprocess
+        resumen_corto = resumen[:300]
+        for sep in ['. ', '! ', '? ']:
+            idx = resumen_corto.rfind(sep)
+            if idx > 80:
+                resumen_corto = resumen_corto[:idx + 1]
+                break
+        guion = f"Última hora. {titulo}. {resumen_corto} Lee todos los detalles en la publicación."
+        guion = re.sub(r'[#@\[\]<>*_]', '', guion)
+        guion = re.sub(r'https?://\S+', '', guion)
+        guion = re.sub(r'\s+', ' ', guion).strip()
+
+        hash_a   = generar_hash(titulo)
+        wav_path = f'/tmp/noticia_audio_{hash_a}.wav'
+        mp3_path = f'/tmp/noticia_audio_{hash_a}.mp3'
+
         r = subprocess.run(
-            ['espeak', '-v', 'es-la', '-s', '145', '-p', '48', '-a', '180',
+            ['espeak', '-v', 'es-la', '-s', '155', '-p', '52', '-a', '180',
              '-w', wav_path, guion],
             capture_output=True, text=True, timeout=30
         )
-        if r.returncode != 0 or not os.path.exists(wav_path):
-            log(f"⚠️ espeak falló: {r.stderr[:100]}", 'advertencia')
-            return None
-
-        # Convertir WAV → MP3 con ffmpeg
-        subprocess.run(
-            ['ffmpeg', '-y', '-i', wav_path, '-codec:a', 'libmp3lame', '-q:a', '4', mp3_path],
-            capture_output=True, timeout=30
-        )
-        try:
-            os.remove(wav_path)
-        except:
-            pass
-
-        if os.path.exists(mp3_path):
-            log(f"🔊 Audio TTS generado ({os.path.getsize(mp3_path)//1024} KB)", 'exito')
-            return mp3_path
-
-        return None
-    except FileNotFoundError:
-        log("⚠️ espeak no instalado — video sin audio", 'advertencia')
-        return None
+        if r.returncode == 0 and os.path.exists(wav_path):
+            subprocess.run(['ffmpeg', '-y', '-i', wav_path, '-codec:a', 'libmp3lame',
+                            '-q:a', '4', mp3_path], capture_output=True, timeout=30)
+            try: os.remove(wav_path)
+            except: pass
+            if os.path.exists(mp3_path):
+                log(f"🔊 Audio espeak generado ({os.path.getsize(mp3_path)//1024} KB)", 'exito')
+                return mp3_path
     except Exception as e:
-        log(f"⚠️ Error generando audio: {e} — video sin audio", 'advertencia')
-        return None
+        log(f"⚠️ espeak también falló: {e}", 'advertencia')
+
+    return None
 
 
 def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):

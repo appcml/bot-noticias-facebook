@@ -866,14 +866,19 @@ def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
         return None
 
 
+def _truncar_mensaje(texto, hashtags, firma, limite=900):
+    """Trunca el mensaje al límite seguro de Facebook conservando hashtags y firma."""
+    sufijo = f"\n\n{hashtags}\n\n— {firma}"
+    espacio = limite - len(sufijo)
+    if len(texto) > espacio:
+        texto = texto[:espacio - 4].rsplit(' ', 1)[0] + ' [...]'
+    return re.sub(r'https?://\S+', '', f"{texto}{sufijo}")
+
 def publicar_facebook_video(titulo, texto, video_path, hashtags):
     """Publica un video nativo en Facebook (mayor alcance orgánico que fotos)."""
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         return False
-    descripcion = f"{texto}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
-    if len(descripcion) > 2000:
-        descripcion = descripcion[:1950] + f"...\n\n{hashtags}\n\n— 🌐 Verdad Hoy"
-    descripcion = re.sub(r'https?://\S+', '', descripcion)
+    descripcion = _truncar_mensaje(texto, hashtags, "🌐 Verdad Hoy | Agencia de Noticias Internacionales")
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/videos"
         with open(video_path, 'rb') as f:
@@ -956,17 +961,7 @@ def generar_hashtags(titulo, contenido):
 def publicar_facebook(titulo, texto, imagen_path, hashtags):
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         return False
-    mensaje = f"{texto}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
-    if len(mensaje) > 2000:
-        lineas = texto.split('\n')
-        tc = ""
-        for ln in lineas:
-            if len(tc + ln + "\n") < 1600:
-                tc += ln + "\n"
-            else:
-                break
-        mensaje = f"{tc.rstrip()}\n\n[...]\n\n{hashtags}\n\n— 🌐 Verdad Hoy"
-    mensaje = re.sub(r'https?://\S+', '', mensaje)
+    mensaje = _truncar_mensaje(texto, hashtags, "🌐 Verdad Hoy | Agencia de Noticias Internacionales")
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
         with open(imagen_path, 'rb') as f:

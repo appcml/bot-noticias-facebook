@@ -704,26 +704,55 @@ def crear_imagen_titulo(titulo):
 def crear_frame(titulo, resumen, logo_texto, ancho=1280, alto=720,
                 fondo_path=None, progreso=0.0):
     """
-    Genera un frame PIL con el diseño del video noticiario.
+    Genera un frame PIL con diseño split:
+    - Mitad derecha: imagen nítida de la noticia
+    - Mitad izquierda: panel oscuro con texto
     progreso: 0.0 a 1.0 para controlar opacidad del texto (fade-in).
     """
-    from PIL import Image, ImageDraw, ImageFont, ImageFilter
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
     import textwrap
 
-    # ── Fondo ──────────────────────────────────────────────
+    mitad = ancho // 2  # 640px
+
+    # ── Fondo base oscuro ──────────────────────────────────
+    frame = Image.new('RGB', (ancho, alto), '#0d1117')
+
+    # ── Imagen nítida en la mitad derecha ──────────────────
     if fondo_path:
         try:
-            bg = Image.open(fondo_path).convert('RGB')
-            bg = bg.resize((ancho, alto), Image.LANCZOS)
-            bg = bg.filter(ImageFilter.GaussianBlur(radius=8))
-        except:
-            bg = Image.new('RGB', (ancho, alto), '#0f172a')
-    else:
-        bg = Image.new('RGB', (ancho, alto), '#0f172a')
+            img = Image.open(fondo_path).convert('RGB')
+            # Recortar y escalar para llenar la mitad derecha
+            img_ratio = img.width / img.height
+            target_ratio = mitad / alto
+            if img_ratio > target_ratio:
+                new_h = alto
+                new_w = int(alto * img_ratio)
+            else:
+                new_w = mitad
+                new_h = int(mitad / img_ratio)
+            img = img.resize((new_w, new_h), Image.LANCZOS)
+            # Centrar crop
+            x = (new_w - mitad) // 2
+            y = (new_h - alto) // 2
+            img = img.crop((x, y, x + mitad, y + alto))
+            # Leve mejora de nitidez y contraste
+            img = ImageEnhance.Sharpness(img).enhance(1.4)
+            img = ImageEnhance.Contrast(img).enhance(1.1)
+            # Gradiente izquierdo para fusionar con panel de texto
+            grad = Image.new('RGBA', (mitad, alto), (0, 0, 0, 0))
+            gd = ImageDraw.Draw(grad)
+            for x_g in range(80):
+                alpha_g = int(255 * (1 - x_g / 80))
+                gd.line([(x_g, 0), (x_g, alto)], fill=(13, 17, 23, alpha_g))
+            img_rgba = img.convert('RGBA')
+            img_rgba = Image.alpha_composite(img_rgba, grad)
+            frame.paste(img_rgba.convert('RGB'), (mitad, 0))
+        except Exception as e:
+            log(f"⚠️ Error cargando imagen fondo: {e}", 'debug')
 
-    frame = bg.copy()
-    overlay = Image.new('RGBA', (ancho, alto), (0, 0, 0, 170))
-    frame.paste(Image.alpha_composite(frame.convert('RGBA'), overlay).convert('RGB'))
+    # ── Panel izquierdo semitransparente ───────────────────
+    panel = Image.new('RGBA', (mitad + 40, alto), (13, 17, 23, 230))
+    frame.paste(panel.convert('RGB'), (0, 0))
 
     draw = ImageDraw.Draw(frame)
 
@@ -746,51 +775,51 @@ def crear_frame(titulo, resumen, logo_texto, ancho=1280, alto=720,
                 continue
         return ImageFont.load_default()
 
-    font_breaking = cargar_fuente(font_paths, 28)
-    font_titulo   = cargar_fuente(font_paths, 52)
-    font_resumen  = cargar_fuente(font_paths_reg, 28)
-    font_logo     = cargar_fuente(font_paths, 22)
+    font_breaking = cargar_fuente(font_paths, 24)
+    font_titulo   = cargar_fuente(font_paths, 44)
+    font_resumen  = cargar_fuente(font_paths_reg, 24)
+    font_logo     = cargar_fuente(font_paths, 20)
 
     alpha = int(255 * min(progreso * 2, 1.0))  # fade-in
 
     # ── Barra superior roja "ÚLTIMA HORA" ─────────────────
-    draw.rectangle([(0, 0), (ancho, 56)], fill='#dc2626')
-    breaking_txt = "🔴  ÚLTIMA HORA  |  VERDAD HOY"
-    draw.text((24, 14), breaking_txt, font=font_breaking, fill='white')
+    draw.rectangle([(0, 0), (ancho, 52)], fill='#dc2626')
+    draw.text((20, 14), "  ÚLTIMA HORA  |  VERDAD HOY", font=font_breaking, fill='white')
 
-    # ── Título (fade-in) ──────────────────────────────────
-    titulo_wrap = textwrap.fill(titulo[:120], width=30)
+    # ── Línea acento azul ──────────────────────────────────
+    draw.rectangle([(20, 68), (mitad - 20, 71)], fill='#3b82f6')
+
+    # ── Título (fade-in, limitado al panel izquierdo) ─────
+    titulo_wrap = textwrap.fill(titulo[:110], width=22)
     lineas_titulo = titulo_wrap.split('\n')
-    y_titulo = 110
+    y_titulo = 90
     for linea in lineas_titulo:
-        color = (255, 255, 255, alpha)
-        # PIL no soporta alpha en texto directamente, usamos capa separada
         tmp = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
         d2  = ImageDraw.Draw(tmp)
-        d2.text((60, y_titulo), linea, font=font_titulo, fill=(255, 255, 255, alpha))
-        frame.paste(Image.alpha_composite(frame.convert('RGBA'), tmp).convert('RGB'))
-        draw = ImageDraw.Draw(frame)
-        y_titulo += 64
+        d2.text((20, y_titulo), linea, font=font_titulo, fill=(255, 255, 255, alpha))
+        frame = Image.alpha_composite(frame.convert('RGBA'), tmp).convert('RGB')
+        draw  = ImageDraw.Draw(frame)
+        y_titulo += 56
 
     # ── Línea separadora ──────────────────────────────────
-    sep_y = y_titulo + 12
-    draw.rectangle([(60, sep_y), (ancho - 60, sep_y + 3)], fill='#3b82f6')
+    sep_y = y_titulo + 10
+    draw.rectangle([(20, sep_y), (mitad - 30, sep_y + 2)], fill='#3b82f6')
 
-    # ── Resumen (aparece después) ─────────────────────────
+    # ── Resumen (aparece después, limitado al panel) ──────
     if progreso > 0.5:
         alpha2 = int(255 * min((progreso - 0.5) * 2, 1.0))
-        resumen_corto = resumen[:220] + ('...' if len(resumen) > 220 else '')
-        resumen_wrap  = textwrap.fill(resumen_corto, width=58)
+        resumen_corto = resumen[:200] + ('...' if len(resumen) > 200 else '')
+        resumen_wrap  = textwrap.fill(resumen_corto, width=38)
         tmp2 = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
         d3   = ImageDraw.Draw(tmp2)
-        d3.text((60, sep_y + 20), resumen_wrap, font=font_resumen,
+        d3.text((20, sep_y + 14), resumen_wrap, font=font_resumen,
                 fill=(203, 213, 225, alpha2))
-        frame.paste(Image.alpha_composite(frame.convert('RGBA'), tmp2).convert('RGB'))
-        draw = ImageDraw.Draw(frame)
+        frame = Image.alpha_composite(frame.convert('RGBA'), tmp2).convert('RGB')
+        draw  = ImageDraw.Draw(frame)
 
     # ── Barra inferior con logo ────────────────────────────
-    draw.rectangle([(0, alto - 48), (ancho, alto)], fill='#1e293b')
-    draw.text((24, alto - 34), f"🌐 {logo_texto}  •  noticias internacionales",
+    draw.rectangle([(0, alto - 44), (ancho, alto)], fill='#1e293b')
+    draw.text((20, alto - 30), f"  {logo_texto}  •  noticias internacionales",
               font=font_logo, fill='#94a3b8')
 
     return frame

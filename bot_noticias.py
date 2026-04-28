@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - V4.0
-CORRECCIÓN CRÍTICA: Historial persistente + fix syntax errors
+Bot de Noticias Internacionales para Facebook - V5.0
+MEJORAS DE ENGAGEMENT:
+  - Horarios pico para audiencia hispanohablante
+  - CTA automático al final de cada publicación
+  - Límite diario de posts (máx. 6/día)
 """
 
 import requests
@@ -11,6 +14,7 @@ import re
 import hashlib
 import json
 import os
+import random
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
@@ -34,6 +38,31 @@ UMBRAL_SIMILITUD_TITULO    = 0.72
 UMBRAL_SIMILITUD_CONTENIDO = 0.62
 MAX_TITULOS_HISTORIA       = 300  # aumentado para mejor cobertura
 DIAS_HISTORIAL             = 14   # guardar 2 semanas
+
+# ── ENGAGEMENT V5 ──────────────────────────────────────────
+MAX_POSTS_POR_DIA = 6  # Mas de 6/dia penaliza el alcance organico en Facebook
+
+# Horarios pico para audiencia hispanohablante (hora UTC)
+# Rangos amplios para cubrir distintas zonas horarias:
+# 00-04 UTC = tarde/noche America Central y Mexico
+# 10-14 UTC = manana Espana / manana America del Sur
+# 17-22 UTC = tarde-noche Espana / mediodia America
+HORARIOS_PICO_UTC = [
+    (0, 4),
+    (10, 14),
+    (17, 22),
+]
+
+CTAS = [
+    "Que opinas sobre esto? Dejanos tu comentario. 👇",
+    "Sabias esto? Comenta SI o NO 👇",
+    "Como crees que afectara esto al mundo? 👇",
+    "Comparte si te parece importante 🔁",
+    "Estas al tanto de esta situacion? Cuentanos 👇",
+    "Que piensas? Tu opinion importa 👇",
+    "Te sorprende esta noticia? Comenta abajo 👇",
+    "Comparte con alguien que necesita ver esto 👁️",
+]
 
 BLACKLIST_TITULOS = [
     r'^\s*última hora\s*$',
@@ -357,6 +386,36 @@ def guardar_estado():
     guardar_json(ESTADO_PATH, {'ultima_publicacion': datetime.now().isoformat()})
 
 # ──────────────────────────────────────────────────────────
+# CONTROL DE ENGAGEMENT (V5)
+# ──────────────────────────────────────────────────────────
+def esta_en_horario_pico():
+    """Devuelve True si la hora UTC actual está en una ventana de alta audiencia."""
+    hora_utc = datetime.utcnow().hour
+    for inicio, fin in HORARIOS_PICO_UTC:
+        if inicio <= hora_utc < fin:
+            return True
+    log(f"⏰ Fuera de horario pico (hora UTC: {hora_utc:02d}:xx) — publicación omitida", 'info')
+    return False
+
+def limite_diario_alcanzado(h):
+    """Devuelve True si ya se publicaron MAX_POSTS_POR_DIA hoy."""
+    hoy = datetime.now().date()
+    publicadas_hoy = sum(
+        1 for ts in h.get('timestamps', [])
+        if ts and datetime.fromisoformat(ts).date() == hoy
+    )
+    if publicadas_hoy >= MAX_POSTS_POR_DIA:
+        log(f"🚫 Límite diario alcanzado: {publicadas_hoy}/{MAX_POSTS_POR_DIA} posts hoy", 'advertencia')
+        return True
+    log(f"📊 Posts hoy: {publicadas_hoy}/{MAX_POSTS_POR_DIA}", 'info')
+    return False
+
+def agregar_cta(texto):
+    """Añade un CTA aleatorio al final del texto de la publicación."""
+    cta = random.choice(CTAS)
+    return f"{texto}\n\n{cta}"
+
+# ──────────────────────────────────────────────────────────
 # FUENTES DE NOTICIAS
 # ──────────────────────────────────────────────────────────
 def obtener_newsapi():
@@ -640,6 +699,205 @@ def crear_imagen_titulo(titulo):
         return None
 
 # ──────────────────────────────────────────────────────────
+# GENERACIÓN DE VIDEO (V5)
+# ──────────────────────────────────────────────────────────
+def crear_frame(titulo, resumen, logo_texto, ancho=1280, alto=720,
+                fondo_path=None, progreso=0.0):
+    """
+    Genera un frame PIL con el diseño del video noticiario.
+    progreso: 0.0 a 1.0 para controlar opacidad del texto (fade-in).
+    """
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter
+    import textwrap
+
+    # ── Fondo ──────────────────────────────────────────────
+    if fondo_path:
+        try:
+            bg = Image.open(fondo_path).convert('RGB')
+            bg = bg.resize((ancho, alto), Image.LANCZOS)
+            bg = bg.filter(ImageFilter.GaussianBlur(radius=8))
+        except:
+            bg = Image.new('RGB', (ancho, alto), '#0f172a')
+    else:
+        bg = Image.new('RGB', (ancho, alto), '#0f172a')
+
+    frame = bg.copy()
+    overlay = Image.new('RGBA', (ancho, alto), (0, 0, 0, 170))
+    frame.paste(Image.alpha_composite(frame.convert('RGBA'), overlay).convert('RGB'))
+
+    draw = ImageDraw.Draw(frame)
+
+    # ── Fuentes ────────────────────────────────────────────
+    font_paths = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+    ]
+    font_paths_reg = [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    ]
+    def cargar_fuente(paths, size):
+        for p in paths:
+            try:
+                return ImageFont.truetype(p, size)
+            except:
+                continue
+        return ImageFont.load_default()
+
+    font_breaking = cargar_fuente(font_paths, 28)
+    font_titulo   = cargar_fuente(font_paths, 52)
+    font_resumen  = cargar_fuente(font_paths_reg, 28)
+    font_logo     = cargar_fuente(font_paths, 22)
+
+    alpha = int(255 * min(progreso * 2, 1.0))  # fade-in
+
+    # ── Barra superior roja "ÚLTIMA HORA" ─────────────────
+    draw.rectangle([(0, 0), (ancho, 56)], fill='#dc2626')
+    breaking_txt = "🔴  ÚLTIMA HORA  |  VERDAD HOY"
+    draw.text((24, 14), breaking_txt, font=font_breaking, fill='white')
+
+    # ── Título (fade-in) ──────────────────────────────────
+    titulo_wrap = textwrap.fill(titulo[:120], width=30)
+    lineas_titulo = titulo_wrap.split('\n')
+    y_titulo = 110
+    for linea in lineas_titulo:
+        color = (255, 255, 255, alpha)
+        # PIL no soporta alpha en texto directamente, usamos capa separada
+        tmp = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
+        d2  = ImageDraw.Draw(tmp)
+        d2.text((60, y_titulo), linea, font=font_titulo, fill=(255, 255, 255, alpha))
+        frame.paste(Image.alpha_composite(frame.convert('RGBA'), tmp).convert('RGB'))
+        draw = ImageDraw.Draw(frame)
+        y_titulo += 64
+
+    # ── Línea separadora ──────────────────────────────────
+    sep_y = y_titulo + 12
+    draw.rectangle([(60, sep_y), (ancho - 60, sep_y + 3)], fill='#3b82f6')
+
+    # ── Resumen (aparece después) ─────────────────────────
+    if progreso > 0.5:
+        alpha2 = int(255 * min((progreso - 0.5) * 2, 1.0))
+        resumen_corto = resumen[:220] + ('...' if len(resumen) > 220 else '')
+        resumen_wrap  = textwrap.fill(resumen_corto, width=58)
+        tmp2 = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
+        d3   = ImageDraw.Draw(tmp2)
+        d3.text((60, sep_y + 20), resumen_wrap, font=font_resumen,
+                fill=(203, 213, 225, alpha2))
+        frame.paste(Image.alpha_composite(frame.convert('RGBA'), tmp2).convert('RGB'))
+        draw = ImageDraw.Draw(frame)
+
+    # ── Barra inferior con logo ────────────────────────────
+    draw.rectangle([(0, alto - 48), (ancho, alto)], fill='#1e293b')
+    draw.text((24, alto - 34), f"🌐 {logo_texto}  •  noticias internacionales",
+              font=font_logo, fill='#94a3b8')
+
+    return frame
+
+
+def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
+    """
+    Genera un video MP4 de tipo noticiario.
+    Retorna la ruta del archivo o None si falla.
+    """
+    try:
+        from moviepy.editor import ImageSequenceClip
+        import numpy as np
+        import textwrap
+
+        log("🎬 Generando video noticiario...", 'info')
+
+        ancho, alto = 1280, 720
+        total_frames = duracion * fps
+        frames = []
+
+        for i in range(total_frames):
+            t = i / total_frames  # 0.0 → 1.0
+
+            # Fases de animación:
+            # 0.00–0.08 → intro (solo fondo + barra roja)
+            # 0.08–0.50 → fade-in título
+            # 0.50–0.85 → título + resumen visibles
+            # 0.85–1.00 → fade-out suave
+
+            if t < 0.08:
+                progreso = 0.0
+            elif t < 0.50:
+                progreso = (t - 0.08) / 0.42
+            elif t < 0.85:
+                progreso = 1.0
+            else:
+                progreso = 1.0 - (t - 0.85) / 0.15
+
+            frame_pil = crear_frame(
+                titulo=titulo,
+                resumen=resumen,
+                logo_texto="Verdad Hoy | Agencia de Noticias",
+                ancho=ancho, alto=alto,
+                fondo_path=fondo_path,
+                progreso=max(0.0, progreso),
+            )
+            frames.append(np.array(frame_pil))
+
+        # Generar MP4
+        clip = ImageSequenceClip(frames, fps=fps)
+        hash_v = generar_hash(titulo)
+        video_path = f'/tmp/noticia_video_{hash_v}.mp4'
+        clip.write_videofile(
+            video_path,
+            codec='libx264',
+            audio=False,
+            preset='ultrafast',
+            ffmpeg_params=['-crf', '28'],
+            logger=None,
+        )
+        clip.close()
+
+        size_mb = os.path.getsize(video_path) / (1024 * 1024)
+        log(f"✅ Video generado: {video_path} ({size_mb:.1f} MB, {duracion}s)", 'exito')
+        return video_path
+
+    except ImportError:
+        log("⚠️ moviepy no disponible — usando imagen", 'advertencia')
+        return None
+    except Exception as e:
+        log(f"⚠️ Error generando video: {e} — usando imagen", 'advertencia')
+        return None
+
+
+def publicar_facebook_video(titulo, texto, video_path, hashtags):
+    """Publica un video nativo en Facebook (mayor alcance orgánico que fotos)."""
+    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
+        return False
+    descripcion = f"{texto}\n\n{hashtags}\n\n— 🌐 Verdad Hoy | Agencia de Noticias Internacionales"
+    if len(descripcion) > 2000:
+        descripcion = descripcion[:1950] + f"...\n\n{hashtags}\n\n— 🌐 Verdad Hoy"
+    descripcion = re.sub(r'https?://\S+', '', descripcion)
+    try:
+        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/videos"
+        with open(video_path, 'rb') as f:
+            r = requests.post(
+                url,
+                files={'source': ('video.mp4', f, 'video/mp4')},
+                data={
+                    'title':        titulo[:255],
+                    'description':  descripcion,
+                    'access_token': FB_ACCESS_TOKEN,
+                },
+                timeout=120,
+            ).json()
+        if 'id' in r:
+            log(f"✅ Video publicado en Facebook — ID: {r['id']}", 'exito')
+            return True
+        else:
+            log(f"❌ Error Facebook video: {r.get('error', {}).get('message', 'desconocido')}", 'error')
+    except Exception as e:
+        log(f"❌ Excepción publicando video: {e}", 'error')
+    return False
+
+
+# ──────────────────────────────────────────────────────────
 # CONSTRUCCIÓN Y PUBLICACIÓN
 # ──────────────────────────────────────────────────────────
 def dividir_parrafos(texto):
@@ -732,7 +990,7 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V4.0 (HISTORIAL PERSISTENTE)")
+    print("🌍 BOT DE NOTICIAS - V5.0 (ENGAGEMENT OPTIMIZADO)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"📁 Historial: {os.path.abspath(HISTORIAL_PATH)}")
     print(f"📁 Estado:    {os.path.abspath(ESTADO_PATH)}")
@@ -746,10 +1004,18 @@ def main():
     if not verificar_tiempo():
         return False
 
+    # Control de horario pico — SEGUNDA barrera (V5)
+    if not esta_en_horario_pico():
+        return False
+
     # Cargar historial
     h = cargar_historial()
     total_historial = len(h.get('urls', []))
     log(f"📊 Historial: {total_historial} entradas | Permanentes: {len(h.get('hashes_permanentes', []))}")
+
+    # Control de límite diario — TERCERA barrera (V5)
+    if limite_diario_alcanzado(h):
+        return False
 
     # Recolectar noticias
     noticias = []
@@ -835,9 +1101,10 @@ def main():
 
     # Construir texto
     pub = construir_publicacion(seleccionada['titulo'], contenido, creditos, seleccionada['fuente'])
+    pub = agregar_cta(pub)  # V5: CTA para engagement
     ht  = generar_hashtags(seleccionada['titulo'], contenido)
 
-    # Imagen
+    # Imagen (usada como fondo del video o fallback)
     log("🖼️  Procesando imagen...")
     img_path = None
     if seleccionada.get('imagen'):
@@ -852,8 +1119,28 @@ def main():
         log("ERROR: No se pudo obtener imagen", 'error')
         return False
 
-    # Publicar
-    ok = publicar_facebook(seleccionada['titulo'], pub, img_path, ht)
+    # ── Intentar publicar como VIDEO (mayor alcance) ──────
+    resumen_video = contenido[:300] if contenido else seleccionada.get('descripcion', '')
+    video_path = crear_video_noticia(
+        titulo=seleccionada['titulo'],
+        resumen=resumen_video,
+        fondo_path=img_path,
+    )
+
+    ok = False
+    if video_path:
+        log("📹 Publicando como VIDEO nativo...", 'info')
+        ok = publicar_facebook_video(seleccionada['titulo'], pub, video_path, ht)
+        try:
+            if video_path and os.path.exists(video_path):
+                os.remove(video_path)
+        except:
+            pass
+
+    # ── Fallback a IMAGEN si el video falló ───────────────
+    if not ok:
+        log("🖼️  Fallback: publicando como imagen...", 'advertencia')
+        ok = publicar_facebook(seleccionada['titulo'], pub, img_path, ht)
 
     # Limpiar imagen temporal
     try:

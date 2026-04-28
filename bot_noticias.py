@@ -993,24 +993,24 @@ def main():
 
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         log("ERROR CRÍTICO: Faltan credenciales Facebook (FB_PAGE_ID / FB_ACCESS_TOKEN)", 'error')
-        return False
+        return False  # Error real — exit 1
 
-    # Control de tiempo — PRIMERA barrera
+    # Control de tiempo — PRIMERA barrera (salida normal — exit 0)
     if not verificar_tiempo():
-        return False
+        return None
 
-    # Control de horario pico — SEGUNDA barrera (V5)
+    # Control de horario pico — SEGUNDA barrera (salida normal — exit 0)
     if not esta_en_horario_pico():
-        return False
+        return None
 
     # Cargar historial
     h = cargar_historial()
     total_historial = len(h.get('urls', []))
     log(f"📊 Historial: {total_historial} entradas | Permanentes: {len(h.get('hashes_permanentes', []))}")
 
-    # Control de límite diario — TERCERA barrera (V5)
+    # Control de límite diario — TERCERA barrera (salida normal — exit 0)
     if limite_diario_alcanzado(h):
-        return False
+        return None
 
     # Recolectar noticias
     noticias = []
@@ -1159,7 +1159,11 @@ def main():
 
 if __name__ == "__main__":
     try:
-        exit(0 if main() else 1)
+        resultado = main()
+        # None = salida normal (tiempo, horario, límite diario) → exit 0
+        # True = publicación exitosa → exit 0
+        # False = error real → exit 1
+        exit(0 if resultado is not False else 1)
     except Exception as e:
         log(f"Error crítico: {e}", 'error')
         import traceback

@@ -621,7 +621,7 @@ def extraer_contenido(url):
                 if len(ps) >= 2:
                     txt = ' '.join([limpiar_texto(p.get_text()) for p in ps])
                     if len(txt) > 200:
-                        return txt[:2000], None
+                        return txt[:5000], None
         return None, None
     except:
         return None, None
@@ -653,25 +653,31 @@ def descargar_imagen(url):
         from io import BytesIO
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20, stream=True)
         if r.status_code != 200:
+            log(f"⚠️ Imagen HTTP {r.status_code}: {url[:60]}", 'debug')
             return None
-        if 'image' not in r.headers.get('content-type', ''):
+        ct = r.headers.get('content-type', '')
+        if 'image' not in ct and 'octet' not in ct:
+            log(f"⚠️ Content-type no imagen: {ct}", 'debug')
             return None
-        img = Image.open(BytesIO(r.content))
+        data = r.content
+        img = Image.open(BytesIO(data))
         w, h = img.size
-        if w < 400 or h < 300:
+        # Límites más permisivos — solo descartar íconos muy pequeños
+        if w < 200 or h < 150:
+            log(f"⚠️ Imagen muy pequeña: {w}x{h}", 'debug')
             return None
-        if w / h > 4 or w / h < 0.2:
-            return None
-        if img.mode in ('RGBA', 'P'):
+        if img.mode in ('RGBA', 'P', 'LA'):
             img = img.convert('RGB')
-        img.thumbnail((1200, 1200))
+        img.thumbnail((1280, 1280))
         p = f'/tmp/noticia_{generar_hash(url)}.jpg'
-        img.save(p, 'JPEG', quality=85)
-        if os.path.getsize(p) < 5000:
+        img.save(p, 'JPEG', quality=88)
+        if os.path.getsize(p) < 3000:
             os.remove(p)
             return None
+        log(f"🖼️ Imagen descargada: {w}x{h} → {p}", 'debug')
         return p
-    except:
+    except Exception as e:
+        log(f"⚠️ Error descargando imagen: {e}", 'debug')
         return None
 
 def crear_imagen_titulo(titulo):
@@ -984,8 +990,8 @@ def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
         return None
 
 
-def _truncar_mensaje(texto, hashtags, firma, limite=2000):
-    """Trunca el mensaje al límite seguro de Facebook conservando hashtags y firma."""
+def _truncar_mensaje(texto, hashtags, firma, limite=60000):
+    """Trunca el mensaje al límite real de Facebook (63.206 chars) conservando hashtags y firma."""
     sufijo = f"\n\n{hashtags}\n\n— {firma}"
     espacio = limite - len(sufijo)
     if len(texto) > espacio:
@@ -1037,14 +1043,14 @@ def dividir_parrafos(texto):
             if len(' '.join(actual).split()) >= 15:
                 parrafos.append(' '.join(actual))
             actual, palabras = [], 0
-    return parrafos[:8]
+    return parrafos[:20]
 
 def construir_publicacion(titulo, contenido, creditos, fuente):
     t    = limpiar_texto(titulo)
     pars = dividir_parrafos(contenido)
     if len(pars) < 2:
         ors  = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
-        pars = [' '.join(ors[i:i+2]) for i in range(0, len(ors), 2)][:8]
+        pars = [' '.join(ors[i:i+2]) for i in range(0, len(ors), 2)][:20]
     lineas = [f"📰 ÚLTIMA HORA | {t}", ""]
     for i, p in enumerate(pars):
         lineas.append(p)

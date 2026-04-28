@@ -94,14 +94,27 @@ CTAS_POR_TEMA = {
 }
 
 # CTAs para el VIDEO (panel rojo al final) — por tema
+# Línea 1: llamada a la acción temática
+# Línea 2: cierre fijo con instrucciones
 CTAS_VIDEO_POR_TEMA = {
-    'guerra':     "¿Crees que escalará? COMENTA 👇",
-    'politica':   "¿De acuerdo? SÍ o NO en comentarios 👇",
-    'economia':   "¿Te afecta esto? CUÉNTANOS 👇",
-    'tecnologia': "¿A favor o en contra? OPINA 👇",
-    'desastre':   "Deja tu mensaje de apoyo 🙏 COMENTA",
-    'general':    "¿Qué opinas? COMENTA AHORA 👇",
+    'guerra':     "¿Crees que esto escalará?",
+    'politica':   "¿Estás de acuerdo?  SÍ o NO",
+    'economia':   "¿Te afecta esto?",
+    'tecnologia': "¿A favor o en contra?",
+    'desastre':   "Deja tu mensaje de apoyo 🙏",
+    'general':    "¿Qué opinas de esta noticia?",
 }
+
+# Línea de cierre fija para todos los videos
+CTA_VIDEO_CIERRE = "💬 Comenta · 👍 Reacciona · 🔁 Comparte\nMás detalles en la descripción 👇"
+
+# Voces disponibles — rotación aleatoria para variedad
+VOCES_TTS = [
+    "es-MX-DaliaNeural",      # Presentadora mexicana — natural y cálida
+    "es-MX-JorgeNeural",      # Conductor mexicano — voz masculina seria
+    "es-CO-SalomeNeural",     # Presentadora colombiana — clara y dinámica
+    "es-AR-ElenaNeural",      # Presentadora argentina — expresiva
+]
 
 def detectar_tema(titulo, descripcion=""):
     txt = f"{titulo} {descripcion}".lower()
@@ -131,9 +144,16 @@ def agregar_cta(texto, titulo="", descripcion=""):
     return f"{texto}\n\n{cta}"
 
 def obtener_cta_video(titulo, descripcion=""):
-    """Retorna el CTA corto para mostrar en el panel rojo del video."""
-    tema = detectar_tema(titulo, descripcion)
-    return CTAS_VIDEO_POR_TEMA.get(tema, CTAS_VIDEO_POR_TEMA['general'])
+    """Retorna el CTA del video: línea temática + cierre fijo."""
+    tema      = detectar_tema(titulo, descripcion)
+    linea_cta = CTAS_VIDEO_POR_TEMA.get(tema, CTAS_VIDEO_POR_TEMA['general'])
+    return linea_cta, CTA_VIDEO_CIERRE
+
+def obtener_voz_aleatoria():
+    """Selecciona aleatoriamente una voz de presentador/a para variedad."""
+    voz = random.choice(VOCES_TTS)
+    log(f"🎙️ Voz seleccionada: {voz}", 'info')
+    return voz
 
 BLACKLIST_TITULOS = [
     r'^\s*última hora\s*$',
@@ -905,10 +925,10 @@ def crear_frame(titulo, resumen, logo_texto, ancho=1280, alto=720,
     return frame
 
 
-def crear_audio_noticia(titulo, resumen):
+def crear_audio_noticia(titulo, resumen, cta=""):
     """
     Genera audio TTS con voz natural de presentadora latina (edge-tts, Microsoft).
-    Voz: es-MX-DaliaNeural — español México, femenina, natural.
+    Lee: titular → resumen → CTA temático → invitación a comentar.
     Fallback: espeak si edge-tts no está disponible.
     """
     try:
@@ -922,10 +942,14 @@ def crear_audio_noticia(titulo, resumen):
                 resumen_corto = resumen_corto[:idx + 1]
                 break
 
+        # Guión completo: titular + resumen + CTA + cierre
+        cta_limpio = re.sub(r'[👇💬👍🔁🙏]', '', cta).strip() if cta else ""
         guion = (
             f"Última hora. {titulo}. "
             f"{resumen_corto} "
-            f"Lee todos los detalles en la descripción de esta publicación."
+            f"{cta_limpio + '. ' if cta_limpio else ''}"
+            f"Comenta, reacciona y comparte. "
+            f"Más detalles en la descripción de esta publicación."
         )
         guion = re.sub(r'[#@\[\]<>*_]', '', guion)
         guion = re.sub(r'https?://\S+', '', guion)
@@ -937,8 +961,8 @@ def crear_audio_noticia(titulo, resumen):
         async def generar():
             communicate = edge_tts.Communicate(
                 guion,
-                voice="es-MX-DaliaNeural",  # Presentadora latina natural
-                rate="+8%",                  # Ligeramente más rápido que normal
+                voice=obtener_voz_aleatoria(),  # Voz aleatoria para variedad
+                rate="+8%",
                 volume="+0%",
             )
             await communicate.save(mp3_path)
@@ -965,7 +989,14 @@ def crear_audio_noticia(titulo, resumen):
             if idx > 80:
                 resumen_corto = resumen_corto[:idx + 1]
                 break
-        guion = f"Última hora. {titulo}. {resumen_corto} Lee todos los detalles en la publicación."
+        cta_limpio = re.sub(r'[👇💬👍🔁🙏]', '', cta).strip() if cta else ""
+        guion = (
+            f"Última hora. {titulo}. "
+            f"{resumen_corto} "
+            f"{cta_limpio + '. ' if cta_limpio else ''}"
+            f"Comenta, reacciona y comparte. "
+            f"Más detalles en la descripción."
+        )
         guion = re.sub(r'[#@\[\]<>*_]', '', guion)
         guion = re.sub(r'https?://\S+', '', guion)
         guion = re.sub(r'\s+', ' ', guion).strip()
@@ -1008,11 +1039,11 @@ def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
 
         log("🎬 Generando video noticiario...", 'info')
 
-        # CTA temático para el video
-        cta_video = obtener_cta_video(titulo, resumen)
+        # CTA temático para el video (dos líneas)
+        cta_linea1, cta_linea2 = obtener_cta_video(titulo, resumen)
 
         # ── 1. Generar audio TTS ──────────────────────────
-        audio_path  = crear_audio_noticia(titulo, resumen)
+        audio_path = crear_audio_noticia(titulo, resumen, cta_linea1)
         audio_dur   = 0.0
         if audio_path:
             try:
@@ -1059,7 +1090,6 @@ def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
         font_tit = carga_font(fp_b, 44)
         font_res = carga_font(fp_r, 24)
         font_log = carga_font(fp_b, 20)
-        font_cta = carga_font(fp_b, 36)
 
         # Fase CTA: últimos 5 segundos del video
         cta_inicio = max(0.75, 1.0 - (5 / duracion))
@@ -1135,24 +1165,37 @@ def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
 
             # ── Panel CTA rojo (últimos 5s) ───────────────
             if en_cta and alpha_cta > 0:
-                cta_h  = 100
+                cta_h  = 130
                 cta_y  = alto - 44 - cta_h - 10
-                # Fondo rojo con alpha
+                # Fondo rojo
                 cta_bg = Image.new('RGBA', (ancho, cta_h), (220, 38, 38, alpha_cta))
                 frame_rgba = frame.convert('RGBA')
                 frame_rgba.paste(cta_bg, (0, cta_y), cta_bg)
                 frame = frame_rgba.convert('RGB')
                 draw  = ImageDraw.Draw(frame)
-                # Texto CTA centrado
-                bbox  = draw.textbbox((0, 0), cta_video, font=font_cta)
-                tw    = bbox[2] - bbox[0]
-                tx    = (ancho - tw) // 2
-                ty    = cta_y + (cta_h - (bbox[3] - bbox[1])) // 2
-                tmp3  = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
-                ImageDraw.Draw(tmp3).text((tx, ty), cta_video, font=font_cta,
-                                          fill=(255, 255, 255, alpha_cta))
-                frame = Image.alpha_composite(frame.convert('RGBA'), tmp3).convert('RGB')
+
+                font_cta1 = carga_font(fp_b, 34)
+                font_cta2 = carga_font(fp_r, 22)
+
+                # Línea 1: pregunta temática — centrada
+                bb1 = draw.textbbox((0,0), cta_linea1, font=font_cta1)
+                tx1 = (ancho - (bb1[2] - bb1[0])) // 2
+                tmp_c = Image.new('RGBA', (ancho, alto), (0,0,0,0))
+                ImageDraw.Draw(tmp_c).text((tx1, cta_y + 12), cta_linea1,
+                                           font=font_cta1, fill=(255,255,255,alpha_cta))
+                frame = Image.alpha_composite(frame.convert('RGBA'), tmp_c).convert('RGB')
                 draw  = ImageDraw.Draw(frame)
+
+                # Línea 2: cierre fijo — centrada, más pequeña
+                for idx_l, sub in enumerate(cta_linea2.split('\n')):
+                    bb2 = draw.textbbox((0,0), sub, font=font_cta2)
+                    tx2 = (ancho - (bb2[2] - bb2[0])) // 2
+                    tmp_c2 = Image.new('RGBA', (ancho, alto), (0,0,0,0))
+                    ImageDraw.Draw(tmp_c2).text(
+                        (tx2, cta_y + 60 + idx_l * 30), sub,
+                        font=font_cta2, fill=(255,235,235,alpha_cta))
+                    frame = Image.alpha_composite(frame.convert('RGBA'), tmp_c2).convert('RGB')
+                    draw  = ImageDraw.Draw(frame)
 
             # ── Barra inferior logo
             draw.rectangle([(0, alto - 44), (ancho, alto)], fill='#1e293b')

@@ -1,18 +1,15 @@
 name: Bot Noticias Facebook
-
 on:
   schedule:
     # Corre cada hora — el bot mismo verifica si han pasado 55 min
     - cron: '0 * * * *'
   workflow_dispatch:
-
 jobs:
   publicar:
     runs-on: ubuntu-latest
     # Permiso de escritura para poder hacer git push del historial
     permissions:
       contents: write
-
     steps:
       - name: Checkout repositorio
         uses: actions/checkout@v4
@@ -27,7 +24,7 @@ jobs:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        run: pip install requests feedparser beautifulsoup4 Pillow
+        run: pip install -r requirements.txt
 
       - name: Ejecutar bot
         env:
@@ -36,7 +33,6 @@ jobs:
           GNEWS_API_KEY:     ${{ secrets.GNEWS_API_KEY }}
           FB_PAGE_ID:        ${{ secrets.FB_PAGE_ID }}
           FB_ACCESS_TOKEN:   ${{ secrets.FB_ACCESS_TOKEN }}
-          # Apuntar a la raíz del repo (donde git puede ver los cambios)
           HISTORIAL_PATH:    historial_publicaciones.json
           ESTADO_PATH:       estado_bot.json
         run: python bot_noticias.py
@@ -46,12 +42,10 @@ jobs:
       # Sin esto, el historial se pierde y el bot repite noticias
       # ─────────────────────────────────────────────────────
       - name: Guardar historial en repositorio
-        if: always()  # Ejecutar incluso si el bot falla
+        if: always()
         run: |
           git config user.name  "bot-noticias[bot]"
           git config user.email "bot-noticias@users.noreply.github.com"
-
-          # Solo hacer commit si hay cambios reales
           if git diff --quiet historial_publicaciones.json estado_bot.json 2>/dev/null; then
             echo "ℹ️ Sin cambios en historial — no se hace commit"
           else

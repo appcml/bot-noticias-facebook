@@ -40,7 +40,7 @@ MAX_TITULOS_HISTORIA       = 300  # aumentado para mejor cobertura
 DIAS_HISTORIAL             = 14   # guardar 2 semanas
 
 # ── ENGAGEMENT V5 ──────────────────────────────────────────
-MAX_POSTS_POR_DIA = 6  # Mas de 6/dia penaliza el alcance organico en Facebook
+MAX_POSTS_POR_DIA = 8  # Mas de 6/dia penaliza el alcance organico en Facebook
 
 # Horarios pico para audiencia hispanohablante (hora UTC)
 # Rangos amplios para cubrir distintas zonas horarias:

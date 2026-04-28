@@ -369,6 +369,10 @@ def guardar_en_historial(h, url, titulo, desc=""):
 # CONTROL DE TIEMPO
 # ──────────────────────────────────────────────────────────
 def verificar_tiempo():
+    # Si se activa manualmente con FORZAR_PUBLICACION=true, saltar control de tiempo
+    if os.getenv('FORZAR_PUBLICACION', '').lower() == 'true':
+        log("⚡ Modo forzado — omitiendo control de tiempo", 'advertencia')
+        return True
     e = cargar_json(ESTADO_PATH, {'ultima_publicacion': None})
     u = e.get('ultima_publicacion')
     if not u:
@@ -390,6 +394,9 @@ def guardar_estado():
 # ──────────────────────────────────────────────────────────
 def esta_en_horario_pico():
     """Devuelve True si la hora UTC actual está en una ventana de alta audiencia."""
+    if os.getenv('FORZAR_PUBLICACION', '').lower() == 'true':
+        log("⚡ Modo forzado — omitiendo control de horario pico", 'advertencia')
+        return True
     hora_utc = datetime.utcnow().hour
     for inicio, fin in HORARIOS_PICO_UTC:
         if inicio <= hora_utc < fin:

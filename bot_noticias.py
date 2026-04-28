@@ -40,7 +40,7 @@ MAX_TITULOS_HISTORIA       = 300  # aumentado para mejor cobertura
 DIAS_HISTORIAL             = 14   # guardar 2 semanas
 
 # ── ENGAGEMENT V5 ──────────────────────────────────────────
-MAX_POSTS_POR_DIA = 10  # Mas de 10/dia penaliza el alcance organico en Facebook
+MAX_POSTS_POR_DIA = 6  # Mas de 6/dia penaliza el alcance organico en Facebook
 
 # Horarios pico para audiencia hispanohablante (hora UTC)
 # Rangos amplios para cubrir distintas zonas horarias:
@@ -53,16 +53,87 @@ HORARIOS_PICO_UTC = [
     (17, 22),
 ]
 
-CTAS = [
-    "Que opinas sobre esto? Dejanos tu comentario. 👇",
-    "Sabias esto? Comenta SI o NO 👇",
-    "Como crees que afectara esto al mundo? 👇",
-    "Comparte si te parece importante 🔁",
-    "Estas al tanto de esta situacion? Cuentanos 👇",
-    "Que piensas? Tu opinion importa 👇",
-    "Te sorprende esta noticia? Comenta abajo 👇",
-    "Comparte con alguien que necesita ver esto 👁️",
-]
+# CTAs por tema — usados en descripción del post y video
+CTAS_POR_TEMA = {
+    'guerra': [
+        "¿Crees que esto puede escalar a un conflicto mayor? Dinos abajo 👇",
+        "¿Qué solución ves a este conflicto? Comenta 👇",
+        "¿El mundo está haciendo suficiente? Tu opinión importa 👇",
+        "¿Esto te preocupa? Cuéntanos qué piensas 👇",
+    ],
+    'politica': [
+        "¿Estás de acuerdo con esta decisión? Comenta SÍ o NO 👇",
+        "¿Qué opinas de esta medida? Tu voz cuenta 👇",
+        "¿Cómo crees que afectará esto a la región? Dinos 👇",
+        "¿Confías en estos líderes? Comenta abajo 👇",
+    ],
+    'economia': [
+        "¿Sientes esto en tu bolsillo? Cuéntanos 👇",
+        "¿Cómo te afecta esta situación económica? Comenta 👇",
+        "¿Crees que mejorará la economía? SÍ o NO 👇",
+        "¿Qué medidas tomarías tú? Opina abajo 👇",
+    ],
+    'tecnologia': [
+        "¿La IA nos ayuda o nos amenaza? Comenta 👇",
+        "¿Usarías esta tecnología? Dinos 👇",
+        "¿El futuro te emociona o te preocupa? Opina 👇",
+        "¿Qué piensas de este avance? Cuéntanos 👇",
+    ],
+    'desastre': [
+        "Nuestros pensamientos con los afectados 🙏 Comenta abajo 👇",
+        "¿Cómo podemos ayudar en situaciones así? Opina 👇",
+        "¿El mundo reacciona a tiempo ante estas crisis? 👇",
+        "¿Has vivido algo similar? Cuéntanos 👇",
+    ],
+    'general': [
+        "¿Qué piensas de esta noticia? Comenta abajo 👇",
+        "¿Sabías esto? Dinos SÍ o NO 👇",
+        "¿Te sorprende? Cuéntanos qué opinas 👇",
+        "Comparte si crees que todos deben saberlo 🔁",
+    ],
+}
+
+# CTAs para el VIDEO (panel rojo al final) — por tema
+CTAS_VIDEO_POR_TEMA = {
+    'guerra':     "¿Crees que escalará? COMENTA 👇",
+    'politica':   "¿De acuerdo? SÍ o NO en comentarios 👇",
+    'economia':   "¿Te afecta esto? CUÉNTANOS 👇",
+    'tecnologia': "¿A favor o en contra? OPINA 👇",
+    'desastre':   "Deja tu mensaje de apoyo 🙏 COMENTA",
+    'general':    "¿Qué opinas? COMENTA AHORA 👇",
+}
+
+def detectar_tema(titulo, descripcion=""):
+    txt = f"{titulo} {descripcion}".lower()
+    if any(p in txt for p in ["guerra", "bombardeo", "misil", "ataque", "conflicto",
+                               "invasion", "tropas", "nuclear", "terroris", "hamas",
+                               "hezbollah", "ucrania", "gaza", "israel", "rusia"]):
+        return 'guerra'
+    if any(p in txt for p in ["trump", "biden", "presidente", "gobierno", "eleccion",
+                               "politica", "congreso", "sancion", "diplomaci",
+                               "golpe de estado", "otan", "nato"]):
+        return 'politica'
+    if any(p in txt for p in ["economia", "inflacion", "recesion", "bolsa", "mercado",
+                               "petroleo", "dolar", "fmi", "banco", "crisis economica"]):
+        return 'economia'
+    if any(p in txt for p in ["inteligencia artificial", "tecnologia", "ia ", "robot",
+                               "ciberataque", "hackeo", "elon musk", "openai"]):
+        return 'tecnologia'
+    if any(p in txt for p in ["terremoto", "huracan", "inundacion", "desastre",
+                               "victimas", "muertos", "evacuacion", "tsunami"]):
+        return 'desastre'
+    return 'general'
+
+def agregar_cta(texto, titulo="", descripcion=""):
+    """Agrega un CTA temático al final del texto de la publicación."""
+    tema = detectar_tema(titulo, descripcion)
+    cta  = random.choice(CTAS_POR_TEMA.get(tema, CTAS_POR_TEMA['general']))
+    return f"{texto}\n\n{cta}"
+
+def obtener_cta_video(titulo, descripcion=""):
+    """Retorna el CTA corto para mostrar en el panel rojo del video."""
+    tema = detectar_tema(titulo, descripcion)
+    return CTAS_VIDEO_POR_TEMA.get(tema, CTAS_VIDEO_POR_TEMA['general'])
 
 BLACKLIST_TITULOS = [
     r'^\s*última hora\s*$',
@@ -417,10 +488,6 @@ def limite_diario_alcanzado(h):
     log(f"📊 Posts hoy: {publicadas_hoy}/{MAX_POSTS_POR_DIA}", 'info')
     return False
 
-def agregar_cta(texto):
-    """Añade un CTA aleatorio al final del texto de la publicación."""
-    cta = random.choice(CTAS)
-    return f"{texto}\n\n{cta}"
 
 # ──────────────────────────────────────────────────────────
 # FUENTES DE NOTICIAS
@@ -900,63 +967,365 @@ def crear_audio_noticia(titulo, resumen):
 
 def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
     """
-    Genera un video MP4 de tipo noticiario con voz en español latino.
-    Retorna la ruta del archivo o None si falla.
+    Genera un video MP4 con:
+    - Voz TTS que lee el titular y resumen
+    - Efecto Ken Burns (zoom lento) en la imagen
+    - Panel CTA rojo temático al final
     """
     try:
-        from moviepy.editor import ImageSequenceClip, AudioFileClip, CompositeAudioClip
+        from moviepy.editor import ImageSequenceClip, AudioFileClip
         import numpy as np
+        from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
         import textwrap
 
         log("🎬 Generando video noticiario...", 'info')
 
-        # ── Generar audio TTS ─────────────────────────────
-        audio_path = crear_audio_noticia(titulo, resumen)
+        # CTA temático para el video
+        cta_video = obtener_cta_video(titulo, resumen)
 
-        # Si hay audio, ajustar duración del video al audio (mín 20s, máx 45s)
+        # ── 1. Generar audio TTS ──────────────────────────
+        audio_path  = crear_audio_noticia(titulo, resumen)
+        audio_dur   = 0.0
         if audio_path:
             try:
-                audio_clip = AudioFileClip(audio_path)
-                duracion = max(20, min(45, int(audio_clip.duration) + 3))
-                audio_clip.close()
-                log(f"⏱️ Duración ajustada al audio: {duracion}s", 'info')
-            except:
+                ac = AudioFileClip(audio_path)
+                audio_dur = ac.duration
+                ac.close()
+                duracion = max(20, min(50, int(audio_dur) + 2))
+                log(f"⏱️ Duración ajustada al audio: {duracion}s (audio: {audio_dur:.1f}s)", 'info')
+            except Exception as e:
+                log(f"⚠️ No se pudo leer duración del audio: {e}", 'advertencia')
                 duracion = 28
 
-        ancho, alto = 1280, 720
+        ancho, alto  = 1280, 720
+        mitad        = ancho // 2
         total_frames = duracion * fps
-        frames = []
 
+        # ── 2. Pre-cargar imagen para Ken Burns ───────────
+        img_base = None
+        if fondo_path:
+            try:
+                img_base = Image.open(fondo_path).convert('RGB')
+                scale_w = int(mitad * 1.25)
+                scale_h = int(alto  * 1.25)
+                img_base = img_base.resize((scale_w, scale_h), Image.LANCZOS)
+                img_base = ImageEnhance.Sharpness(img_base).enhance(1.4)
+                img_base = ImageEnhance.Contrast(img_base).enhance(1.1)
+            except Exception as e:
+                log(f"⚠️ Error cargando imagen: {e}", 'debug')
+                img_base = None
+
+        # ── 3. Fuentes ────────────────────────────────────
+        fp_b = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
+        fp_r = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]
+
+        def carga_font(paths, size):
+            for p in paths:
+                try: return ImageFont.truetype(p, size)
+                except: continue
+            return ImageFont.load_default()
+
+        font_bk  = carga_font(fp_b, 24)
+        font_tit = carga_font(fp_b, 44)
+        font_res = carga_font(fp_r, 24)
+        font_log = carga_font(fp_b, 20)
+        font_cta = carga_font(fp_b, 36)
+
+        # Fase CTA: últimos 5 segundos del video
+        cta_inicio = max(0.75, 1.0 - (5 / duracion))
+
+        # ── 4. Generar frames ─────────────────────────────
+        frames = []
         for i in range(total_frames):
             t = i / total_frames
-            if t < 0.08:
-                progreso = 0.0
-            elif t < 0.50:
-                progreso = (t - 0.08) / 0.42
-            elif t < 0.85:
-                progreso = 1.0
-            else:
-                progreso = 1.0 - (t - 0.85) / 0.15
 
-            frame_pil = crear_frame(
-                titulo=titulo,
-                resumen=resumen,
-                logo_texto="Verdad Hoy | Agencia de Noticias",
-                ancho=ancho, alto=alto,
-                fondo_path=fondo_path,
-                progreso=max(0.0, progreso),
-            )
-            frames.append(np.array(frame_pil))
+            # Progreso texto (fade-in)
+            if t < 0.08:   progreso = 0.0
+            elif t < 0.50: progreso = (t - 0.08) / 0.42
+            elif t < 0.85: progreso = 1.0
+            else:          progreso = 1.0 - (t - 0.85) / 0.15
+            progreso = max(0.0, min(1.0, progreso))
+            alpha    = int(255 * min(progreso * 2, 1.0))
 
-        # ── Ensamblar video ───────────────────────────────
-        clip = ImageSequenceClip(frames, fps=fps)
-        hash_v = generar_hash(titulo)
+            # Fase CTA activa en últimos 5s
+            en_cta     = t >= cta_inicio
+            alpha_cta  = int(255 * min((t - cta_inicio) / 0.08, 1.0)) if en_cta else 0
+
+            # ── Frame base
+            frame = Image.new('RGB', (ancho, alto), '#0d1117')
+
+            # ── Ken Burns zoom out
+            if img_base:
+                scale_w, scale_h = img_base.size
+                zoom    = 1.25 - (0.25 * t)
+                crop_w  = int(mitad * zoom)
+                crop_h  = int(alto  * zoom)
+                cx      = max(0, min((scale_w - crop_w) // 2, scale_w - crop_w))
+                cy      = max(0, min((scale_h - crop_h) // 2, scale_h - crop_h))
+                img_c   = img_base.crop((cx, cy, cx + crop_w, cy + crop_h))
+                img_c   = img_c.resize((mitad, alto), Image.LANCZOS)
+                grad    = Image.new('RGBA', (mitad, alto), (0, 0, 0, 0))
+                gd      = ImageDraw.Draw(grad)
+                for xg in range(80):
+                    gd.line([(xg, 0), (xg, alto)], fill=(13, 17, 23, int(255 * (1 - xg / 80))))
+                frame.paste(Image.alpha_composite(img_c.convert('RGBA'), grad).convert('RGB'), (mitad, 0))
+
+            # ── Panel izquierdo
+            frame.paste(Image.new('RGB', (mitad + 40, alto), '#0d1117'), (0, 0))
+            draw = ImageDraw.Draw(frame)
+
+            # ── Barra roja superior
+            draw.rectangle([(0, 0), (ancho, 52)], fill='#dc2626')
+            draw.text((20, 14), "  ÚLTIMA HORA  |  VERDAD HOY", font=font_bk, fill='white')
+
+            # ── Línea azul
+            draw.rectangle([(20, 68), (mitad - 20, 71)], fill='#3b82f6')
+
+            # ── Título
+            y = 90
+            for linea in textwrap.fill(titulo[:110], width=22).split('\n'):
+                tmp = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
+                ImageDraw.Draw(tmp).text((20, y), linea, font=font_tit, fill=(255, 255, 255, alpha))
+                frame = Image.alpha_composite(frame.convert('RGBA'), tmp).convert('RGB')
+                draw  = ImageDraw.Draw(frame)
+                y += 56
+
+            sep_y = y + 10
+            draw.rectangle([(20, sep_y), (mitad - 30, sep_y + 2)], fill='#3b82f6')
+
+            # ── Resumen
+            if progreso > 0.5 and not en_cta:
+                alpha2 = int(255 * min((progreso - 0.5) * 2, 1.0))
+                tmp2   = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
+                ImageDraw.Draw(tmp2).text((20, sep_y + 14),
+                    textwrap.fill(resumen[:200] + ('...' if len(resumen) > 200 else ''), width=38),
+                    font=font_res, fill=(203, 213, 225, alpha2))
+                frame = Image.alpha_composite(frame.convert('RGBA'), tmp2).convert('RGB')
+                draw  = ImageDraw.Draw(frame)
+
+            # ── Panel CTA rojo (últimos 5s) ───────────────
+            if en_cta and alpha_cta > 0:
+                cta_h  = 100
+                cta_y  = alto - 44 - cta_h - 10
+                # Fondo rojo con alpha
+                cta_bg = Image.new('RGBA', (ancho, cta_h), (220, 38, 38, alpha_cta))
+                frame_rgba = frame.convert('RGBA')
+                frame_rgba.paste(cta_bg, (0, cta_y), cta_bg)
+                frame = frame_rgba.convert('RGB')
+                draw  = ImageDraw.Draw(frame)
+                # Texto CTA centrado
+                bbox  = draw.textbbox((0, 0), cta_video, font=font_cta)
+                tw    = bbox[2] - bbox[0]
+                tx    = (ancho - tw) // 2
+                ty    = cta_y + (cta_h - (bbox[3] - bbox[1])) // 2
+                tmp3  = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
+                ImageDraw.Draw(tmp3).text((tx, ty), cta_video, font=font_cta,
+                                          fill=(255, 255, 255, alpha_cta))
+                frame = Image.alpha_composite(frame.convert('RGBA'), tmp3).convert('RGB')
+                draw  = ImageDraw.Draw(frame)
+
+            # ── Barra inferior logo
+            draw.rectangle([(0, alto - 44), (ancho, alto)], fill='#1e293b')
+            draw.text((20, alto - 30), "  Verdad Hoy | Agencia de Noticias  •  noticias internacionales",
+                      font=font_log, fill='#94a3b8')
+
+            frames.append(np.array(frame))
+
+        # ── 5. Ensamblar video + audio ─────────────────────
+        clip       = ImageSequenceClip(frames, fps=fps)
+        hash_v     = generar_hash(titulo)
         video_path = f'/tmp/noticia_video_{hash_v}.mp4'
 
+        if audio_path and os.path.exists(audio_path):
+            try:
+                audio_clip = AudioFileClip(audio_path)
+                safe_dur   = min(audio_clip.duration - 0.3, duracion - 0.3)
+                audio_clip = audio_clip.subclip(0, max(1.0, safe_dur))
+                clip       = clip.set_audio(audio_clip)
+                clip.write_videofile(video_path, codec='libx264', audio_codec='aac',
+                                     preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None)
+                audio_clip.close()
+                log("🔊 Audio mezclado correctamente en el video", 'exito')
+            except Exception as e:
+                log(f"⚠️ Error mezclando audio: {e} — generando sin audio", 'advertencia')
+                clip.write_videofile(video_path, codec='libx264', audio=False,
+                                     preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None)
+            finally:
+                try: os.remove(audio_path)
+                except: pass
+        else:
+            clip.write_videofile(video_path, codec='libx264', audio=False,
+                                 preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None)
+
+        clip.close()
+        size_mb = os.path.getsize(video_path) / (1024 * 1024)
+        log(f"✅ Video generado: {video_path} ({size_mb:.1f} MB, {duracion}s)", 'exito')
+        return video_path
+
+    except ImportError:
+        log("⚠️ moviepy no disponible — usando imagen", 'advertencia')
+        return None
+    except Exception as e:
+        log(f"⚠️ Error generando video: {e} — usando imagen", 'advertencia')
+        return None
+    try:
+        from moviepy.editor import ImageSequenceClip, AudioFileClip
+        import numpy as np
+        from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
+        import textwrap
+
+        log("🎬 Generando video noticiario...", 'info')
+
+        # ── 1. Generar audio TTS ──────────────────────────
+        audio_path  = crear_audio_noticia(titulo, resumen)
+        audio_dur   = 0.0
         if audio_path:
             try:
-                audio_clip = AudioFileClip(audio_path).set_duration(duracion)
-                clip = clip.set_audio(audio_clip)
+                ac = AudioFileClip(audio_path)
+                audio_dur = ac.duration
+                ac.close()
+                # Video = audio + 2s de margen (mín 20s, máx 50s)
+                duracion = max(20, min(50, int(audio_dur) + 2))
+                log(f"⏱️ Duración ajustada al audio: {duracion}s (audio: {audio_dur:.1f}s)", 'info')
+            except Exception as e:
+                log(f"⚠️ No se pudo leer duración del audio: {e}", 'advertencia')
+                duracion = 28
+
+        ancho, alto  = 1280, 720
+        mitad        = ancho // 2
+        total_frames = duracion * fps
+
+        # ── 2. Pre-cargar imagen para Ken Burns ───────────
+        img_base = None
+        if fondo_path:
+            try:
+                img_base = Image.open(fondo_path).convert('RGB')
+                # Escalar a un tamaño mayor al target para poder hacer zoom out
+                scale_w = int(mitad * 1.25)
+                scale_h = int(alto  * 1.25)
+                img_base = img_base.resize((scale_w, scale_h), Image.LANCZOS)
+                img_base = ImageEnhance.Sharpness(img_base).enhance(1.4)
+                img_base = ImageEnhance.Contrast(img_base).enhance(1.1)
+            except Exception as e:
+                log(f"⚠️ Error cargando imagen: {e}", 'debug')
+                img_base = None
+
+        # ── 3. Fuentes (cargar una vez) ───────────────────
+        fp_b = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
+        fp_r = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]
+
+        def carga_font(paths, size):
+            for p in paths:
+                try: return ImageFont.truetype(p, size)
+                except: continue
+            return ImageFont.load_default()
+
+        font_bk  = carga_font(fp_b, 24)
+        font_tit = carga_font(fp_b, 44)
+        font_res = carga_font(fp_r, 24)
+        font_log = carga_font(fp_b, 20)
+
+        # ── 4. Generar frames con Ken Burns ───────────────
+        frames = []
+        for i in range(total_frames):
+            t = i / total_frames  # 0.0 → 1.0
+
+            # Progreso del texto (fade-in)
+            if t < 0.08:   progreso = 0.0
+            elif t < 0.50: progreso = (t - 0.08) / 0.42
+            elif t < 0.85: progreso = 1.0
+            else:          progreso = 1.0 - (t - 0.85) / 0.15
+            progreso = max(0.0, min(1.0, progreso))
+            alpha    = int(255 * min(progreso * 2, 1.0))
+
+            # ── Frame base oscuro
+            frame = Image.new('RGB', (ancho, alto), '#0d1117')
+
+            # ── Ken Burns: zoom 125%→100% (zoom out lento)
+            if img_base:
+                scale_w, scale_h = img_base.size
+                # Interpolación lineal de zoom: empieza recortado, termina encuadrado
+                zoom = 1.25 - (0.25 * t)          # 1.25 → 1.00
+                crop_w = int(mitad * zoom)
+                crop_h = int(alto  * zoom)
+                # Centrar el crop
+                cx = (scale_w - crop_w) // 2
+                cy = (scale_h - crop_h) // 2
+                cx = max(0, min(cx, scale_w - crop_w))
+                cy = max(0, min(cy, scale_h - crop_h))
+                img_crop = img_base.crop((cx, cy, cx + crop_w, cy + crop_h))
+                img_crop = img_crop.resize((mitad, alto), Image.LANCZOS)
+
+                # Gradiente izquierdo para fusionar con panel
+                grad = Image.new('RGBA', (mitad, alto), (0, 0, 0, 0))
+                gd   = ImageDraw.Draw(grad)
+                for xg in range(80):
+                    ag = int(255 * (1 - xg / 80))
+                    gd.line([(xg, 0), (xg, alto)], fill=(13, 17, 23, ag))
+                img_rgba = Image.alpha_composite(img_crop.convert('RGBA'), grad)
+                frame.paste(img_rgba.convert('RGB'), (mitad, 0))
+
+            # ── Panel izquierdo
+            panel = Image.new('RGBA', (mitad + 40, alto), (13, 17, 23, 235))
+            frame.paste(panel.convert('RGB'), (0, 0))
+            draw = ImageDraw.Draw(frame)
+
+            # ── Barra roja superior
+            draw.rectangle([(0, 0), (ancho, 52)], fill='#dc2626')
+            draw.text((20, 14), "  ÚLTIMA HORA  |  VERDAD HOY", font=font_bk, fill='white')
+
+            # ── Línea azul acento
+            draw.rectangle([(20, 68), (mitad - 20, 71)], fill='#3b82f6')
+
+            # ── Título con fade-in
+            titulo_wrap = textwrap.fill(titulo[:110], width=22)
+            y = 90
+            for linea in titulo_wrap.split('\n'):
+                tmp = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
+                ImageDraw.Draw(tmp).text((20, y), linea, font=font_tit,
+                                         fill=(255, 255, 255, alpha))
+                frame = Image.alpha_composite(frame.convert('RGBA'), tmp).convert('RGB')
+                draw  = ImageDraw.Draw(frame)
+                y += 56
+
+            # ── Separador
+            sep_y = y + 10
+            draw.rectangle([(20, sep_y), (mitad - 30, sep_y + 2)], fill='#3b82f6')
+
+            # ── Resumen con fade-in retardado
+            if progreso > 0.5:
+                alpha2 = int(255 * min((progreso - 0.5) * 2, 1.0))
+                res_c  = resumen[:200] + ('...' if len(resumen) > 200 else '')
+                tmp2   = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
+                ImageDraw.Draw(tmp2).text((20, sep_y + 14),
+                    textwrap.fill(res_c, width=38),
+                    font=font_res, fill=(203, 213, 225, alpha2))
+                frame = Image.alpha_composite(frame.convert('RGBA'), tmp2).convert('RGB')
+                draw  = ImageDraw.Draw(frame)
+
+            # ── Barra inferior logo
+            draw.rectangle([(0, alto - 44), (ancho, alto)], fill='#1e293b')
+            draw.text((20, alto - 30), "  Verdad Hoy | Agencia de Noticias  •  noticias internacionales",
+                      font=font_log, fill='#94a3b8')
+
+            frames.append(np.array(frame))
+
+        # ── 5. Ensamblar video + audio ─────────────────────
+        clip      = ImageSequenceClip(frames, fps=fps)
+        hash_v    = generar_hash(titulo)
+        video_path = f'/tmp/noticia_video_{hash_v}.mp4'
+
+        if audio_path and os.path.exists(audio_path):
+            try:
+                # FIX: recortar audio a duración del video - 0.3s para evitar error de límite
+                audio_clip = AudioFileClip(audio_path)
+                safe_dur   = min(audio_clip.duration - 0.3, duracion - 0.3)
+                audio_clip = audio_clip.subclip(0, max(1.0, safe_dur))
+                clip       = clip.set_audio(audio_clip)
                 clip.write_videofile(
                     video_path,
                     codec='libx264',
@@ -966,6 +1335,7 @@ def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
                     logger=None,
                 )
                 audio_clip.close()
+                log("🔊 Audio mezclado correctamente en el video", 'exito')
             except Exception as e:
                 log(f"⚠️ Error mezclando audio: {e} — generando sin audio", 'advertencia')
                 clip.write_videofile(
@@ -974,8 +1344,7 @@ def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
                 )
             finally:
                 try:
-                    if os.path.exists(audio_path):
-                        os.remove(audio_path)
+                    os.remove(audio_path)
                 except:
                     pass
         else:
@@ -1227,7 +1596,7 @@ def main():
 
     # Construir texto
     pub = construir_publicacion(seleccionada['titulo'], contenido, creditos, seleccionada['fuente'])
-    pub = agregar_cta(pub)  # V5: CTA para engagement
+    pub = agregar_cta(pub, seleccionada['titulo'], seleccionada.get('descripcion', ''))  # V5: CTA temático
     ht  = generar_hashtags(seleccionada['titulo'], contenido)
 
     # Imagen (usada como fondo del video o fallback)

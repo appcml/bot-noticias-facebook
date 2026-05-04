@@ -1,8 +1,9 @@
 name: Bot Noticias Facebook
+
 on:
   schedule:
-    # Corre cada hora — el bot mismo verifica si han pasado 55 min
-    - cron: '0 * * * *'
+    # Corre cada 30 minutos — WordPress publica cada 30 min, Facebook solo en horario pico
+    - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
       forzar:
@@ -13,17 +14,16 @@ on:
         options:
           - 'false'
           - 'true'
+
 jobs:
   publicar:
     runs-on: ubuntu-latest
-    # Permiso de escritura para poder hacer git push del historial
     permissions:
       contents: write
     steps:
       - name: Checkout repositorio
         uses: actions/checkout@v4
         with:
-          # Necesario para que git push funcione
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 1
 
@@ -40,29 +40,32 @@ jobs:
 
       - name: Ejecutar bot
         env:
+          # APIs de noticias
           NEWS_API_KEY:        ${{ secrets.NEWS_API_KEY }}
           NEWSDATA_API_KEY:    ${{ secrets.NEWSDATA_API_KEY }}
           GNEWS_API_KEY:       ${{ secrets.GNEWS_API_KEY }}
+          # Facebook
           FB_PAGE_ID:          ${{ secrets.FB_PAGE_ID }}
           FB_ACCESS_TOKEN:     ${{ secrets.FB_ACCESS_TOKEN }}
+          # WordPress — NUEVO V6
+          WP_URL:              ${{ secrets.WP_URL }}
+          WP_USER:             ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD:     ${{ secrets.WP_APP_PASSWORD }}
+          # Rutas historial
           HISTORIAL_PATH:      historial_publicaciones.json
           ESTADO_PATH:         estado_bot.json
           FORZAR_PUBLICACION:  ${{ github.event.inputs.forzar || 'false' }}
         run: python bot_noticias.py
 
-      # ─────────────────────────────────────────────────────
-      # PASO CRÍTICO: Guardar historial de vuelta en el repo
-      # Sin esto, el historial se pierde y el bot repite noticias
-      # ─────────────────────────────────────────────────────
       - name: Guardar historial en repositorio
         if: always()
         run: |
           git config user.name  "bot-noticias[bot]"
           git config user.email "bot-noticias@users.noreply.github.com"
-          if git diff --quiet historial_publicaciones.json estado_bot.json 2>/dev/null; then
+          git add -f historial_publicaciones.json estado_bot.json estado_wp.json estado_fb.json 2>/dev/null || true
+          if git diff --cached --quiet; then
             echo "ℹ️ Sin cambios en historial — no se hace commit"
           else
-            git add historial_publicaciones.json estado_bot.json
             git commit -m "📰 Historial actualizado [skip ci]"
             git push
             echo "✅ Historial guardado en repositorio"
@@ -76,4 +79,6 @@ jobs:
           path: |
             historial_publicaciones.json
             estado_bot.json
+            estado_wp.json
+            estado_fb.json
           retention-days: 7

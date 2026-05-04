@@ -301,6 +301,16 @@ def es_titulo_generico(titulo):
     palabras = [p for p in re.findall(r'\b\w+\b', tl) if p not in stop and len(p) > 3]
     return len(set(palabras)) < 4
 
+# Patrones de fuentes/medios que aparecen incrustados en el texto
+_FUENTES_INCRUSTADAS = re.compile(
+    r'\b(LISTIN DIARIO|Listín Diario|EL PAÍS|El País|BBC|CNN|Reuters|AFP|'
+    r'AP News|Associated Press|INFOBAE|Infobae|EFE|France 24|'
+    r'DW|Euronews|RT|Sputnik|Al Jazeera|The Guardian|'
+    r'NYT|New York Times|Washington Post|Fox News|'
+    r'ANSA|NHK|Deutsche Welle|RFI)\b[,.]?\s*',
+    re.IGNORECASE
+)
+
 def limpiar_texto(texto):
     if not texto:
         return ""
@@ -309,6 +319,8 @@ def limpiar_texto(texto):
     t = re.sub(r'<[^>]+>', ' ', t)
     t = re.sub(r'\s+', ' ', t)
     t = re.sub(r'https?://\S*', '', t)
+    # Eliminar nombres de fuentes incrustados en medio del texto
+    t = _FUENTES_INCRUSTADAS.sub('', t)
     t = t.strip()
     if t and t[-1] not in '.!?':
         t += '.'
@@ -569,12 +581,62 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
     cat_id   = obtener_id_categoria_wp(slug_cat)
     categorias = [cat_id] if cat_id else []
 
-    # Construir contenido HTML para WordPress
+    # Extraer nombre del medio desde la URL de la fuente
+    def extraer_nombre_medio(url):
+        try:
+            from urllib.parse import urlparse
+            dominio = urlparse(url).netloc.lower()
+            dominio = re.sub(r'^(www\.|m\.)', '', dominio)
+            # Mapeo de dominios conocidos a nombres
+            mapa = {
+                'listindiario.com': 'Listín Diario',
+                'elpais.com': 'El País',
+                'bbc.com': 'BBC Mundo', 'bbc.co.uk': 'BBC Mundo',
+                'cnn.com': 'CNN en Español',
+                'infobae.com': 'Infobae',
+                'reuters.com': 'Reuters',
+                'france24.com': 'France 24',
+                'efe.com': 'EFE',
+                'laopinioncoruna.es': 'La Opinión A Coruña',
+                'dw.com': 'Deutsche Welle',
+                'euronews.com': 'Euronews',
+                'theguardian.com': 'The Guardian',
+                'nytimes.com': 'New York Times',
+            }
+            for k, v in mapa.items():
+                if k in dominio:
+                    return v
+            # Si no está en el mapa, capitalizar el dominio
+            nombre = dominio.split('.')[0].replace('-', ' ').title()
+            return nombre
+        except:
+            return 'Fuente externa'
+
+    nombre_medio = extraer_nombre_medio(fuente_url)
+
+    # Construir contenido HTML con párrafos separados
+    # Dividir el contenido en párrafos por oraciones
+    oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
+    parrafos_html = []
+    parrafo_actual = []
+    palabras = 0
+    for oracion in oraciones:
+        parrafo_actual.append(oracion)
+        palabras += len(oracion.split())
+        if palabras >= 60:
+            parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
+            parrafo_actual = []
+            palabras = 0
+    if parrafo_actual:
+        parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
+
+    contenido_formateado = '\n'.join(parrafos_html[:15])  # máx 15 párrafos
+
     contenido_html = f"""
-<p>{contenido[:2000]}</p>
+{contenido_formateado}
 
 <hr>
-<p><strong>Fuente original:</strong> <a href="{fuente_url}" target="_blank" rel="nofollow noopener">{fuente_url}</a></p>
+<p><strong>Fuente:</strong> {nombre_medio}</p>
 <p><em>Información verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
 """
 
@@ -1002,7 +1064,9 @@ def construir_publicacion_fb(titulo, contenido, fuente, url_wp):
     t = limpiar_texto(titulo)
 
     # Primer párrafo limpio — máx 4 líneas en móvil
-    oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
+    # Limpiar fuentes incrustadas del contenido
+    contenido_limpio = _FUENTES_INCRUSTADAS.sub('', contenido).strip()
+    oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido_limpio) if len(o.strip()) > 20]
     parrafo = ""
     palabras_count = 0
     for oracion in oraciones[:6]:
@@ -1011,8 +1075,11 @@ def construir_publicacion_fb(titulo, contenido, fuente, url_wp):
         if palabras_count >= 45:
             break
     parrafo = parrafo.strip()
-    if len(parrafo) > 300:
-        parrafo = parrafo[:297].rsplit(' ', 1)[0] + '...'
+    # Terminar en punto limpio
+    if parrafo and parrafo[-1] not in '.!?':
+        parrafo += '...'
+    elif len(parrafo) > 280:
+        parrafo = parrafo[:277].rsplit(' ', 1)[0] + '...'
 
     lineas = [
         f"📰 {t}",

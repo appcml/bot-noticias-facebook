@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales para Facebook - V5.0
-MEJORAS DE ENGAGEMENT:
-  - Horarios pico para audiencia hispanohablante
-  - CTA automático al final de cada publicación
-  - Límite diario de posts (máx. 6/día)
+Bot de Noticias Internacionales - V6.0
+NUEVO EN V6:
+  - Publica PRIMERO en WordPress (cada 30 min, todo el día)
+  - Luego publica en Facebook (8 veces/día, solo horario pico)
+  - Link de verdadhoy.com incluido en cada post de Facebook
+  - Imagen OBLIGATORIA para publicar (no se publica sin imagen)
+  - Categorías sincronizadas con WordPress
 """
 
 import requests
@@ -29,73 +31,85 @@ GNEWS_API_KEY      = os.getenv('GNEWS_API_KEY')
 FB_PAGE_ID         = os.getenv('FB_PAGE_ID')
 FB_ACCESS_TOKEN    = os.getenv('FB_ACCESS_TOKEN')
 
-# RUTAS — en la raíz del repo para que git las encuentre fácil
+# ── NUEVO V6: WordPress ────────────────────────────────────
+WP_URL             = os.getenv('WP_URL', 'https://verdadhoy.com')
+WP_USER            = os.getenv('WP_USER', 'verdadhoy_admin')
+WP_APP_PASSWORD    = os.getenv('WP_APP_PASSWORD', '')
+
+# RUTAS
 HISTORIAL_PATH     = os.getenv('HISTORIAL_PATH', 'historial_publicaciones.json')
 ESTADO_PATH        = os.getenv('ESTADO_PATH',    'estado_bot.json')
+ESTADO_WP_PATH     = 'estado_wp.json'   # control separado para WordPress
+ESTADO_FB_PATH     = 'estado_fb.json'   # control separado para Facebook
 
-TIEMPO_ENTRE_PUBLICACIONES = 55   # minutos (un poco menos que 1h para dar margen)
+# Tiempos
+TIEMPO_ENTRE_WP_MIN    = 30   # WordPress: cada 30 minutos
+TIEMPO_ENTRE_FB_MIN    = 55   # Facebook: mínimo 55 min entre posts
 UMBRAL_SIMILITUD_TITULO    = 0.72
 UMBRAL_SIMILITUD_CONTENIDO = 0.62
-MAX_TITULOS_HISTORIA       = 300  # aumentado para mejor cobertura
-DIAS_HISTORIAL             = 14   # guardar 2 semanas
+MAX_TITULOS_HISTORIA       = 300
+DIAS_HISTORIAL             = 14
 
-# ── ENGAGEMENT V5 ──────────────────────────────────────────
-MAX_POSTS_POR_DIA = 8  # Mas de 8/dia penaliza el alcance organico en Facebook
+# ── ENGAGEMENT ─────────────────────────────────────────────
+MAX_POSTS_FB_DIA  = 8   # Facebook: máximo 8/día
+MAX_POSTS_WP_DIA  = 48  # WordPress: máximo 48/día (cada 30 min)
 
-# Horarios pico para audiencia hispanohablante (hora UTC)
-# Rangos amplios para cubrir distintas zonas horarias:
-# 00-04 UTC = tarde/noche America Central y Mexico
-# 10-14 UTC = manana Espana / manana America del Sur
-# 17-22 UTC = tarde-noche Espana / mediodia America
+# Horarios pico Facebook (hora UTC) — solo para RRSS
 HORARIOS_PICO_UTC = [
     (0, 4),
     (10, 14),
     (17, 22),
 ]
 
-# CTAs por tema — usados en descripción del post y video
+# ── CATEGORÍAS WORDPRESS ────────────────────────────────────
+# Deben coincidir con los slugs que creaste en WordPress
+CATEGORIA_WP = {
+    'guerra':       'internacional',
+    'politica':     'politica',
+    'economia':     'economia',
+    'tecnologia':   'tecnologia',
+    'desastre':     'internacional',
+    'deportes':     'deportes',
+    'ciencia':      'ciencia-y-salud',
+    'general':      'internacional',
+}
+
+# IDs de categorías WordPress (se obtienen automáticamente al publicar)
+_cache_categorias_wp = {}
+
+# CTAs por tema para Facebook
 CTAS_POR_TEMA = {
     'guerra': [
         "¿Crees que esto puede escalar a un conflicto mayor? Dinos abajo 👇",
         "¿Qué solución ves a este conflicto? Comenta 👇",
         "¿El mundo está haciendo suficiente? Tu opinión importa 👇",
-        "¿Esto te preocupa? Cuéntanos qué piensas 👇",
     ],
     'politica': [
         "¿Estás de acuerdo con esta decisión? Comenta SÍ o NO 👇",
         "¿Qué opinas de esta medida? Tu voz cuenta 👇",
         "¿Cómo crees que afectará esto a la región? Dinos 👇",
-        "¿Confías en estos líderes? Comenta abajo 👇",
     ],
     'economia': [
         "¿Sientes esto en tu bolsillo? Cuéntanos 👇",
         "¿Cómo te afecta esta situación económica? Comenta 👇",
         "¿Crees que mejorará la economía? SÍ o NO 👇",
-        "¿Qué medidas tomarías tú? Opina abajo 👇",
     ],
     'tecnologia': [
         "¿La IA nos ayuda o nos amenaza? Comenta 👇",
         "¿Usarías esta tecnología? Dinos 👇",
         "¿El futuro te emociona o te preocupa? Opina 👇",
-        "¿Qué piensas de este avance? Cuéntanos 👇",
     ],
     'desastre': [
         "Nuestros pensamientos con los afectados 🙏 Comenta abajo 👇",
         "¿Cómo podemos ayudar en situaciones así? Opina 👇",
-        "¿El mundo reacciona a tiempo ante estas crisis? 👇",
-        "¿Has vivido algo similar? Cuéntanos 👇",
     ],
     'general': [
         "¿Qué piensas de esta noticia? Comenta abajo 👇",
         "¿Sabías esto? Dinos SÍ o NO 👇",
-        "¿Te sorprende? Cuéntanos qué opinas 👇",
         "Comparte si crees que todos deben saberlo 🔁",
     ],
 }
 
-# CTAs para el VIDEO (panel rojo al final) — por tema
-# Línea 1: llamada a la acción temática
-# Línea 2: cierre fijo con instrucciones
 CTAS_VIDEO_POR_TEMA = {
     'guerra':     "¿Crees que esto escalará?",
     'politica':   "¿Estás de acuerdo?  SÍ o NO",
@@ -105,17 +119,18 @@ CTAS_VIDEO_POR_TEMA = {
     'general':    "¿Qué opinas de esta noticia?",
 }
 
-# Línea de cierre fija para todos los videos
 CTA_VIDEO_CIERRE = "💬 Comenta · 👍 Reacciona · 🔁 Comparte\nMás detalles en la descripción 👇"
 
-# Voces disponibles — rotación aleatoria para variedad
 VOCES_TTS = [
-    "es-MX-DaliaNeural",      # Presentadora mexicana — natural y cálida
-    "es-MX-JorgeNeural",      # Conductor mexicano — voz masculina seria
-    "es-CO-SalomeNeural",     # Presentadora colombiana — clara y dinámica
-    "es-AR-ElenaNeural",      # Presentadora argentina — expresiva
+    "es-MX-DaliaNeural",
+    "es-MX-JorgeNeural",
+    "es-CO-SalomeNeural",
+    "es-AR-ElenaNeural",
 ]
 
+# ──────────────────────────────────────────────────────────
+# DETECCIÓN DE TEMA
+# ──────────────────────────────────────────────────────────
 def detectar_tema(titulo, descripcion=""):
     txt = f"{titulo} {descripcion}".lower()
     if any(p in txt for p in ["guerra", "bombardeo", "misil", "ataque", "conflicto",
@@ -135,22 +150,25 @@ def detectar_tema(titulo, descripcion=""):
     if any(p in txt for p in ["terremoto", "huracan", "inundacion", "desastre",
                                "victimas", "muertos", "evacuacion", "tsunami"]):
         return 'desastre'
+    if any(p in txt for p in ["futbol", "deporte", "olimpiadas", "mundial", "copa",
+                               "atletismo", "tenis", "baloncesto", "nba", "fifa"]):
+        return 'deportes'
+    if any(p in txt for p in ["salud", "medicina", "ciencia", "investigacion",
+                               "vacuna", "virus", "cancer", "enfermedad"]):
+        return 'ciencia'
     return 'general'
 
 def agregar_cta(texto, titulo="", descripcion=""):
-    """Agrega un CTA temático al final del texto de la publicación."""
     tema = detectar_tema(titulo, descripcion)
     cta  = random.choice(CTAS_POR_TEMA.get(tema, CTAS_POR_TEMA['general']))
     return f"{texto}\n\n{cta}"
 
 def obtener_cta_video(titulo, descripcion=""):
-    """Retorna el CTA del video: línea temática + cierre fijo."""
     tema      = detectar_tema(titulo, descripcion)
     linea_cta = CTAS_VIDEO_POR_TEMA.get(tema, CTAS_VIDEO_POR_TEMA['general'])
     return linea_cta, CTA_VIDEO_CIERRE
 
 def obtener_voz_aleatoria():
-    """Selecciona aleatoriamente una voz de presentador/a para variedad."""
     voz = random.choice(VOCES_TTS)
     log(f"🎙️ Voz seleccionada: {voz}", 'info')
     return voz
@@ -177,9 +195,9 @@ PALABRAS_ALTA_PRIORIDAD = [
     "petroleo", "gas", "crisis energetica",
     "ciberataque", "hackeo", "inteligencia artificial",
     "ultima hora", "urgente", "breaking",
-    "putin", "zelensky", "trump", "biden", "netanyahu", "khamenei",
-    "xi jinping", "kim jong un", "macron", "scholz",
-    "hamas", "hezbollah", "isis", "estado islamico", "taliban", "houthis",
+    "putin", "zelensky", "trump", "biden", "netanyahu",
+    "xi jinping", "kim jong un", "macron",
+    "hamas", "hezbollah", "isis", "taliban", "houthis",
     "elon musk",
 ]
 
@@ -191,7 +209,7 @@ PALABRAS_MEDIA_PRIORIDAD = [
 ]
 
 # ──────────────────────────────────────────────────────────
-# UTILIDADES BÁSICAS
+# UTILIDADES
 # ──────────────────────────────────────────────────────────
 def log(mensaje, tipo='info'):
     iconos = {'info': 'ℹ️', 'exito': '✅', 'error': '❌', 'advertencia': '⚠️', 'debug': '🔍'}
@@ -207,12 +225,6 @@ def cargar_json(ruta, default=None):
                 return json.loads(content) if content else default.copy()
         except Exception as e:
             log(f"Error cargando JSON {ruta}: {e}", 'error')
-            try:
-                backup = f"{ruta}.backup.{datetime.now().strftime('%Y%m%d%H%M%S')}"
-                os.rename(ruta, backup)
-                log(f"Backup creado: {backup}", 'advertencia')
-            except:
-                pass
     return default.copy()
 
 def guardar_json(ruta, datos):
@@ -324,7 +336,7 @@ def calcular_puntaje(titulo, desc):
     return p
 
 # ──────────────────────────────────────────────────────────
-# HISTORIAL — LÓGICA ANTI-DUPLICADOS
+# HISTORIAL
 # ──────────────────────────────────────────────────────────
 HISTORIAL_DEFAULT = {
     'urls': [],
@@ -335,7 +347,7 @@ HISTORIAL_DEFAULT = {
     'descripciones': [],
     'hashes_contenido': [],
     'hashes_permanentes': [],
-    'estadisticas': {'total_publicadas': 0}
+    'estadisticas': {'total_publicadas': 0, 'total_wp': 0, 'total_fb': 0}
 }
 
 def cargar_historial():
@@ -355,81 +367,51 @@ def _limpiar_historial_antiguo(h):
                 indices_validos.append(i)
         except:
             continue
-
     claves_con_indice = ['urls', 'urls_normalizadas', 'hashes', 'timestamps',
                          'titulos', 'descripciones', 'hashes_contenido']
     for key in claves_con_indice:
         if key in h and isinstance(h[key], list):
             h[key] = [h[key][i] for i in indices_validos if i < len(h[key])]
-
-    # Limitar hashes permanentes
     if len(h.get('hashes_permanentes', [])) > 500:
         h['hashes_permanentes'] = h['hashes_permanentes'][-500:]
 
 def noticia_ya_publicada(h, url, titulo, desc=""):
-    """
-    Devuelve (True, razon) si la noticia ya fue publicada, (False, "nuevo") si es nueva.
-    """
     if es_titulo_generico(titulo):
         return True, "titulo_generico"
-
     url_n   = normalizar_url(url)
     hash_t  = generar_hash(titulo)
     hash_d  = generar_hash(desc) if desc else ""
     dominio = extraer_dominio(url)
-
-    # 1. URL normalizada exacta
     if url_n in h.get('urls_normalizadas', []):
-        log(f"   ❌ URL duplicada: {url_n[:60]}", 'debug')
         return True, "url_duplicada"
-
-    # 2. Hash de título exacto (incluye permanentes)
     todos_hashes = set(h.get('hashes', [])) | set(h.get('hashes_permanentes', []))
     if hash_t in todos_hashes:
-        log(f"   ❌ Hash título duplicado", 'debug')
         return True, "hash_titulo"
-
-    # 3. Hash de descripción
     if hash_d and hash_d in h.get('hashes_contenido', []):
-        log(f"   ❌ Hash contenido duplicado", 'debug')
         return True, "hash_contenido"
-
-    # 4. Similitud de títulos (global)
     for th in h.get('titulos', []):
         if not isinstance(th, str):
             continue
         sim = similitud_titulos(titulo, th)
         if sim >= UMBRAL_SIMILITUD_TITULO:
-            log(f"   ❌ Título similar ({sim:.1%}): {th[:50]}", 'debug')
             return True, f"titulo_similar_{sim:.2f}"
-
-    # 5. Mismo dominio + título muy parecido
     for i, uh in enumerate(h.get('urls', [])):
         if extraer_dominio(uh) == dominio and i < len(h.get('titulos', [])):
             sim = similitud_titulos(titulo, h['titulos'][i])
             if sim >= 0.82:
-                log(f"   ❌ Misma noticia en {dominio} ({sim:.1%})", 'debug')
                 return True, f"mismo_sitio_{sim:.2f}"
-
-    # 6. Similitud de descripción
     if desc:
         for dh in h.get('descripciones', []):
             if isinstance(dh, str) and dh:
                 if similitud_contenido(desc, dh, 150) >= UMBRAL_SIMILITUD_CONTENIDO:
-                    log(f"   ❌ Descripción similar", 'debug')
                     return True, "descripcion_similar"
-
     return False, "nuevo"
 
 def guardar_en_historial(h, url, titulo, desc=""):
     url_n  = normalizar_url(url)
     hash_t = generar_hash(titulo)
-
-    # Doble check antes de guardar
     if url_n in h.get('urls_normalizadas', []):
-        log("⚠️ Intento de duplicado en guardar_en_historial", 'advertencia')
         return h
-
     h['urls'].append(url)
     h['urls_normalizadas'].append(url_n)
     h['hashes'].append(hash_t)
@@ -439,75 +421,192 @@ def guardar_en_historial(h, url, titulo, desc=""):
     h['hashes_contenido'].append(generar_hash(desc) if desc else "")
     h['hashes_permanentes'].append(hash_t)
     h['estadisticas']['total_publicadas'] = h['estadisticas'].get('total_publicadas', 0) + 1
-
-    # Recortar listas largas
     for k in ['urls', 'urls_normalizadas', 'hashes', 'timestamps',
               'titulos', 'descripciones', 'hashes_contenido']:
         if len(h[k]) > MAX_TITULOS_HISTORIA:
             h[k] = h[k][-MAX_TITULOS_HISTORIA:]
-
     if len(h['hashes_permanentes']) > 500:
         h['hashes_permanentes'] = h['hashes_permanentes'][-500:]
-
     if guardar_json(HISTORIAL_PATH, h):
         log(f"💾 Historial guardado: {len(h['urls'])} entradas", 'exito')
-    else:
-        log("❌ Error guardando historial", 'error')
-
     return h
 
 # ──────────────────────────────────────────────────────────
-# CONTROL DE TIEMPO
+# CONTROL DE TIEMPO — SEPARADO PARA WP Y FB
 # ──────────────────────────────────────────────────────────
-def verificar_tiempo():
-    # Si se activa manualmente con FORZAR_PUBLICACION=true, saltar control de tiempo
+def puede_publicar_wp():
+    """WordPress: cada 30 minutos, todo el día."""
     if os.getenv('FORZAR_PUBLICACION', '').lower() == 'true':
-        log("⚡ Modo forzado — omitiendo control de tiempo", 'advertencia')
         return True
-    e = cargar_json(ESTADO_PATH, {'ultima_publicacion': None})
+    e = cargar_json(ESTADO_WP_PATH, {'ultima_publicacion': None})
     u = e.get('ultima_publicacion')
     if not u:
         return True
     try:
         minutos = (datetime.now() - datetime.fromisoformat(u)).total_seconds() / 60
-        if minutos < TIEMPO_ENTRE_PUBLICACIONES:
-            log(f"⏱️ Publicado hace {minutos:.0f} min — mínimo {TIEMPO_ENTRE_PUBLICACIONES} min", 'info')
+        if minutos < TIEMPO_ENTRE_WP_MIN:
+            log(f"⏱️ WP: publicado hace {minutos:.0f} min — mínimo {TIEMPO_ENTRE_WP_MIN} min", 'info')
             return False
     except:
         pass
     return True
 
-def guardar_estado():
-    guardar_json(ESTADO_PATH, {'ultima_publicacion': datetime.now().isoformat()})
-
-# ──────────────────────────────────────────────────────────
-# CONTROL DE ENGAGEMENT (V5)
-# ──────────────────────────────────────────────────────────
-def esta_en_horario_pico():
-    """Devuelve True si la hora UTC actual está en una ventana de alta audiencia."""
+def puede_publicar_fb(h):
+    """Facebook: solo en horario pico + máximo 8/día + mínimo 55 min entre posts."""
     if os.getenv('FORZAR_PUBLICACION', '').lower() == 'true':
-        log("⚡ Modo forzado — omitiendo control de horario pico", 'advertencia')
         return True
-    hora_utc = datetime.utcnow().hour
-    for inicio, fin in HORARIOS_PICO_UTC:
-        if inicio <= hora_utc < fin:
-            return True
-    log(f"⏰ Fuera de horario pico (hora UTC: {hora_utc:02d}:xx) — publicación omitida", 'info')
-    return False
 
-def limite_diario_alcanzado(h):
-    """Devuelve True si ya se publicaron MAX_POSTS_POR_DIA hoy."""
+    # Control horario pico
+    hora_utc = datetime.utcnow().hour
+    en_pico = any(inicio <= hora_utc < fin for inicio, fin in HORARIOS_PICO_UTC)
+    if not en_pico:
+        log(f"⏰ FB: fuera de horario pico (UTC {hora_utc:02d}h)", 'info')
+        return False
+
+    # Control límite diario
     hoy = datetime.now().date()
-    publicadas_hoy = sum(
+    posts_hoy = sum(
         1 for ts in h.get('timestamps', [])
         if ts and datetime.fromisoformat(ts).date() == hoy
     )
-    if publicadas_hoy >= MAX_POSTS_POR_DIA:
-        log(f"🚫 Límite diario alcanzado: {publicadas_hoy}/{MAX_POSTS_POR_DIA} posts hoy", 'advertencia')
-        return True
-    log(f"📊 Posts hoy: {publicadas_hoy}/{MAX_POSTS_POR_DIA}", 'info')
-    return False
+    if posts_hoy >= MAX_POSTS_FB_DIA:
+        log(f"🚫 FB: límite diario alcanzado ({posts_hoy}/{MAX_POSTS_FB_DIA})", 'advertencia')
+        return False
 
+    # Control tiempo mínimo entre posts
+    e = cargar_json(ESTADO_FB_PATH, {'ultima_publicacion': None})
+    u = e.get('ultima_publicacion')
+    if u:
+        try:
+            minutos = (datetime.now() - datetime.fromisoformat(u)).total_seconds() / 60
+            if minutos < TIEMPO_ENTRE_FB_MIN:
+                log(f"⏱️ FB: publicado hace {minutos:.0f} min — mínimo {TIEMPO_ENTRE_FB_MIN} min", 'info')
+                return False
+        except:
+            pass
+
+    log(f"✅ FB: en horario pico, {posts_hoy}/{MAX_POSTS_FB_DIA} posts hoy", 'info')
+    return True
+
+def guardar_estado_wp():
+    guardar_json(ESTADO_WP_PATH, {'ultima_publicacion': datetime.now().isoformat()})
+
+def guardar_estado_fb():
+    guardar_json(ESTADO_FB_PATH, {'ultima_publicacion': datetime.now().isoformat()})
+
+# ──────────────────────────────────────────────────────────
+# NUEVO V6: PUBLICAR EN WORDPRESS
+# ──────────────────────────────────────────────────────────
+def obtener_id_categoria_wp(slug_categoria):
+    """Obtiene el ID de una categoría de WordPress por su slug."""
+    global _cache_categorias_wp
+    if slug_categoria in _cache_categorias_wp:
+        return _cache_categorias_wp[slug_categoria]
+    try:
+        r = requests.get(
+            f"{WP_URL}/wp-json/wp/v2/categories",
+            params={'slug': slug_categoria, 'per_page': 1},
+            auth=(WP_USER, WP_APP_PASSWORD),
+            timeout=15
+        ).json()
+        if r and isinstance(r, list) and len(r) > 0:
+            cat_id = r[0]['id']
+            _cache_categorias_wp[slug_categoria] = cat_id
+            log(f"📂 Categoría WP '{slug_categoria}' → ID {cat_id}", 'info')
+            return cat_id
+    except Exception as e:
+        log(f"⚠️ Error obteniendo categoría WP '{slug_categoria}': {e}", 'advertencia')
+    return None
+
+def subir_imagen_wp(imagen_path, titulo):
+    """Sube una imagen a la biblioteca de medios de WordPress."""
+    if not imagen_path or not os.path.exists(imagen_path):
+        return None
+    try:
+        nombre_archivo = f"noticia-{generar_hash(titulo)}.jpg"
+        with open(imagen_path, 'rb') as f:
+            r = requests.post(
+                f"{WP_URL}/wp-json/wp/v2/media",
+                headers={
+                    'Content-Disposition': f'attachment; filename="{nombre_archivo}"',
+                    'Content-Type': 'image/jpeg',
+                },
+                data=f.read(),
+                auth=(WP_USER, WP_APP_PASSWORD),
+                timeout=60
+            ).json()
+        if 'id' in r:
+            log(f"🖼️ Imagen subida a WP — ID: {r['id']}", 'exito')
+            return r['id']
+        else:
+            log(f"⚠️ Error subiendo imagen a WP: {r.get('message', 'desconocido')}", 'advertencia')
+    except Exception as e:
+        log(f"⚠️ Excepción subiendo imagen WP: {e}", 'advertencia')
+    return None
+
+def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
+    """
+    Publica una noticia en WordPress y retorna la URL del artículo.
+    REQUIERE imagen obligatoriamente.
+    """
+    if not WP_APP_PASSWORD:
+        log("⚠️ WP_APP_PASSWORD no configurado — saltando WordPress", 'advertencia')
+        return None
+
+    if not imagen_path:
+        log("❌ No hay imagen — no se publica en WordPress", 'error')
+        return None
+
+    # Subir imagen primero
+    imagen_id = subir_imagen_wp(imagen_path, titulo)
+    if not imagen_id:
+        log("❌ No se pudo subir imagen a WP — cancelando", 'error')
+        return None
+
+    # Obtener categoría
+    slug_cat = CATEGORIA_WP.get(tema, 'internacional')
+    cat_id   = obtener_id_categoria_wp(slug_cat)
+    categorias = [cat_id] if cat_id else []
+
+    # Construir contenido HTML para WordPress
+    contenido_html = f"""
+<p>{contenido[:2000]}</p>
+
+<hr>
+<p><strong>Fuente original:</strong> <a href="{fuente_url}" target="_blank" rel="nofollow noopener">{fuente_url}</a></p>
+<p><em>Información verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
+"""
+
+    # Datos del post
+    post_data = {
+        'title':          titulo,
+        'content':        contenido_html,
+        'status':         'publish',
+        'featured_media': imagen_id,
+        'categories':     categorias,
+        'meta': {
+            '_yoast_wpseo_metadesc': contenido[:155],  # Meta descripción para SEO
+        }
+    }
+
+    try:
+        r = requests.post(
+            f"{WP_URL}/wp-json/wp/v2/posts",
+            json=post_data,
+            auth=(WP_USER, WP_APP_PASSWORD),
+            timeout=30
+        ).json()
+
+        if 'id' in r:
+            url_articulo = r.get('link', f"{WP_URL}/?p={r['id']}")
+            log(f"✅ Publicado en WordPress — ID: {r['id']} | URL: {url_articulo}", 'exito')
+            return url_articulo
+        else:
+            log(f"❌ Error WordPress: {r.get('message', 'desconocido')}", 'error')
+    except Exception as e:
+        log(f"❌ Excepción publicando en WP: {e}", 'error')
+
+    return None
 
 # ──────────────────────────────────────────────────────────
 # FUENTES DE NOTICIAS
@@ -592,7 +691,7 @@ def obtener_newsdata():
 def obtener_gnews():
     if not GNEWS_API_KEY:
         return []
-    topicos = ['world', 'nation', 'business', 'technology']
+    topicos = ['world', 'nation', 'business', 'technology', 'sports', 'health']
     noticias = []
     for topic in topicos:
         try:
@@ -665,35 +764,29 @@ def obtener_rss():
     return noticias
 
 # ──────────────────────────────────────────────────────────
-# DEDUPLICACIÓN LOCAL (dentro del batch actual)
+# DEDUPLICACIÓN
 # ──────────────────────────────────────────────────────────
 def deduplicar_batch(noticias):
     urls_vistas    = set()
     titulos_vistos = []
     resultado      = []
-
     for n in noticias:
         url_n  = normalizar_url(n.get('url', ''))
         titulo = n.get('titulo', '')
-
         if not url_n or not titulo:
             continue
         if url_n in urls_vistas:
             continue
-
         es_dup = False
         for t_previo in titulos_vistos:
             if similitud_titulos(titulo, t_previo) > 0.78:
                 es_dup = True
                 break
-
         if es_dup:
             continue
-
         urls_vistas.add(url_n)
         titulos_vistos.append(titulo)
         resultado.append(n)
-
     log(f"Dedup batch: {len(noticias)} → {len(resultado)} únicas", 'info')
     return resultado
 
@@ -747,34 +840,114 @@ def descargar_imagen(url):
         from io import BytesIO
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=20, stream=True)
         if r.status_code != 200:
-            log(f"⚠️ Imagen HTTP {r.status_code}: {url[:60]}", 'debug')
             return None
         ct = r.headers.get('content-type', '')
         if 'image' not in ct and 'octet' not in ct:
-            log(f"⚠️ Content-type no imagen: {ct}", 'debug')
             return None
         data = r.content
         img = Image.open(BytesIO(data))
         w, h = img.size
-        # Límites más permisivos — solo descartar íconos muy pequeños
         if w < 200 or h < 150:
-            log(f"⚠️ Imagen muy pequeña: {w}x{h}", 'debug')
             return None
         if img.mode in ('RGBA', 'P', 'LA'):
             img = img.convert('RGB')
         img.thumbnail((1280, 1280))
+        # Agregar watermark verdadhoy.com
+        img = agregar_watermark(img, posicion='esquina_inferior_derecha')
         p = f'/tmp/noticia_{generar_hash(url)}.jpg'
         img.save(p, 'JPEG', quality=88)
         if os.path.getsize(p) < 3000:
             os.remove(p)
             return None
-        log(f"🖼️ Imagen descargada: {w}x{h} → {p}", 'debug')
+        log(f"🖼️ Imagen descargada con watermark: {w}x{h}", 'debug')
         return p
     except Exception as e:
         log(f"⚠️ Error descargando imagen: {e}", 'debug')
         return None
 
+def agregar_watermark(img, posicion='esquina_inferior_derecha'):
+    """
+    Agrega watermark 'verdadhoy.com' a una imagen PIL.
+    Posiciones: esquina_inferior_derecha, esquina_inferior_izquierda,
+                esquina_superior_derecha, esquina_superior_izquierda
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        draw = ImageDraw.Draw(img)
+        ancho, alto = img.size
+
+        # Fuente para el watermark
+        try:
+            font_wm = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+        except:
+            font_wm = ImageFont.load_default()
+
+        texto_wm = "verdadhoy.com"
+
+        # Calcular tamaño del texto
+        try:
+            bbox = draw.textbbox((0, 0), texto_wm, font=font_wm)
+            txt_w = bbox[2] - bbox[0]
+            txt_h = bbox[3] - bbox[1]
+        except:
+            txt_w, txt_h = 140, 20
+
+        margen = 14
+        padding = 6
+
+        # Calcular posición
+        if posicion == 'esquina_inferior_derecha':
+            x = ancho - txt_w - margen - padding * 2
+            y = alto - txt_h - margen - padding * 2
+        elif posicion == 'esquina_inferior_izquierda':
+            x = margen
+            y = alto - txt_h - margen - padding * 2
+        elif posicion == 'esquina_superior_derecha':
+            x = ancho - txt_w - margen - padding * 2
+            y = margen
+        else:  # superior izquierda
+            x = margen
+            y = margen
+
+        # Fondo semitransparente detrás del texto
+        overlay = Image.new('RGBA', img.size, (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        overlay_draw.rounded_rectangle(
+            [x - padding, y - padding,
+             x + txt_w + padding, y + txt_h + padding],
+            radius=4,
+            fill=(0, 0, 0, 160)  # negro semitransparente
+        )
+        img = img.convert('RGBA')
+        img = Image.alpha_composite(img, overlay).convert('RGB')
+
+        # Texto del watermark
+        draw = ImageDraw.Draw(img)
+        # Sombra
+        draw.text((x + 1, y + 1), texto_wm, font=font_wm, fill=(0, 0, 0, 180))
+        # Texto principal en dorado
+        draw.text((x, y), texto_wm, font=font_wm, fill='#f5c518')
+
+        return img
+    except Exception as e:
+        log(f"⚠️ Error agregando watermark: {e}", 'debug')
+        return img
+
+def aplicar_watermark_a_archivo(imagen_path):
+    """Aplica watermark a un archivo de imagen y lo guarda en el mismo path."""
+    try:
+        from PIL import Image
+        img = Image.open(imagen_path).convert('RGB')
+        img = agregar_watermark(img, posicion='esquina_inferior_derecha')
+        img.save(imagen_path, 'JPEG', quality=88)
+        log("🏷️ Watermark agregado a imagen", 'exito')
+        return imagen_path
+    except Exception as e:
+        log(f"⚠️ Error aplicando watermark: {e}", 'debug')
+        return imagen_path
+
 def crear_imagen_titulo(titulo):
+    """Genera imagen de respaldo con el título — solo si no hay imagen real."""
     try:
         from PIL import Image, ImageDraw, ImageFont
         import textwrap
@@ -791,690 +964,18 @@ def crear_imagen_titulo(titulo):
         y  = (630 - len(ls) * 50) // 2 - 50
         draw.text((60, y), tt, font=fb, fill='white')
         draw.text((60, 550), "🌍 Noticias Internacionales", font=fs, fill='#94a3b8')
-        draw.text((60, 580), "Verdad Hoy • Agencia de Noticias", font=fs, fill='#64748b')
+        draw.text((60, 580), "Verdad Hoy • Tu fuente confiable", font=fs, fill='#64748b')
         p = f'/tmp/noticia_gen_{generar_hash(titulo)}.jpg'
+        # Watermark antes de guardar
+        img = agregar_watermark(img, posicion='esquina_inferior_derecha')
         img.save(p, 'JPEG', quality=90)
+        log("🖼️ Imagen generada desde título (fallback)", 'advertencia')
         return p
     except:
         return None
 
 # ──────────────────────────────────────────────────────────
-# GENERACIÓN DE VIDEO (V5)
-# ──────────────────────────────────────────────────────────
-def crear_frame(titulo, resumen, logo_texto, ancho=1280, alto=720,
-                fondo_path=None, progreso=0.0):
-    """
-    Genera un frame PIL con diseño split:
-    - Mitad derecha: imagen nítida de la noticia
-    - Mitad izquierda: panel oscuro con texto
-    progreso: 0.0 a 1.0 para controlar opacidad del texto (fade-in).
-    """
-    from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
-    import textwrap
-
-    mitad = ancho // 2  # 640px
-
-    # ── Fondo base oscuro ──────────────────────────────────
-    frame = Image.new('RGB', (ancho, alto), '#0d1117')
-
-    # ── Imagen nítida en la mitad derecha ──────────────────
-    if fondo_path:
-        try:
-            img = Image.open(fondo_path).convert('RGB')
-            # Recortar y escalar para llenar la mitad derecha
-            img_ratio = img.width / img.height
-            target_ratio = mitad / alto
-            if img_ratio > target_ratio:
-                new_h = alto
-                new_w = int(alto * img_ratio)
-            else:
-                new_w = mitad
-                new_h = int(mitad / img_ratio)
-            img = img.resize((new_w, new_h), Image.LANCZOS)
-            # Centrar crop
-            x = (new_w - mitad) // 2
-            y = (new_h - alto) // 2
-            img = img.crop((x, y, x + mitad, y + alto))
-            # Leve mejora de nitidez y contraste
-            img = ImageEnhance.Sharpness(img).enhance(1.4)
-            img = ImageEnhance.Contrast(img).enhance(1.1)
-            # Gradiente izquierdo para fusionar con panel de texto
-            grad = Image.new('RGBA', (mitad, alto), (0, 0, 0, 0))
-            gd = ImageDraw.Draw(grad)
-            for x_g in range(80):
-                alpha_g = int(255 * (1 - x_g / 80))
-                gd.line([(x_g, 0), (x_g, alto)], fill=(13, 17, 23, alpha_g))
-            img_rgba = img.convert('RGBA')
-            img_rgba = Image.alpha_composite(img_rgba, grad)
-            frame.paste(img_rgba.convert('RGB'), (mitad, 0))
-        except Exception as e:
-            log(f"⚠️ Error cargando imagen fondo: {e}", 'debug')
-
-    # ── Panel izquierdo semitransparente ───────────────────
-    panel = Image.new('RGBA', (mitad + 40, alto), (13, 17, 23, 230))
-    frame.paste(panel.convert('RGB'), (0, 0))
-
-    draw = ImageDraw.Draw(frame)
-
-    # ── Fuentes ────────────────────────────────────────────
-    font_paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-    ]
-    font_paths_reg = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-    ]
-    def cargar_fuente(paths, size):
-        for p in paths:
-            try:
-                return ImageFont.truetype(p, size)
-            except:
-                continue
-        return ImageFont.load_default()
-
-    font_breaking = cargar_fuente(font_paths, 24)
-    font_titulo   = cargar_fuente(font_paths, 44)
-    font_resumen  = cargar_fuente(font_paths_reg, 24)
-    font_logo     = cargar_fuente(font_paths, 20)
-
-    alpha = int(255 * min(progreso * 2, 1.0))  # fade-in
-
-    # ── Barra superior roja "ÚLTIMA HORA" ─────────────────
-    draw.rectangle([(0, 0), (ancho, 52)], fill='#dc2626')
-    draw.text((20, 14), "  ÚLTIMA HORA  |  VERDAD HOY", font=font_breaking, fill='white')
-
-    # ── Línea acento azul ──────────────────────────────────
-    draw.rectangle([(20, 68), (mitad - 20, 71)], fill='#3b82f6')
-
-    # ── Título (fade-in, limitado al panel izquierdo) ─────
-    titulo_wrap = textwrap.fill(titulo[:110], width=22)
-    lineas_titulo = titulo_wrap.split('\n')
-    y_titulo = 90
-    for linea in lineas_titulo:
-        tmp = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
-        d2  = ImageDraw.Draw(tmp)
-        d2.text((20, y_titulo), linea, font=font_titulo, fill=(255, 255, 255, alpha))
-        frame = Image.alpha_composite(frame.convert('RGBA'), tmp).convert('RGB')
-        draw  = ImageDraw.Draw(frame)
-        y_titulo += 56
-
-    # ── Línea separadora ──────────────────────────────────
-    sep_y = y_titulo + 10
-    draw.rectangle([(20, sep_y), (mitad - 30, sep_y + 2)], fill='#3b82f6')
-
-    # ── Resumen (aparece después, limitado al panel) ──────
-    if progreso > 0.5:
-        alpha2 = int(255 * min((progreso - 0.5) * 2, 1.0))
-        resumen_corto = resumen[:200] + ('...' if len(resumen) > 200 else '')
-        resumen_wrap  = textwrap.fill(resumen_corto, width=38)
-        tmp2 = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
-        d3   = ImageDraw.Draw(tmp2)
-        d3.text((20, sep_y + 14), resumen_wrap, font=font_resumen,
-                fill=(203, 213, 225, alpha2))
-        frame = Image.alpha_composite(frame.convert('RGBA'), tmp2).convert('RGB')
-        draw  = ImageDraw.Draw(frame)
-
-    # ── Barra inferior con logo ────────────────────────────
-    draw.rectangle([(0, alto - 44), (ancho, alto)], fill='#1e293b')
-    draw.text((20, alto - 30), f"  {logo_texto}  •  noticias internacionales",
-              font=font_logo, fill='#94a3b8')
-
-    return frame
-
-
-def crear_audio_noticia(titulo, resumen, cta=""):
-    """
-    Genera audio TTS con voz natural de presentadora latina (edge-tts, Microsoft).
-    Lee: titular → resumen → CTA temático → invitación a comentar.
-    Fallback: espeak si edge-tts no está disponible.
-    """
-    try:
-        import asyncio
-        import edge_tts
-
-        resumen_corto = resumen[:350]
-        for sep in ['. ', '! ', '? ']:
-            idx = resumen_corto.rfind(sep)
-            if idx > 80:
-                resumen_corto = resumen_corto[:idx + 1]
-                break
-
-        # Guión completo: titular + resumen + CTA + cierre
-        cta_limpio = re.sub(r'[👇💬👍🔁🙏]', '', cta).strip() if cta else ""
-        guion = (
-            f"Última hora. {titulo}. "
-            f"{resumen_corto} "
-            f"{cta_limpio + '. ' if cta_limpio else ''}"
-            f"Comenta, reacciona y comparte. "
-            f"Más detalles en la descripción de esta publicación."
-        )
-        guion = re.sub(r'[#@\[\]<>*_]', '', guion)
-        guion = re.sub(r'https?://\S+', '', guion)
-        guion = re.sub(r'\s+', ' ', guion).strip()
-
-        hash_a   = generar_hash(titulo)
-        mp3_path = f'/tmp/noticia_audio_{hash_a}.mp3'
-
-        async def generar():
-            communicate = edge_tts.Communicate(
-                guion,
-                voice=obtener_voz_aleatoria(),  # Voz aleatoria para variedad
-                rate="+8%",
-                volume="+0%",
-            )
-            await communicate.save(mp3_path)
-
-        asyncio.run(generar())
-
-        if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 1000:
-            log(f"🔊 Audio edge-tts generado ({os.path.getsize(mp3_path)//1024} KB)", 'exito')
-            return mp3_path
-
-        log("⚠️ edge-tts no generó audio válido — usando espeak", 'advertencia')
-
-    except ImportError:
-        log("⚠️ edge-tts no instalado — usando espeak", 'advertencia')
-    except Exception as e:
-        log(f"⚠️ edge-tts falló ({e}) — usando espeak", 'advertencia')
-
-    # ── Fallback: espeak ──────────────────────────────────
-    try:
-        import subprocess
-        resumen_corto = resumen[:300]
-        for sep in ['. ', '! ', '? ']:
-            idx = resumen_corto.rfind(sep)
-            if idx > 80:
-                resumen_corto = resumen_corto[:idx + 1]
-                break
-        cta_limpio = re.sub(r'[👇💬👍🔁🙏]', '', cta).strip() if cta else ""
-        guion = (
-            f"Última hora. {titulo}. "
-            f"{resumen_corto} "
-            f"{cta_limpio + '. ' if cta_limpio else ''}"
-            f"Comenta, reacciona y comparte. "
-            f"Más detalles en la descripción."
-        )
-        guion = re.sub(r'[#@\[\]<>*_]', '', guion)
-        guion = re.sub(r'https?://\S+', '', guion)
-        guion = re.sub(r'\s+', ' ', guion).strip()
-
-        hash_a   = generar_hash(titulo)
-        wav_path = f'/tmp/noticia_audio_{hash_a}.wav'
-        mp3_path = f'/tmp/noticia_audio_{hash_a}.mp3'
-
-        r = subprocess.run(
-            ['espeak', '-v', 'es-la', '-s', '155', '-p', '52', '-a', '180',
-             '-w', wav_path, guion],
-            capture_output=True, text=True, timeout=30
-        )
-        if r.returncode == 0 and os.path.exists(wav_path):
-            subprocess.run(['ffmpeg', '-y', '-i', wav_path, '-codec:a', 'libmp3lame',
-                            '-q:a', '4', mp3_path], capture_output=True, timeout=30)
-            try: os.remove(wav_path)
-            except: pass
-            if os.path.exists(mp3_path):
-                log(f"🔊 Audio espeak generado ({os.path.getsize(mp3_path)//1024} KB)", 'exito')
-                return mp3_path
-    except Exception as e:
-        log(f"⚠️ espeak también falló: {e}", 'advertencia')
-
-    return None
-
-
-def crear_video_noticia(titulo, resumen, fondo_path=None, duracion=28, fps=24):
-    """
-    Genera un video MP4 con:
-    - Voz TTS que lee el titular y resumen
-    - Efecto Ken Burns (zoom lento) en la imagen
-    - Panel CTA rojo temático al final
-    """
-    try:
-        from moviepy.editor import ImageSequenceClip, AudioFileClip
-        import numpy as np
-        from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
-        import textwrap
-
-        log("🎬 Generando video noticiario...", 'info')
-
-        # CTA temático para el video (dos líneas)
-        cta_linea1, cta_linea2 = obtener_cta_video(titulo, resumen)
-
-        # ── 1. Generar audio TTS ──────────────────────────
-        audio_path = crear_audio_noticia(titulo, resumen, cta_linea1)
-        audio_dur   = 0.0
-        if audio_path:
-            try:
-                ac = AudioFileClip(audio_path)
-                audio_dur = ac.duration
-                ac.close()
-                duracion = max(20, min(50, int(audio_dur) + 2))
-                log(f"⏱️ Duración ajustada al audio: {duracion}s (audio: {audio_dur:.1f}s)", 'info')
-            except Exception as e:
-                log(f"⚠️ No se pudo leer duración del audio: {e}", 'advertencia')
-                duracion = 28
-
-        ancho, alto  = 1280, 720
-        mitad        = ancho // 2
-        total_frames = duracion * fps
-
-        # ── 2. Pre-cargar imagen para Ken Burns ───────────
-        img_base = None
-        if fondo_path:
-            try:
-                img_base = Image.open(fondo_path).convert('RGB')
-                scale_w = int(mitad * 1.25)
-                scale_h = int(alto  * 1.25)
-                img_base = img_base.resize((scale_w, scale_h), Image.LANCZOS)
-                img_base = ImageEnhance.Sharpness(img_base).enhance(1.4)
-                img_base = ImageEnhance.Contrast(img_base).enhance(1.1)
-            except Exception as e:
-                log(f"⚠️ Error cargando imagen: {e}", 'debug')
-                img_base = None
-
-        # ── 3. Fuentes ────────────────────────────────────
-        fp_b = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
-        fp_r = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]
-
-        def carga_font(paths, size):
-            for p in paths:
-                try: return ImageFont.truetype(p, size)
-                except: continue
-            return ImageFont.load_default()
-
-        font_bk  = carga_font(fp_b, 24)
-        font_tit = carga_font(fp_b, 44)
-        font_res = carga_font(fp_r, 24)
-        font_log = carga_font(fp_b, 20)
-
-        # Fase CTA: últimos 5 segundos del video
-        cta_inicio = max(0.75, 1.0 - (5 / duracion))
-
-        # ── 4. Generar frames ─────────────────────────────
-        frames = []
-        for i in range(total_frames):
-            t = i / total_frames
-
-            # Progreso texto (fade-in)
-            if t < 0.08:   progreso = 0.0
-            elif t < 0.50: progreso = (t - 0.08) / 0.42
-            elif t < 0.85: progreso = 1.0
-            else:          progreso = 1.0 - (t - 0.85) / 0.15
-            progreso = max(0.0, min(1.0, progreso))
-            alpha    = int(255 * min(progreso * 2, 1.0))
-
-            # Fase CTA activa en últimos 5s
-            en_cta     = t >= cta_inicio
-            alpha_cta  = int(255 * min((t - cta_inicio) / 0.08, 1.0)) if en_cta else 0
-
-            # ── Frame base
-            frame = Image.new('RGB', (ancho, alto), '#0d1117')
-
-            # ── Ken Burns zoom out
-            if img_base:
-                scale_w, scale_h = img_base.size
-                zoom    = 1.25 - (0.25 * t)
-                crop_w  = int(mitad * zoom)
-                crop_h  = int(alto  * zoom)
-                cx      = max(0, min((scale_w - crop_w) // 2, scale_w - crop_w))
-                cy      = max(0, min((scale_h - crop_h) // 2, scale_h - crop_h))
-                img_c   = img_base.crop((cx, cy, cx + crop_w, cy + crop_h))
-                img_c   = img_c.resize((mitad, alto), Image.LANCZOS)
-                grad    = Image.new('RGBA', (mitad, alto), (0, 0, 0, 0))
-                gd      = ImageDraw.Draw(grad)
-                for xg in range(80):
-                    gd.line([(xg, 0), (xg, alto)], fill=(13, 17, 23, int(255 * (1 - xg / 80))))
-                frame.paste(Image.alpha_composite(img_c.convert('RGBA'), grad).convert('RGB'), (mitad, 0))
-
-            # ── Panel izquierdo
-            frame.paste(Image.new('RGB', (mitad + 40, alto), '#0d1117'), (0, 0))
-            draw = ImageDraw.Draw(frame)
-
-            # ── Barra roja superior
-            draw.rectangle([(0, 0), (ancho, 52)], fill='#dc2626')
-            draw.text((20, 14), "  ÚLTIMA HORA  |  VERDAD HOY", font=font_bk, fill='white')
-
-            # ── Línea azul
-            draw.rectangle([(20, 68), (mitad - 20, 71)], fill='#3b82f6')
-
-            # ── Título
-            y = 90
-            for linea in textwrap.fill(titulo[:110], width=22).split('\n'):
-                tmp = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
-                ImageDraw.Draw(tmp).text((20, y), linea, font=font_tit, fill=(255, 255, 255, alpha))
-                frame = Image.alpha_composite(frame.convert('RGBA'), tmp).convert('RGB')
-                draw  = ImageDraw.Draw(frame)
-                y += 56
-
-            sep_y = y + 10
-            draw.rectangle([(20, sep_y), (mitad - 30, sep_y + 2)], fill='#3b82f6')
-
-            # ── Resumen
-            if progreso > 0.5 and not en_cta:
-                alpha2 = int(255 * min((progreso - 0.5) * 2, 1.0))
-                tmp2   = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
-                ImageDraw.Draw(tmp2).text((20, sep_y + 14),
-                    textwrap.fill(resumen[:200] + ('...' if len(resumen) > 200 else ''), width=38),
-                    font=font_res, fill=(203, 213, 225, alpha2))
-                frame = Image.alpha_composite(frame.convert('RGBA'), tmp2).convert('RGB')
-                draw  = ImageDraw.Draw(frame)
-
-            # ── Panel CTA rojo (últimos 5s) ───────────────
-            if en_cta and alpha_cta > 0:
-                cta_h  = 130
-                cta_y  = alto - 44 - cta_h - 10
-                # Fondo rojo
-                cta_bg = Image.new('RGBA', (ancho, cta_h), (220, 38, 38, alpha_cta))
-                frame_rgba = frame.convert('RGBA')
-                frame_rgba.paste(cta_bg, (0, cta_y), cta_bg)
-                frame = frame_rgba.convert('RGB')
-                draw  = ImageDraw.Draw(frame)
-
-                font_cta1 = carga_font(fp_b, 34)
-                font_cta2 = carga_font(fp_r, 22)
-
-                # Línea 1: pregunta temática — centrada
-                bb1 = draw.textbbox((0,0), cta_linea1, font=font_cta1)
-                tx1 = (ancho - (bb1[2] - bb1[0])) // 2
-                tmp_c = Image.new('RGBA', (ancho, alto), (0,0,0,0))
-                ImageDraw.Draw(tmp_c).text((tx1, cta_y + 12), cta_linea1,
-                                           font=font_cta1, fill=(255,255,255,alpha_cta))
-                frame = Image.alpha_composite(frame.convert('RGBA'), tmp_c).convert('RGB')
-                draw  = ImageDraw.Draw(frame)
-
-                # Línea 2: cierre fijo — centrada, más pequeña
-                for idx_l, sub in enumerate(cta_linea2.split('\n')):
-                    bb2 = draw.textbbox((0,0), sub, font=font_cta2)
-                    tx2 = (ancho - (bb2[2] - bb2[0])) // 2
-                    tmp_c2 = Image.new('RGBA', (ancho, alto), (0,0,0,0))
-                    ImageDraw.Draw(tmp_c2).text(
-                        (tx2, cta_y + 60 + idx_l * 30), sub,
-                        font=font_cta2, fill=(255,235,235,alpha_cta))
-                    frame = Image.alpha_composite(frame.convert('RGBA'), tmp_c2).convert('RGB')
-                    draw  = ImageDraw.Draw(frame)
-
-            # ── Barra inferior logo
-            draw.rectangle([(0, alto - 44), (ancho, alto)], fill='#1e293b')
-            draw.text((20, alto - 30), "  Verdad Hoy | Agencia de Noticias  •  noticias internacionales",
-                      font=font_log, fill='#94a3b8')
-
-            frames.append(np.array(frame))
-
-        # ── 5. Ensamblar video + audio ─────────────────────
-        clip       = ImageSequenceClip(frames, fps=fps)
-        hash_v     = generar_hash(titulo)
-        video_path = f'/tmp/noticia_video_{hash_v}.mp4'
-
-        if audio_path and os.path.exists(audio_path):
-            try:
-                audio_clip = AudioFileClip(audio_path)
-                safe_dur   = min(audio_clip.duration - 0.3, duracion - 0.3)
-                audio_clip = audio_clip.subclip(0, max(1.0, safe_dur))
-                clip       = clip.set_audio(audio_clip)
-                clip.write_videofile(video_path, codec='libx264', audio_codec='aac',
-                                     preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None)
-                audio_clip.close()
-                log("🔊 Audio mezclado correctamente en el video", 'exito')
-            except Exception as e:
-                log(f"⚠️ Error mezclando audio: {e} — generando sin audio", 'advertencia')
-                clip.write_videofile(video_path, codec='libx264', audio=False,
-                                     preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None)
-            finally:
-                try: os.remove(audio_path)
-                except: pass
-        else:
-            clip.write_videofile(video_path, codec='libx264', audio=False,
-                                 preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None)
-
-        clip.close()
-        size_mb = os.path.getsize(video_path) / (1024 * 1024)
-        log(f"✅ Video generado: {video_path} ({size_mb:.1f} MB, {duracion}s)", 'exito')
-        return video_path
-
-    except ImportError:
-        log("⚠️ moviepy no disponible — usando imagen", 'advertencia')
-        return None
-    except Exception as e:
-        log(f"⚠️ Error generando video: {e} — usando imagen", 'advertencia')
-        return None
-    try:
-        from moviepy.editor import ImageSequenceClip, AudioFileClip
-        import numpy as np
-        from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
-        import textwrap
-
-        log("🎬 Generando video noticiario...", 'info')
-
-        # ── 1. Generar audio TTS ──────────────────────────
-        audio_path  = crear_audio_noticia(titulo, resumen)
-        audio_dur   = 0.0
-        if audio_path:
-            try:
-                ac = AudioFileClip(audio_path)
-                audio_dur = ac.duration
-                ac.close()
-                # Video = audio + 2s de margen (mín 20s, máx 50s)
-                duracion = max(20, min(50, int(audio_dur) + 2))
-                log(f"⏱️ Duración ajustada al audio: {duracion}s (audio: {audio_dur:.1f}s)", 'info')
-            except Exception as e:
-                log(f"⚠️ No se pudo leer duración del audio: {e}", 'advertencia')
-                duracion = 28
-
-        ancho, alto  = 1280, 720
-        mitad        = ancho // 2
-        total_frames = duracion * fps
-
-        # ── 2. Pre-cargar imagen para Ken Burns ───────────
-        img_base = None
-        if fondo_path:
-            try:
-                img_base = Image.open(fondo_path).convert('RGB')
-                # Escalar a un tamaño mayor al target para poder hacer zoom out
-                scale_w = int(mitad * 1.25)
-                scale_h = int(alto  * 1.25)
-                img_base = img_base.resize((scale_w, scale_h), Image.LANCZOS)
-                img_base = ImageEnhance.Sharpness(img_base).enhance(1.4)
-                img_base = ImageEnhance.Contrast(img_base).enhance(1.1)
-            except Exception as e:
-                log(f"⚠️ Error cargando imagen: {e}", 'debug')
-                img_base = None
-
-        # ── 3. Fuentes (cargar una vez) ───────────────────
-        fp_b = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"]
-        fp_r = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"]
-
-        def carga_font(paths, size):
-            for p in paths:
-                try: return ImageFont.truetype(p, size)
-                except: continue
-            return ImageFont.load_default()
-
-        font_bk  = carga_font(fp_b, 24)
-        font_tit = carga_font(fp_b, 44)
-        font_res = carga_font(fp_r, 24)
-        font_log = carga_font(fp_b, 20)
-
-        # ── 4. Generar frames con Ken Burns ───────────────
-        frames = []
-        for i in range(total_frames):
-            t = i / total_frames  # 0.0 → 1.0
-
-            # Progreso del texto (fade-in)
-            if t < 0.08:   progreso = 0.0
-            elif t < 0.50: progreso = (t - 0.08) / 0.42
-            elif t < 0.85: progreso = 1.0
-            else:          progreso = 1.0 - (t - 0.85) / 0.15
-            progreso = max(0.0, min(1.0, progreso))
-            alpha    = int(255 * min(progreso * 2, 1.0))
-
-            # ── Frame base oscuro
-            frame = Image.new('RGB', (ancho, alto), '#0d1117')
-
-            # ── Ken Burns: zoom 125%→100% (zoom out lento)
-            if img_base:
-                scale_w, scale_h = img_base.size
-                # Interpolación lineal de zoom: empieza recortado, termina encuadrado
-                zoom = 1.25 - (0.25 * t)          # 1.25 → 1.00
-                crop_w = int(mitad * zoom)
-                crop_h = int(alto  * zoom)
-                # Centrar el crop
-                cx = (scale_w - crop_w) // 2
-                cy = (scale_h - crop_h) // 2
-                cx = max(0, min(cx, scale_w - crop_w))
-                cy = max(0, min(cy, scale_h - crop_h))
-                img_crop = img_base.crop((cx, cy, cx + crop_w, cy + crop_h))
-                img_crop = img_crop.resize((mitad, alto), Image.LANCZOS)
-
-                # Gradiente izquierdo para fusionar con panel
-                grad = Image.new('RGBA', (mitad, alto), (0, 0, 0, 0))
-                gd   = ImageDraw.Draw(grad)
-                for xg in range(80):
-                    ag = int(255 * (1 - xg / 80))
-                    gd.line([(xg, 0), (xg, alto)], fill=(13, 17, 23, ag))
-                img_rgba = Image.alpha_composite(img_crop.convert('RGBA'), grad)
-                frame.paste(img_rgba.convert('RGB'), (mitad, 0))
-
-            # ── Panel izquierdo
-            panel = Image.new('RGBA', (mitad + 40, alto), (13, 17, 23, 235))
-            frame.paste(panel.convert('RGB'), (0, 0))
-            draw = ImageDraw.Draw(frame)
-
-            # ── Barra roja superior
-            draw.rectangle([(0, 0), (ancho, 52)], fill='#dc2626')
-            draw.text((20, 14), "  ÚLTIMA HORA  |  VERDAD HOY", font=font_bk, fill='white')
-
-            # ── Línea azul acento
-            draw.rectangle([(20, 68), (mitad - 20, 71)], fill='#3b82f6')
-
-            # ── Título con fade-in
-            titulo_wrap = textwrap.fill(titulo[:110], width=22)
-            y = 90
-            for linea in titulo_wrap.split('\n'):
-                tmp = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
-                ImageDraw.Draw(tmp).text((20, y), linea, font=font_tit,
-                                         fill=(255, 255, 255, alpha))
-                frame = Image.alpha_composite(frame.convert('RGBA'), tmp).convert('RGB')
-                draw  = ImageDraw.Draw(frame)
-                y += 56
-
-            # ── Separador
-            sep_y = y + 10
-            draw.rectangle([(20, sep_y), (mitad - 30, sep_y + 2)], fill='#3b82f6')
-
-            # ── Resumen con fade-in retardado
-            if progreso > 0.5:
-                alpha2 = int(255 * min((progreso - 0.5) * 2, 1.0))
-                res_c  = resumen[:200] + ('...' if len(resumen) > 200 else '')
-                tmp2   = Image.new('RGBA', (ancho, alto), (0, 0, 0, 0))
-                ImageDraw.Draw(tmp2).text((20, sep_y + 14),
-                    textwrap.fill(res_c, width=38),
-                    font=font_res, fill=(203, 213, 225, alpha2))
-                frame = Image.alpha_composite(frame.convert('RGBA'), tmp2).convert('RGB')
-                draw  = ImageDraw.Draw(frame)
-
-            # ── Barra inferior logo
-            draw.rectangle([(0, alto - 44), (ancho, alto)], fill='#1e293b')
-            draw.text((20, alto - 30), "  Verdad Hoy | Agencia de Noticias  •  noticias internacionales",
-                      font=font_log, fill='#94a3b8')
-
-            frames.append(np.array(frame))
-
-        # ── 5. Ensamblar video + audio ─────────────────────
-        clip      = ImageSequenceClip(frames, fps=fps)
-        hash_v    = generar_hash(titulo)
-        video_path = f'/tmp/noticia_video_{hash_v}.mp4'
-
-        if audio_path and os.path.exists(audio_path):
-            try:
-                # FIX: recortar audio a duración del video - 0.3s para evitar error de límite
-                audio_clip = AudioFileClip(audio_path)
-                safe_dur   = min(audio_clip.duration - 0.3, duracion - 0.3)
-                audio_clip = audio_clip.subclip(0, max(1.0, safe_dur))
-                clip       = clip.set_audio(audio_clip)
-                clip.write_videofile(
-                    video_path,
-                    codec='libx264',
-                    audio_codec='aac',
-                    preset='ultrafast',
-                    ffmpeg_params=['-crf', '28'],
-                    logger=None,
-                )
-                audio_clip.close()
-                log("🔊 Audio mezclado correctamente en el video", 'exito')
-            except Exception as e:
-                log(f"⚠️ Error mezclando audio: {e} — generando sin audio", 'advertencia')
-                clip.write_videofile(
-                    video_path, codec='libx264', audio=False,
-                    preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None,
-                )
-            finally:
-                try:
-                    os.remove(audio_path)
-                except:
-                    pass
-        else:
-            clip.write_videofile(
-                video_path, codec='libx264', audio=False,
-                preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None,
-            )
-
-        clip.close()
-        size_mb = os.path.getsize(video_path) / (1024 * 1024)
-        log(f"✅ Video generado: {video_path} ({size_mb:.1f} MB, {duracion}s)", 'exito')
-        return video_path
-
-    except ImportError:
-        log("⚠️ moviepy no disponible — usando imagen", 'advertencia')
-        return None
-    except Exception as e:
-        log(f"⚠️ Error generando video: {e} — usando imagen", 'advertencia')
-        return None
-
-
-def _truncar_mensaje(texto, hashtags, firma, limite=60000):
-    """Trunca el mensaje al límite real de Facebook (63.206 chars) conservando hashtags y firma."""
-    sufijo = f"\n\n{hashtags}\n\n— {firma}"
-    espacio = limite - len(sufijo)
-    if len(texto) > espacio:
-        texto = texto[:espacio - 4].rsplit(' ', 1)[0] + ' [...]'
-    return re.sub(r'https?://\S+', '', f"{texto}{sufijo}")
-
-def publicar_facebook_video(titulo, texto, video_path, hashtags):
-    """Publica un video nativo en Facebook (mayor alcance orgánico que fotos)."""
-    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
-        return False
-    descripcion = _truncar_mensaje(texto, hashtags, "🌐 Verdad Hoy | Agencia de Noticias Internacionales")
-    try:
-        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/videos"
-        with open(video_path, 'rb') as f:
-            r = requests.post(
-                url,
-                files={'source': ('video.mp4', f, 'video/mp4')},
-                data={
-                    'title':        titulo[:255],
-                    'description':  descripcion,
-                    'access_token': FB_ACCESS_TOKEN,
-                },
-                timeout=120,
-            ).json()
-        if 'id' in r:
-            log(f"✅ Video publicado en Facebook — ID: {r['id']}", 'exito')
-            return True
-        else:
-            log(f"❌ Error Facebook video: {r.get('error', {}).get('message', 'desconocido')}", 'error')
-    except Exception as e:
-        log(f"❌ Excepción publicando video: {e}", 'error')
-    return False
-
-
-# ──────────────────────────────────────────────────────────
-# CONSTRUCCIÓN Y PUBLICACIÓN
+# CONSTRUCCIÓN DEL POST FACEBOOK
 # ──────────────────────────────────────────────────────────
 def dividir_parrafos(texto):
     if not texto:
@@ -1492,21 +993,27 @@ def dividir_parrafos(texto):
             actual, palabras = [], 0
     return parrafos[:20]
 
-def construir_publicacion(titulo, contenido, creditos, fuente):
+def construir_publicacion_fb(titulo, contenido, fuente, url_wp):
+    """Construye el texto del post de Facebook con link a WordPress."""
     t    = limpiar_texto(titulo)
     pars = dividir_parrafos(contenido)
     if len(pars) < 2:
         ors  = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
         pars = [' '.join(ors[i:i+2]) for i in range(0, len(ors), 2)][:20]
     lineas = [f"📰 ÚLTIMA HORA | {t}", ""]
-    for i, p in enumerate(pars):
+    for i, p in enumerate(pars[:3]):  # Máximo 3 párrafos en Facebook
         lineas.append(p)
-        if i < len(pars) - 1:
+        if i < 2:
             lineas.append("")
-    lineas += ["", "──────────────────────────────", ""]
-    if creditos:
-        lineas += [f"✍️ {creditos}", ""]
-    lineas.append(f"📎 {fuente}")
+    lineas += [
+        "",
+        "──────────────────────────────",
+        "",
+        f"🔗 Lee la nota completa aquí:",
+        f"👉 {url_wp}",
+        "",
+        f"📎 {fuente}",
+    ]
     return '\n'.join(lineas)
 
 def generar_hashtags(titulo, contenido):
@@ -1526,13 +1033,176 @@ def generar_hashtags(titulo, contenido):
         if re.search(patron, txt):
             tags.append(tag)
             break
-    tags.append('#Mundo')
+    tags.append('#VerdadHoy #Mundo')
     return ' '.join(tags)
 
-def publicar_facebook(titulo, texto, imagen_path, hashtags):
+def _truncar_mensaje(texto, hashtags, firma, limite=60000):
+    sufijo = f"\n\n{hashtags}\n\n— {firma}"
+    espacio = limite - len(sufijo)
+    if len(texto) > espacio:
+        texto = texto[:espacio - 4].rsplit(' ', 1)[0] + ' [...]'
+    return f"{texto}{sufijo}"
+
+# ──────────────────────────────────────────────────────────
+# GENERACIÓN DE VIDEO
+# ──────────────────────────────────────────────────────────
+def crear_video_noticia(titulo, resumen, fondo_path=None):
+    """Genera un video MP4 con el titular y resumen de la noticia."""
+    try:
+        from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
+        from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageEnhance
+        import textwrap
+        import numpy as np
+
+        duracion = 30
+        fps      = 24
+        ancho, alto = 1280, 720
+        mitad = ancho // 2
+
+        def cargar_fuente(paths, size):
+            for p in paths:
+                try:
+                    from PIL import ImageFont
+                    return ImageFont.truetype(p, size)
+                except:
+                    continue
+            from PIL import ImageFont
+            return ImageFont.load_default()
+
+        font_paths     = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+        font_paths_reg = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+        font_breaking  = cargar_fuente(font_paths, 24)
+        font_titulo    = cargar_fuente(font_paths, 44)
+        font_resumen   = cargar_fuente(font_paths_reg, 24)
+
+        def crear_frame_pil(progreso=1.0):
+            frame = Image.new('RGB', (ancho, alto), '#0d1117')
+            if fondo_path and os.path.exists(fondo_path):
+                try:
+                    img = Image.open(fondo_path).convert('RGB')
+                    img_ratio = img.width / img.height
+                    target_ratio = mitad / alto
+                    if img_ratio > target_ratio:
+                        new_h, new_w = alto, int(alto * img_ratio)
+                    else:
+                        new_w, new_h = mitad, int(mitad / img_ratio)
+                    img = img.resize((new_w, new_h), Image.LANCZOS)
+                    x = (new_w - mitad) // 2
+                    y = (new_h - alto) // 2
+                    img = img.crop((x, y, x + mitad, y + alto))
+                    img = ImageEnhance.Sharpness(img).enhance(1.4)
+                    frame.paste(img, (mitad, 0))
+                except:
+                    pass
+            panel = Image.new('RGB', (mitad + 40, alto), '#0d1117')
+            frame.paste(panel, (0, 0))
+            draw = ImageDraw.Draw(frame)
+            draw.rectangle([(0, 0), (ancho, 52)], fill='#dc2626')
+            draw.text((20, 14), "  ÚLTIMA HORA  |  VERDAD HOY", font=font_breaking, fill='white')
+            draw.rectangle([(20, 68), (mitad - 20, 71)], fill='#3b82f6')
+            titulo_wrap = textwrap.fill(titulo[:110], width=22)
+            y_t = 90
+            for linea in titulo_wrap.split('\n'):
+                draw.text((20, y_t), linea, font=font_titulo, fill='white')
+                y_t += 52
+            y_r = y_t + 20
+            resumen_wrap = textwrap.fill(resumen[:200], width=34)
+            for linea in resumen_wrap.split('\n'):
+                if y_r < alto - 120:
+                    draw.text((20, y_r), linea, font=font_resumen, fill='#94a3b8')
+                    y_r += 32
+            # Panel CTA inferior
+            draw.rectangle([(0, alto - 90), (ancho, alto)], fill='#dc2626')
+            cta_tema, cta_cierre = obtener_cta_video(titulo)
+            draw.text((20, alto - 80), cta_tema, font=font_resumen, fill='white')
+            draw.text((20, alto - 48), "verdadhoy.com", font=font_resumen, fill='#fbbf24')
+            return np.array(frame)
+
+        frames = [crear_frame_pil(progreso=t/duracion) for t in range(duracion * fps)]
+        clip = ImageClip(frames[0]).set_duration(duracion)
+
+        video_path = f'/tmp/video_{generar_hash(titulo)}.mp4'
+
+        # Intentar agregar audio TTS
+        audio_path = None
+        try:
+            import edge_tts
+            import asyncio
+            voz = obtener_voz_aleatoria()
+            texto_tts = f"{titulo}. {resumen[:300]}"
+            audio_path = f'/tmp/audio_{generar_hash(titulo)}.mp3'
+
+            async def generar_audio():
+                comunicar = edge_tts.Communicate(texto_tts, voz)
+                await comunicar.save(audio_path)
+
+            asyncio.run(generar_audio())
+            log("🎙️ Audio TTS generado", 'exito')
+        except Exception as e:
+            log(f"⚠️ TTS no disponible: {e} — video sin audio", 'advertencia')
+            audio_path = None
+
+        if audio_path and os.path.exists(audio_path):
+            try:
+                audio_clip = AudioFileClip(audio_path).subclip(0, duracion)
+                clip = clip.set_audio(audio_clip)
+                clip.write_videofile(video_path, codec='libx264', audio_codec='aac',
+                                     preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None)
+                audio_clip.close()
+            except:
+                clip.write_videofile(video_path, codec='libx264', audio=False,
+                                     preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None)
+            finally:
+                try:
+                    os.remove(audio_path)
+                except:
+                    pass
+        else:
+            clip.write_videofile(video_path, codec='libx264', audio=False,
+                                 preset='ultrafast', ffmpeg_params=['-crf', '28'], logger=None)
+
+        clip.close()
+        size_mb = os.path.getsize(video_path) / (1024 * 1024)
+        log(f"✅ Video generado: {size_mb:.1f} MB, {duracion}s", 'exito')
+        return video_path
+
+    except ImportError:
+        log("⚠️ moviepy no disponible — usando imagen", 'advertencia')
+        return None
+    except Exception as e:
+        log(f"⚠️ Error generando video: {e}", 'advertencia')
+        return None
+
+# ──────────────────────────────────────────────────────────
+# PUBLICACIÓN EN FACEBOOK
+# ──────────────────────────────────────────────────────────
+def publicar_facebook_video(titulo, texto, video_path, hashtags):
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         return False
-    mensaje = _truncar_mensaje(texto, hashtags, "🌐 Verdad Hoy | Agencia de Noticias Internacionales")
+    descripcion = _truncar_mensaje(texto, hashtags, "🌐 Verdad Hoy | verdadhoy.com")
+    try:
+        url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/videos"
+        with open(video_path, 'rb') as f:
+            r = requests.post(
+                url,
+                files={'source': ('video.mp4', f, 'video/mp4')},
+                data={'title': titulo[:255], 'description': descripcion,
+                      'access_token': FB_ACCESS_TOKEN},
+                timeout=120,
+            ).json()
+        if 'id' in r:
+            log(f"✅ Video publicado en Facebook — ID: {r['id']}", 'exito')
+            return True
+        else:
+            log(f"❌ Error Facebook video: {r.get('error', {}).get('message', 'desconocido')}", 'error')
+    except Exception as e:
+        log(f"❌ Excepción publicando video: {e}", 'error')
+    return False
+
+def publicar_facebook_imagen(titulo, texto, imagen_path, hashtags):
+    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
+        return False
+    mensaje = _truncar_mensaje(texto, hashtags, "🌐 Verdad Hoy | verdadhoy.com")
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
         with open(imagen_path, 'rb') as f:
@@ -1543,45 +1213,33 @@ def publicar_facebook(titulo, texto, imagen_path, hashtags):
                 timeout=60
             ).json()
         if 'id' in r:
-            log(f"✅ Publicado en Facebook — ID: {r['id']}", 'exito')
+            log(f"✅ Imagen publicada en Facebook — ID: {r['id']}", 'exito')
             return True
         else:
-            log(f"❌ Error Facebook: {r.get('error', {}).get('message', 'desconocido')}", 'error')
+            log(f"❌ Error Facebook imagen: {r.get('error', {}).get('message', 'desconocido')}", 'error')
     except Exception as e:
-        log(f"❌ Excepción publicando: {e}", 'error')
+        log(f"❌ Excepción publicando imagen: {e}", 'error')
     return False
 
 # ──────────────────────────────────────────────────────────
-# MAIN
+# MAIN — FLUJO PRINCIPAL V6
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V5.0 (ENGAGEMENT OPTIMIZADO)")
+    print("🌍 BOT DE NOTICIAS - V6.0 (WordPress + Facebook)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"📁 Historial: {os.path.abspath(HISTORIAL_PATH)}")
-    print(f"📁 Estado:    {os.path.abspath(ESTADO_PATH)}")
     print("=" * 60)
 
-    if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
-        log("ERROR CRÍTICO: Faltan credenciales Facebook (FB_PAGE_ID / FB_ACCESS_TOKEN)", 'error')
-        return False  # Error real — exit 1
-
-    # Control de tiempo — PRIMERA barrera (salida normal — exit 0)
-    if not verificar_tiempo():
-        return None
-
-    # Control de horario pico — SEGUNDA barrera (salida normal — exit 0)
-    if not esta_en_horario_pico():
-        return None
-
-    # Cargar historial
+    # Verificar qué debe publicarse en esta ejecución
+    publicar_wp = puede_publicar_wp()
     h = cargar_historial()
-    total_historial = len(h.get('urls', []))
-    log(f"📊 Historial: {total_historial} entradas | Permanentes: {len(h.get('hashes_permanentes', []))}")
+    publicar_fb = puede_publicar_fb(h)
 
-    # Control de límite diario — TERCERA barrera (salida normal — exit 0)
-    if limite_diario_alcanzado(h):
+    if not publicar_wp and not publicar_fb:
+        log("⏱️ Nada que publicar en esta ejecución — esperando próximo ciclo", 'info')
         return None
+
+    log(f"📋 Tareas: WordPress={'SÍ' if publicar_wp else 'NO'} | Facebook={'SÍ' if publicar_fb else 'NO'}", 'info')
 
     # Recolectar noticias
     noticias = []
@@ -1599,20 +1257,18 @@ def main():
         log("ERROR: Ninguna fuente devolvió noticias", 'error')
         return False
 
-    # Deduplicar batch y ordenar
     noticias = deduplicar_batch(noticias)
     noticias.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
-    log(f"📰 Candidatas ordenadas por puntaje: {len(noticias)}")
+    log(f"📰 Candidatas ordenadas: {len(noticias)}", 'info')
 
-    # Buscar noticia válida
+    # Buscar noticia válida CON IMAGEN (obligatoria)
     seleccionada = None
     contenido    = None
-    creditos     = None
+    img_path     = None
     intentos     = 0
 
     for i, nt in enumerate(noticias):
         if intentos >= 60:
-            log(f"⚠️ Límite de intentos alcanzado (60)", 'advertencia')
             break
 
         url    = nt.get('url', '')
@@ -1624,7 +1280,6 @@ def main():
 
         intentos += 1
 
-        # Recargar historial cada 15 intentos (por si hay concurrencia)
         if intentos % 15 == 0:
             h = cargar_historial()
 
@@ -1639,74 +1294,110 @@ def main():
             log(f"   ❌ Puntaje insuficiente ({nt.get('puntaje', 0)})", 'debug')
             continue
 
-        log(f"   ✅ Candidata válida — extrayendo contenido...")
-
-        cont_web, cred_web = extraer_contenido(url)
-
+        # Obtener contenido
+        cont_web, _ = extraer_contenido(url)
         if cont_web and len(cont_web) >= 200:
-            log(f"   ✅ Contenido web: {len(cont_web)} chars", 'exito')
-            contenido    = cont_web
-            creditos     = cred_web
-            seleccionada = nt
-            break
+            contenido_ok = cont_web
         elif desc and len(desc) >= 150:
-            log(f"   ✅ Usando descripción: {len(desc)} chars", 'exito')
-            contenido    = desc
-            creditos     = None
-            seleccionada = nt
-            break
+            contenido_ok = desc
         else:
-            log(f"   ❌ Contenido insuficiente ({len(cont_web or desc or '')} chars)", 'advertencia')
+            log(f"   ❌ Contenido insuficiente", 'advertencia')
+            continue
+
+        # IMAGEN OBLIGATORIA — buscar en múltiples fuentes
+        imagen_encontrada = None
+        if nt.get('imagen'):
+            imagen_encontrada = descargar_imagen(nt['imagen'])
+        if not imagen_encontrada:
+            img_url = extraer_imagen_web(url)
+            if img_url:
+                imagen_encontrada = descargar_imagen(img_url)
+        if not imagen_encontrada:
+            # Solo en último caso: generar imagen desde título
+            imagen_encontrada = crear_imagen_titulo(titulo)
+
+        if not imagen_encontrada:
+            log(f"   ❌ Sin imagen disponible — saltando noticia", 'advertencia')
+            continue
+
+        log(f"   ✅ Noticia válida con imagen — procesando...")
+        seleccionada = nt
+        contenido    = contenido_ok
+        img_path     = imagen_encontrada
+        break
 
     if not seleccionada:
-        log("ERROR: No se encontró ninguna noticia válida nueva", 'error')
+        log("ERROR: No se encontró ninguna noticia válida con imagen", 'error')
         return False
 
-    log(f"\n📝 PUBLICANDO: {seleccionada['titulo'][:70]}")
+    log(f"\n📝 SELECCIONADA: {seleccionada['titulo'][:70]}")
     log(f"   Fuente: {seleccionada['fuente']} | Puntaje: {seleccionada.get('puntaje', 0)}")
 
-    # Construir texto
-    pub = construir_publicacion(seleccionada['titulo'], contenido, creditos, seleccionada['fuente'])
-    pub = agregar_cta(pub, seleccionada['titulo'], seleccionada.get('descripcion', ''))  # V5: CTA temático
-    ht  = generar_hashtags(seleccionada['titulo'], contenido)
+    tema = detectar_tema(seleccionada['titulo'], seleccionada.get('descripcion', ''))
+    log(f"   Tema: {tema}", 'info')
 
-    # Imagen (usada como fondo del video o fallback)
-    log("🖼️  Procesando imagen...")
-    img_path = None
-    if seleccionada.get('imagen'):
-        img_path = descargar_imagen(seleccionada['imagen'])
-    if not img_path:
-        img_url = extraer_imagen_web(seleccionada['url'])
-        if img_url:
-            img_path = descargar_imagen(img_url)
-    if not img_path:
-        img_path = crear_imagen_titulo(seleccionada['titulo'])
-    if not img_path:
-        log("ERROR: No se pudo obtener imagen", 'error')
-        return False
+    exito_wp = False
+    exito_fb = False
+    url_articulo_wp = None
 
-    # ── Intentar publicar como VIDEO (mayor alcance) ──────
-    resumen_video = contenido[:300] if contenido else seleccionada.get('descripcion', '')
-    video_path = crear_video_noticia(
-        titulo=seleccionada['titulo'],
-        resumen=resumen_video,
-        fondo_path=img_path,
-    )
+    # ── PASO 1: Publicar en WordPress ─────────────────────
+    if publicar_wp:
+        log("\n🌐 Publicando en WordPress...", 'info')
+        url_articulo_wp = publicar_en_wordpress(
+            titulo    = seleccionada['titulo'],
+            contenido = contenido,
+            tema      = tema,
+            imagen_path = img_path,
+            fuente_url  = seleccionada['url'],
+        )
+        if url_articulo_wp:
+            exito_wp = True
+            guardar_estado_wp()
+            h['estadisticas']['total_wp'] = h['estadisticas'].get('total_wp', 0) + 1
+            log(f"✅ WordPress OK: {url_articulo_wp}", 'exito')
+        else:
+            log("❌ WordPress falló", 'error')
 
-    ok = False
-    if video_path:
-        log("📹 Publicando como VIDEO nativo...", 'info')
-        ok = publicar_facebook_video(seleccionada['titulo'], pub, video_path, ht)
-        try:
-            if video_path and os.path.exists(video_path):
-                os.remove(video_path)
-        except:
-            pass
+    # ── PASO 2: Publicar en Facebook (con link a WP) ──────
+    if publicar_fb:
+        log("\n📘 Publicando en Facebook...", 'info')
 
-    # ── Fallback a IMAGEN si el video falló ───────────────
-    if not ok:
-        log("🖼️  Fallback: publicando como imagen...", 'advertencia')
-        ok = publicar_facebook(seleccionada['titulo'], pub, img_path, ht)
+        # Usar URL de WordPress si existe, si no usar URL original
+        link_fb = url_articulo_wp or seleccionada['url']
+
+        pub = construir_publicacion_fb(
+            titulo   = seleccionada['titulo'],
+            contenido = contenido,
+            fuente   = seleccionada['fuente'],
+            url_wp   = link_fb,
+        )
+        pub = agregar_cta(pub, seleccionada['titulo'], seleccionada.get('descripcion', ''))
+        ht  = generar_hashtags(seleccionada['titulo'], contenido)
+
+        # Intentar como video
+        resumen_video = contenido[:300] if contenido else seleccionada.get('descripcion', '')
+        video_path = crear_video_noticia(
+            titulo      = seleccionada['titulo'],
+            resumen     = resumen_video,
+            fondo_path  = img_path,
+        )
+
+        if video_path:
+            log("📹 Publicando como VIDEO en Facebook...", 'info')
+            exito_fb = publicar_facebook_video(seleccionada['titulo'], pub, video_path, ht)
+            try:
+                if os.path.exists(video_path):
+                    os.remove(video_path)
+            except:
+                pass
+
+        if not exito_fb:
+            log("🖼️ Fallback: publicando como imagen en Facebook...", 'advertencia')
+            exito_fb = publicar_facebook_imagen(seleccionada['titulo'], pub, img_path, ht)
+
+        if exito_fb:
+            guardar_estado_fb()
+            h['estadisticas']['total_fb'] = h['estadisticas'].get('total_fb', 0) + 1
 
     # Limpiar imagen temporal
     try:
@@ -1715,25 +1406,24 @@ def main():
     except:
         pass
 
-    if ok:
-        # Guardar historial Y estado SIEMPRE que la publicación sea exitosa
+    # Guardar historial si algo se publicó
+    if exito_wp or exito_fb:
         desc_completa = (seleccionada.get('descripcion', '') + ' ' + contenido[:400]).strip()
         h = guardar_en_historial(h, seleccionada['url'], seleccionada['titulo'], desc_completa)
-        guardar_estado()
         total = h.get('estadisticas', {}).get('total_publicadas', 0)
-        log(f"✅ ÉXITO — Total publicadas en historial: {total}", 'exito')
-        log(f"💡 IMPORTANTE: El workflow debe hacer git push de {HISTORIAL_PATH} y {ESTADO_PATH}", 'advertencia')
+        wp_total = h.get('estadisticas', {}).get('total_wp', 0)
+        fb_total = h.get('estadisticas', {}).get('total_fb', 0)
+        log(f"\n✅ RESUMEN: Total={total} | WP={wp_total} | FB={fb_total}", 'exito')
+        log(f"💡 IMPORTANTE: El workflow debe hacer git push de los archivos JSON", 'advertencia')
         return True
     else:
-        log("❌ Publicación fallida — historial NO actualizado", 'error')
+        log("❌ No se publicó en ninguna plataforma", 'error')
         return False
+
 
 if __name__ == "__main__":
     try:
         resultado = main()
-        # None = salida normal (tiempo, horario, límite diario) → exit 0
-        # True = publicación exitosa → exit 0
-        # False = error real → exit 1
         exit(0 if resultado is not False else 1)
     except Exception as e:
         log(f"Error crítico: {e}", 'error')

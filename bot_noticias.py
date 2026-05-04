@@ -41,6 +41,7 @@ HISTORIAL_PATH     = os.getenv('HISTORIAL_PATH', 'historial_publicaciones.json')
 ESTADO_PATH        = os.getenv('ESTADO_PATH',    'estado_bot.json')
 ESTADO_WP_PATH     = 'estado_wp.json'   # control separado para WordPress
 ESTADO_FB_PATH     = 'estado_fb.json'   # control separado para Facebook
+ESTADO_FORMATO_PATH = 'estado_formato_fb.json'  # alterna video/imagen
 
 # Tiempos
 TIEMPO_ENTRE_WP_MIN    = 30   # WordPress: cada 30 minutos
@@ -994,25 +995,36 @@ def dividir_parrafos(texto):
     return parrafos[:20]
 
 def construir_publicacion_fb(titulo, contenido, fuente, url_wp):
-    """Construye el texto del post de Facebook con link a WordPress."""
-    t    = limpiar_texto(titulo)
-    pars = dividir_parrafos(contenido)
-    if len(pars) < 2:
-        ors  = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
-        pars = [' '.join(ors[i:i+2]) for i in range(0, len(ors), 2)][:20]
-    lineas = [f"📰 ÚLTIMA HORA | {t}", ""]
-    for i, p in enumerate(pars[:3]):  # Máximo 3 párrafos en Facebook
-        lineas.append(p)
-        if i < 2:
-            lineas.append("")
-    lineas += [
+    """
+    Texto corto para Facebook:
+    titular + 1 párrafo (máx 45 palabras) + link a verdadhoy.com
+    """
+    t = limpiar_texto(titulo)
+
+    # Primer párrafo limpio — máx 4 líneas en móvil
+    oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
+    parrafo = ""
+    palabras_count = 0
+    for oracion in oraciones[:6]:
+        palabras_count += len(oracion.split())
+        parrafo += oracion + " "
+        if palabras_count >= 45:
+            break
+    parrafo = parrafo.strip()
+    if len(parrafo) > 300:
+        parrafo = parrafo[:297].rsplit(' ', 1)[0] + '...'
+
+    lineas = [
+        f"📰 {t}",
         "",
-        "──────────────────────────────",
+        parrafo,
         "",
-        f"🔗 Lee la nota completa aquí:",
+        "─────────────────────────────",
+        "",
+        "🔗 Lee la noticia completa:",
         f"👉 {url_wp}",
         "",
-        f"📎 {fuente}",
+        "🌐 verdadhoy.com",
     ]
     return '\n'.join(lineas)
 
@@ -1374,26 +1386,39 @@ def main():
         pub = agregar_cta(pub, seleccionada['titulo'], seleccionada.get('descripcion', ''))
         ht  = generar_hashtags(seleccionada['titulo'], contenido)
 
-        # Intentar como video
+        # Determinar formato: alternar VIDEO / IMAGEN
+        fmt_estado = cargar_json(ESTADO_FORMATO_PATH, {'ultimo_formato': 'imagen'})
+        ultimo_formato = fmt_estado.get('ultimo_formato', 'imagen')
+        usar_video = (ultimo_formato == 'imagen')  # alterna cada vez
+        log(f"🎬 Formato FB: {'VIDEO' if usar_video else 'IMAGEN'} (anterior: {ultimo_formato})", 'info')
+
         resumen_video = contenido[:300] if contenido else seleccionada.get('descripcion', '')
-        video_path = crear_video_noticia(
-            titulo      = seleccionada['titulo'],
-            resumen     = resumen_video,
-            fondo_path  = img_path,
-        )
 
-        if video_path:
-            log("📹 Publicando como VIDEO en Facebook...", 'info')
-            exito_fb = publicar_facebook_video(seleccionada['titulo'], pub, video_path, ht)
-            try:
-                if os.path.exists(video_path):
-                    os.remove(video_path)
-            except:
-                pass
-
-        if not exito_fb:
-            log("🖼️ Fallback: publicando como imagen en Facebook...", 'advertencia')
+        if usar_video:
+            video_path = crear_video_noticia(
+                titulo     = seleccionada['titulo'],
+                resumen    = resumen_video,
+                fondo_path = img_path,
+            )
+            if video_path:
+                log("📹 Publicando como VIDEO en Facebook...", 'info')
+                exito_fb = publicar_facebook_video(seleccionada['titulo'], pub, video_path, ht)
+                try:
+                    if os.path.exists(video_path):
+                        os.remove(video_path)
+                except:
+                    pass
+            if not exito_fb:
+                log("🖼️ Video falló — fallback a imagen...", 'advertencia')
+                exito_fb = publicar_facebook_imagen(seleccionada['titulo'], pub, img_path, ht)
+                usar_video = False  # registrar como imagen si el video falló
+        else:
+            log("🖼️ Publicando como IMAGEN en Facebook...", 'info')
             exito_fb = publicar_facebook_imagen(seleccionada['titulo'], pub, img_path, ht)
+
+        # Guardar formato usado para alternar la próxima vez
+        if exito_fb:
+            guardar_json(ESTADO_FORMATO_PATH, {'ultimo_formato': 'video' if usar_video else 'imagen'})
 
         if exito_fb:
             guardar_estado_fb()

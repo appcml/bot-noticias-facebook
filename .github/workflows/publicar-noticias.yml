@@ -62,7 +62,7 @@ jobs:
         run: |
           git config user.name  "bot-noticias[bot]"
           git config user.email "bot-noticias@users.noreply.github.com"
-          git add -f historial_publicaciones.json estado_bot.json estado_wp.json estado_fb.json 2>/dev/null || true
+          git add -f historial_publicaciones.json estado_bot.json estado_wp.json estado_fb.json estado_formato_fb.json 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "ℹ️ Sin cambios en historial — no se hace commit"
           else
@@ -80,5 +80,5 @@ jobs:
             historial_publicaciones.json
             estado_bot.json
             estado_wp.json
-            estado_fb.json
+            estado_fb.json estado_formato_fb.json
           retention-days: 7

@@ -848,71 +848,91 @@ def agregar_watermark_video(img_pil):
 
 def recopilar_imagenes(datos_verificados, guion, palabras_clave):
     """
-    Recopila imágenes en cascada:
-    1. og:image de artículos fuente
-    2. Wikimedia Commons
-    3. Pixabay
-    4. Pexels
-    5. Generadas con Pillow
+    Estrategia: PRIORIZAR IMÁGENES — buscar agresivamente con múltiples
+    queries para garantizar mínimo 8 imágenes reales antes de generar con Pillow.
+    No se usan videos de stock (sin APIs pagas / sin YouTube).
+    Con Ken Burns + transiciones fluidas, 8-12 imágenes dan sensación de video real.
     """
-    log("🖼️ Recopilando imágenes...", 'img')
-    tema = datos_verificados['tema']
-    query = ' '.join(palabras_clave[:3]) if palabras_clave else tema[:50]
+    log("🖼️ Recopilando imágenes (modo agresivo)...", 'img')
+    tema    = datos_verificados['tema']
+    titulo  = guion.get('titulo', tema)
+    puntos  = guion.get('puntos', [])
+    kws     = palabras_clave or [tema.split()[0]]
 
-    # Cantidad de imágenes según duración objetivo
-    num_imagenes = random.randint(IMGS_POR_VIDEO_MIN, IMGS_POR_VIDEO_MAX)
-    # Ajustar según SEO (más puntos = más imágenes)
-    num_puntos = len(guion.get('puntos', []))
-    num_imagenes = max(num_imagenes, num_puntos + 2)
-    num_imagenes = min(num_imagenes, IMGS_POR_VIDEO_MAX)
+    # Objetivo: siempre 10 imágenes (suficiente para ~100s con Ken Burns)
+    NUM_OBJETIVO = 10
 
-    log(f"   Objetivo: {num_imagenes} imágenes", 'img')
+    # ── Construir pool de queries variados ─────────────────────────────
+    queries = []
+    queries.append(' '.join(kws[:3]))                          # ej: "Atlético Madrid Champions"
+    queries.append(kws[0] if kws else tema.split()[0])         # ej: "Atlético"
+    queries.append(' '.join(tema.split()[:3]))                 # primeras 3 palabras del tema
+    # Queries de contexto desde puntos clave
+    for p in puntos[:3]:
+        palabras_p = [w for w in p.split() if len(w) > 4][:3]
+        if palabras_p:
+            queries.append(' '.join(palabras_p))
+    # Queries genéricos de respaldo (siempre tienen imágenes)
+    queries.append('noticias mundo')
+    queries.append('breaking news')
+    # Deduplicar queries
+    queries = list(dict.fromkeys([q.strip() for q in queries if q.strip()]))
+    log(f"   Queries: {queries[:5]}", 'debug')
 
-    urls_crudas = list(datos_verificados.get('imagenes_urls', []))
+    # ── Recolectar URLs de todas las fuentes ───────────────────────────
+    urls_crudas = list(datos_verificados.get('imagenes_urls', []))  # og:image de artículos
 
-    # Wikimedia (gratis)
-    urls_crudas.extend(buscar_wikimedia(query, 5))
-    urls_crudas.extend(buscar_wikimedia(tema.split()[0], 3))
+    for q in queries:
+        if len(urls_crudas) >= NUM_OBJETIVO * 3:
+            break
+        # Wikimedia primero (gratis, sin key, siempre disponible)
+        urls_crudas.extend(buscar_wikimedia(q, 5))
 
-    # Pixabay (gratis con key)
-    if len(urls_crudas) < num_imagenes * 2:
-        urls_crudas.extend(buscar_pixabay(query, 8))
+    for q in queries:
+        if len(urls_crudas) >= NUM_OBJETIVO * 3:
+            break
+        # Pixabay (gratis con key)
+        urls_crudas.extend(buscar_pixabay(q, 8))
 
-    # Pexels (gratis con key)
-    if len(urls_crudas) < num_imagenes * 2:
-        urls_crudas.extend(buscar_pexels(query, 6))
+    for q in queries:
+        if len(urls_crudas) >= NUM_OBJETIVO * 3:
+            break
+        # Pexels (gratis con key)
+        urls_crudas.extend(buscar_pexels(q, 6))
 
-    # Deduplicar URLs
-    urls_crudas = list(dict.fromkeys(urls_crudas))
-    log(f"   URLs disponibles: {len(urls_crudas)}", 'img')
+    # Deduplicar URLs manteniendo orden
+    urls_crudas = list(dict.fromkeys([u for u in urls_crudas if u and len(u) > 10]))
+    log(f"   URLs brutas disponibles: {len(urls_crudas)}", 'img')
 
-    # Descargar y validar
-    paths_validos = []
+    # ── Descargar y validar ────────────────────────────────────────────
+    paths_reales = []
     for i, url in enumerate(urls_crudas):
-        if len(paths_validos) >= num_imagenes:
+        if len(paths_reales) >= NUM_OBJETIVO:
             break
         p = descargar_imagen(url, i)
         if p:
-            paths_validos.append(p)
+            paths_reales.append(p)
 
-    log(f"   Imágenes descargadas: {len(paths_validos)}/{num_imagenes}", 'img')
+    log(f"   Imágenes reales descargadas: {len(paths_reales)}/{NUM_OBJETIVO}", 'img')
 
-    # Completar con imágenes generadas si faltan
-    puntos = guion.get('puntos', [])
-    titulo = guion.get('titulo', tema)
-    subtitulo = guion.get('subtitulo', '')
-
-    while len(paths_validos) < num_imagenes:
-        idx_gen = len(paths_validos)
-        sub = puntos[idx_gen % len(puntos)] if puntos else subtitulo
-        p = generar_imagen_texto(titulo, sub, idx_gen, num_imagenes)
+    # ── Completar con imágenes generadas si y solo si faltan ──────────
+    # Cada imagen generada muestra un punto clave distinto del guión
+    paths_final = list(paths_reales)
+    idx_gen = 0
+    while len(paths_final) < NUM_OBJETIVO:
+        sub = puntos[idx_gen % len(puntos)] if puntos else guion.get('subtitulo', titulo)
+        p = generar_imagen_texto(titulo, sub, idx_gen, NUM_OBJETIVO)
         if p:
-            paths_validos.append(p)
+            paths_final.append(p)
+            log(f"   🎨 Imagen generada {idx_gen+1}: punto '{sub[:40]}'", 'debug')
         else:
+            log(f"   ⚠️ Falló generación imagen {idx_gen}", 'warn')
             break
+        idx_gen += 1
 
-    log(f"   ✅ Total imágenes listas: {len(paths_validos)}", 'ok')
-    return paths_validos, num_imagenes
+    pct_reales = int(len(paths_reales) / max(len(paths_final), 1) * 100)
+    log(f"   ✅ Total: {len(paths_final)} imágenes ({pct_reales}% reales, {100-pct_reales}% generadas)", 'ok')
+    return paths_final, NUM_OBJETIVO
 
 # ──────────────────────────────────────────────
 # PASO 5: GENERACIÓN DE VIDEO
@@ -1048,132 +1068,271 @@ def superponer_texto_video(frame_pil, guion, idx_imagen, total_imagenes, tema):
 
     return frame_pil
 
-def crear_video_multiimagen(paths_imagenes, guion, audio_path, tema):
+def descargar_musica_fondo(tema, duracion_seg):
     """
-    Genera el MP4 final con múltiples imágenes, transiciones mixtas y texto superpuesto.
+    Descarga música de fondo libre de derechos acorde al tema.
+    Fuente: Free Music Archive / ccmixter / archivos públicos dominio.
+    Retorna path local o None.
+    """
+    # Mapeo tema → URL de música libre de derechos (dominio público / CC0)
+    MUSICAS = {
+        'urgente': [
+            "https://www.soundjay.com/misc/sounds/bell-ringing-05.mp3",
+            "https://assets.mixkit.co/music/preview/mixkit-news-report-702.mp3",
+            "https://assets.mixkit.co/music/preview/mixkit-breaking-news-theme-702.mp3",
+        ],
+        'deportes': [
+            "https://assets.mixkit.co/music/preview/mixkit-sport-action-702.mp3",
+            "https://assets.mixkit.co/music/preview/mixkit-stadium-702.mp3",
+        ],
+        'ciencia': [
+            "https://assets.mixkit.co/music/preview/mixkit-tech-house-vibes-130.mp3",
+            "https://assets.mixkit.co/music/preview/mixkit-futuristic-702.mp3",
+        ],
+        'general': [
+            "https://assets.mixkit.co/music/preview/mixkit-news-show-702.mp3",
+            "https://assets.mixkit.co/music/preview/mixkit-documentary-702.mp3",
+            "https://assets.mixkit.co/music/preview/mixkit-corporate-702.mp3",
+        ],
+    }
+
+    # Detectar categoría del tema
+    tema_l = tema.lower()
+    if any(p in tema_l for p in ['guerra', 'urgente', 'ataque', 'muerto', 'crisis', 'terremoto']):
+        categoria = 'urgente'
+    elif any(p in tema_l for p in ['futbol', 'deporte', 'gol', 'partido', 'copa', 'champions']):
+        categoria = 'deportes'
+    elif any(p in tema_l for p in ['ciencia', 'tecnologia', 'ia', 'robot', 'nasa', 'descubri']):
+        categoria = 'ciencia'
+    else:
+        categoria = 'general'
+
+    urls = MUSICAS.get(categoria, MUSICAS['general'])
+    random.shuffle(urls)
+
+    for url in urls:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=20, stream=True)
+            if r.status_code == 200 and 'audio' in r.headers.get('content-type', ''):
+                path = f'/tmp/vbot_musica_{generar_hash(tema)}.mp3'
+                with open(path, 'wb') as f:
+                    f.write(r.content)
+                if os.path.exists(path) and os.path.getsize(path) > 5000:
+                    log(f"🎵 Música de fondo descargada ({categoria})", 'ok')
+                    return path
+        except Exception as e:
+            log(f"   Música error {url[:50]}: {e}", 'debug')
+
+    log("   Sin música de fondo disponible — solo TTS", 'warn')
+    return None
+
+def mezclar_audio_con_musica(tts_path, musica_path, duracion_video, tema):
+    """
+    Mezcla TTS (voz) + música de fondo (volumen bajo) con ffmpeg.
+    Retorna path del audio mezclado o tts_path original si falla.
+    """
+    if not musica_path or not tts_path:
+        return tts_path
+    out_path = f'/tmp/vbot_audio_mix_{generar_hash(tema)}.mp3'
+    try:
+        import subprocess
+        # TTS al 100% de volumen, música al 12% (apenas se escucha de fondo)
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', tts_path,
+            '-i', musica_path,
+            '-filter_complex',
+            f'[1:a]volume=0.12,aloop=loop=-1:size=2e+09,atrim=duration={duracion_video}[bg];'
+            f'[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[out]',
+            '-map', '[out]',
+            '-c:a', 'libmp3lame', '-q:a', '4',
+            out_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=60)
+        if result.returncode == 0 and os.path.exists(out_path) and os.path.getsize(out_path) > 1000:
+            log("✅ Audio mezclado: TTS + música de fondo", 'ok')
+            return out_path
+        else:
+            log(f"   ffmpeg mix error: {result.stderr.decode()[:200]}", 'debug')
+    except Exception as e:
+        log(f"   Error mezclando audio: {e}", 'debug')
+    return tts_path  # fallback: solo TTS
+
+def normalizar_imagen_9_16(img, ancho=VIDEO_ANCHO, alto=VIDEO_ALTO):
+    """Escala y recorta una imagen PIL al tamaño exacto 9:16."""
+    from PIL import Image
+    if img.size == (ancho, alto):
+        return img
+    img_r = img.width / img.height
+    tgt_r = ancho / alto
+    if img_r > tgt_r:
+        nuevo_h = alto
+        nuevo_w = int(alto * img_r)
+    else:
+        nuevo_w = ancho
+        nuevo_h = int(ancho / img_r)
+    img = img.resize((nuevo_w, nuevo_h), Image.LANCZOS)
+    x = (nuevo_w - ancho) // 2
+    y = (nuevo_h - alto) // 2
+    return img.crop((x, y, x + ancho, y + alto))
+
+def crear_video_multiimagen(paths_imagenes, guion, audio_tts_path, tema):
+    """
+    Genera el MP4 final con múltiples imágenes, transiciones fluidas y texto superpuesto.
     Vertical 9:16 (1080x1920), 90–120 segundos.
+    Fixes v2:
+      - Transiciones ENTRE imágenes (no frames negros)
+      - Ken Burns suave aplicado SIEMPRE como movimiento base
+      - Música de fondo mezclada con TTS
+      - Mínimo 8 imágenes garantizado
     """
-    log("🎬 Generando video...", 'video')
+    log("🎬 Generando video v2...", 'video')
     try:
         import numpy as np
         from PIL import Image
         try:
-            from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, ImageClip
+            from moviepy.editor import ImageSequenceClip, AudioFileClip
         except ImportError:
-            from moviepy import ImageSequenceClip, AudioFileClip, concatenate_videoclips, ImageClip
+            from moviepy import ImageSequenceClip, AudioFileClip
 
         total_imagenes = len(paths_imagenes)
         if total_imagenes == 0:
-            log("Sin imágenes para generar video", 'error')
+            log("Sin imágenes", 'error')
             return None
 
-        # Calcular duración por imagen
-        duracion_total = random.randint(VIDEO_DURACION_MIN, VIDEO_DURACION_MAX)
-        duracion_por_img = duracion_total / total_imagenes
-        duracion_por_img = max(SEG_POR_IMAGEN_MIN, min(SEG_POR_IMAGEN_MAX, duracion_por_img))
-        # Recalcular total real
-        duracion_total = int(duracion_por_img * total_imagenes)
+        # ── Duración ────────────────────────────────────
+        duracion_total   = random.randint(VIDEO_DURACION_MIN, VIDEO_DURACION_MAX)
+        seg_por_img      = max(SEG_POR_IMAGEN_MIN, min(SEG_POR_IMAGEN_MAX,
+                               duracion_total / total_imagenes))
+        duracion_total   = int(seg_por_img * total_imagenes)
+        FRAMES_IMG       = int(VIDEO_FPS * seg_por_img)
+        FRAMES_TRANS     = int(VIDEO_FPS * 1.0)  # 1 segundo de transición suave
+        log(f"   {duracion_total}s | {total_imagenes} imgs × {seg_por_img:.1f}s | trans={FRAMES_TRANS}f", 'video')
 
-        log(f"   Duración: {duracion_total}s | {total_imagenes} imágenes × {duracion_por_img:.1f}s", 'video')
-
-        FRAMES_POR_IMG = int(VIDEO_FPS * duracion_por_img)
-        FRAMES_TRANS   = int(VIDEO_FPS * 1.2)  # 1.2 segundos de transición
-        TRANSICIONES   = ['ken_burns', 'fade', 'slide_izq', 'slide_der', 'zoom_out']
-
-        # Cargar imágenes PIL
+        # ── Cargar y normalizar imágenes ─────────────────
         imgs_pil = []
         for p in paths_imagenes:
             try:
                 img = Image.open(p).convert('RGB')
-                if img.size != (VIDEO_ANCHO, VIDEO_ALTO):
-                    # Crop centrado
-                    img_r = img.width / img.height
-                    tgt_r = VIDEO_ANCHO / VIDEO_ALTO
-                    if img_r > tgt_r:
-                        nuevo_h = VIDEO_ALTO
-                        nuevo_w = int(VIDEO_ALTO * img_r)
-                    else:
-                        nuevo_w = VIDEO_ANCHO
-                        nuevo_h = int(VIDEO_ANCHO / img_r)
-                    img = img.resize((nuevo_w, nuevo_h), Image.LANCZOS)
-                    x = (nuevo_w - VIDEO_ANCHO) // 2
-                    y = (nuevo_h - VIDEO_ALTO) // 2
-                    img = img.crop((x, y, x + VIDEO_ANCHO, y + VIDEO_ALTO))
+                img = normalizar_imagen_9_16(img)
                 imgs_pil.append(img)
             except Exception as e:
-                log(f"   Error cargando imagen {p}: {e}", 'debug')
+                log(f"   Error cargando {p}: {e}", 'debug')
 
         if not imgs_pil:
-            log("No se pudieron cargar imágenes PIL", 'error')
+            log("No se cargaron imágenes PIL", 'error')
             return None
 
-        log(f"   Imágenes PIL cargadas: {len(imgs_pil)}", 'video')
+        log(f"   PIL cargadas: {len(imgs_pil)}", 'video')
 
-        # Generar frames
+        # ── Secuencia de efectos por imagen ──────────────
+        EFECTOS = ['kb_derecha', 'kb_izquierda', 'kb_arriba', 'kb_abajo', 'zoom_in', 'zoom_out']
+        TRANS   = ['fade', 'slide_izq', 'slide_der', 'slide_arr', 'slide_aba']
+        efectos_asignados = [EFECTOS[i % len(EFECTOS)] for i in range(len(imgs_pil))]
+        trans_asignadas   = [TRANS[i % len(TRANS)]     for i in range(len(imgs_pil))]
+        random.shuffle(efectos_asignados)
+        random.shuffle(trans_asignadas)
+
+        # ── Generar todos los frames ──────────────────────
         todos_frames = []
-        random.shuffle(TRANSICIONES)
 
         for i, img_pil in enumerate(imgs_pil):
-            transicion = TRANSICIONES[i % len(TRANSICIONES)]
-            kb_dir = random.choice(['derecha', 'izquierda', 'arriba', 'abajo'])
+            efecto = efectos_asignados[i]
 
-            # Frames de esta imagen (con efecto)
-            frames_img = []
-            for f in range(FRAMES_POR_IMG):
-                progreso = f / max(FRAMES_POR_IMG - 1, 1)
+            # — Frames principales con Ken Burns / zoom —
+            for f in range(FRAMES_IMG):
+                p = f / max(FRAMES_IMG - 1, 1)  # 0.0 → 1.0
 
-                if transicion == 'ken_burns' or transicion == 'zoom_out':
-                    if transicion == 'zoom_out':
-                        frame = aplicar_ken_burns(img_pil, 1.0 - progreso * 0.08, kb_dir)
-                    else:
-                        frame = aplicar_ken_burns(img_pil, progreso, kb_dir)
-                else:
-                    frame = img_pil.copy()
+                if efecto in ('kb_derecha', 'kb_izquierda', 'kb_arriba', 'kb_abajo'):
+                    dir_map = {'kb_derecha': 'derecha', 'kb_izquierda': 'izquierda',
+                               'kb_arriba': 'arriba', 'kb_abajo': 'abajo'}
+                    frame = aplicar_ken_burns(img_pil, p, dir_map[efecto])
+                elif efecto == 'zoom_in':
+                    frame = aplicar_ken_burns(img_pil, p * 0.08, 'derecha')
+                else:  # zoom_out
+                    frame = aplicar_ken_burns(img_pil, (1.0 - p) * 0.08, 'izquierda')
 
-                # Superponer texto
                 frame = superponer_texto_video(frame, guion, i, len(imgs_pil), tema)
-                frames_img.append(np.array(frame))
+                todos_frames.append(np.array(frame))
 
-            # Frames de transición hacia siguiente imagen
+            # — Transición hacia siguiente imagen —
             if i < len(imgs_pil) - 1:
-                img_siguiente = imgs_pil[i + 1]
-                trans_tipo = random.choice(['fade', 'slide_izq', 'slide_der'])
+                img_sig = imgs_pil[i + 1]
+                tipo_trans = trans_asignadas[i]
+
                 for f in range(FRAMES_TRANS):
-                    alpha = f / FRAMES_TRANS
-                    if trans_tipo == 'fade':
-                        frame_t = blend_imagenes(img_pil, img_siguiente, alpha)
-                    elif trans_tipo == 'slide_izq':
-                        frame_t = slide_transicion(img_pil, img_siguiente, alpha, 'izquierda')
-                    else:
-                        frame_t = slide_transicion(img_pil, img_siguiente, alpha, 'derecha')
+                    alpha = f / FRAMES_TRANS  # 0.0 → ~1.0 (sin llegar a 1 para no duplicar)
+
+                    if tipo_trans == 'fade':
+                        frame_t = blend_imagenes(img_pil, img_sig, alpha)
+
+                    elif tipo_trans == 'slide_izq':
+                        frame_t = slide_transicion(img_pil, img_sig, alpha, 'izquierda')
+
+                    elif tipo_trans == 'slide_der':
+                        frame_t = slide_transicion(img_pil, img_sig, alpha, 'derecha')
+
+                    elif tipo_trans == 'slide_arr':
+                        # Slide vertical hacia arriba
+                        w, h = img_pil.size
+                        if img_sig.size != (w, h):
+                            img_sig = img_sig.resize((w, h), Image.LANCZOS)
+                        offset = int(h * alpha)
+                        frame_t = Image.new('RGB', (w, h))
+                        frame_t.paste(img_pil.crop((0, offset, w, h)), (0, 0))
+                        frame_t.paste(img_sig.crop((0, 0, w, h - offset)), (0, h - offset))
+
+                    else:  # slide_aba
+                        w, h = img_pil.size
+                        if img_sig.size != (w, h):
+                            img_sig = img_sig.resize((w, h), Image.LANCZOS)
+                        offset = int(h * alpha)
+                        frame_t = Image.new('RGB', (w, h))
+                        frame_t.paste(img_pil.crop((0, 0, w, h - offset)), (0, offset))
+                        frame_t.paste(img_sig.crop((0, h - offset, w, h)), (0, 0))
+
                     frame_t = superponer_texto_video(frame_t, guion, i, len(imgs_pil), tema)
                     todos_frames.append(np.array(frame_t))
-
-            todos_frames.extend(frames_img)
 
         if not todos_frames:
             log("Sin frames generados", 'error')
             return None
 
-        log(f"   Total frames: {len(todos_frames)} ({len(todos_frames)/VIDEO_FPS:.1f}s)", 'video')
+        dur_real = len(todos_frames) / VIDEO_FPS
+        log(f"   Frames totales: {len(todos_frames)} → {dur_real:.1f}s", 'video')
 
-        # Crear clip de video
+        # ── Crear clip de video ───────────────────────────
         clip = ImageSequenceClip(todos_frames, fps=VIDEO_FPS)
 
-        # Agregar audio TTS
-        if audio_path and os.path.exists(audio_path):
-            try:
-                audio = AudioFileClip(audio_path)
-                # Si el audio es más corto que el video, repetir; si más largo, cortar
-                if audio.duration < clip.duration:
-                    clip = clip.set_audio(audio.set_duration(clip.duration))
-                else:
-                    clip = clip.set_audio(audio.subclip(0, clip.duration))
-                log("   ✅ Audio agregado al video", 'ok')
-            except Exception as e:
-                log(f"   Error agregando audio: {e}", 'warn')
+        # ── Audio: TTS + música de fondo ─────────────────
+        audio_final_path = audio_tts_path
+        if audio_tts_path and os.path.exists(audio_tts_path):
+            musica_path = descargar_musica_fondo(tema, dur_real)
+            if musica_path:
+                audio_final_path = mezclar_audio_con_musica(
+                    audio_tts_path, musica_path, dur_real, tema)
+                try:
+                    os.remove(musica_path)
+                except:
+                    pass
 
-        # Guardar MP4
+        if audio_final_path and os.path.exists(audio_final_path):
+            try:
+                audio = AudioFileClip(audio_final_path)
+                if audio.duration >= clip.duration:
+                    clip = clip.set_audio(audio.subclip(0, clip.duration))
+                else:
+                    # Loop del audio si es más corto que el video
+                    from moviepy.audio.fx.all import audio_loop
+                    try:
+                        clip = clip.set_audio(audio_loop(audio, duration=clip.duration))
+                    except:
+                        clip = clip.set_audio(audio)
+                log("   ✅ Audio final configurado", 'ok')
+            except Exception as e:
+                log(f"   Error configurando audio: {e}", 'warn')
+
+        # ── Exportar MP4 ──────────────────────────────────
         video_path = f'/tmp/vbot_video_{generar_hash(tema)}.mp4'
         clip.write_videofile(
             video_path,
@@ -1185,8 +1344,15 @@ def crear_video_multiimagen(paths_imagenes, guion, audio_path, tema):
         )
         clip.close()
 
+        # Limpiar audio mezclado temporal
+        if audio_final_path and audio_final_path != audio_tts_path:
+            try:
+                os.remove(audio_final_path)
+            except:
+                pass
+
         size_mb = os.path.getsize(video_path) / (1024 * 1024)
-        log(f"✅ Video generado: {size_mb:.1f} MB, {len(todos_frames)/VIDEO_FPS:.0f}s", 'ok')
+        log(f"✅ Video listo: {size_mb:.1f} MB, {dur_real:.0f}s, {len(imgs_pil)} imágenes", 'ok')
         return video_path
 
     except ImportError as e:
@@ -1348,13 +1514,13 @@ def main():
 
     # PASO 5a — Audio TTS
     guion_tts = guion.get('guion_tts', f"{guion.get('titulo','')}. {' '.join(guion.get('puntos',[]))}")
-    audio_path = generar_audio_tts(guion_tts, tema)
+    audio_tts_path = generar_audio_tts(guion_tts, tema)
 
-    # PASO 5b — Generar video
-    video_path = crear_video_multiimagen(paths_imagenes, guion, audio_path, tema)
+    # PASO 5b — Generar video (música de fondo se mezcla dentro)
+    video_path = crear_video_multiimagen(paths_imagenes, guion, audio_tts_path, tema)
     if not video_path:
         log("Video no generado", 'error')
-        limpiar_temporales(paths_imagenes, audio_path, None)
+        limpiar_temporales(paths_imagenes, audio_tts_path, None)
         return False
 
     # PASO 6 — Publicar
@@ -1375,7 +1541,7 @@ def main():
         log("No se publicó en ninguna plataforma", 'error')
 
     # Limpiar temporales
-    limpiar_temporales(paths_imagenes, audio_path, video_path)
+    limpiar_temporales(paths_imagenes, audio_tts_path, video_path)
 
     return bool(url_fb or url_wp)
 

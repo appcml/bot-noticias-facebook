@@ -464,23 +464,20 @@ def es_tema_aceptable(tema_str):
 
 def seleccionar_tema(h):
     """
-    Recopila temas de todas las fuentes, aplica filtro editorial
-    y selecciona el mejor alineado con la línea de Verdad Hoy:
-    noticias internacionales + historia + ciencia + efemérides.
-    Deportes y farándula quedan excluidos.
+    Recopila temas SOLO de fuentes oficiales de noticias en tiempo real.
+    Efemérides desactivadas — solo noticias reales verificables con imágenes reales.
+    Filtra deportes y farándula. Prioriza internacional, política, economía, ciencia.
     """
-    log("🔍 Buscando temas trending...", 'info')
+    log("🔍 Buscando noticias en fuentes oficiales...", 'info')
     todos = []
 
-    # Efemérides primero — máxima prioridad
-    todos.extend(obtener_efemerides_hoy())
-
-    todos.extend(obtener_temas_google_trends())
-    todos.extend(obtener_temas_gnews())
-    todos.extend(obtener_temas_newsapi())
-    todos.extend(obtener_temas_newsdata())
-    todos.extend(obtener_temas_reddit())
-    todos.extend(obtener_temas_rss_medios())
+    # SOLO fuentes de noticias reales — sin efemérides
+    todos.extend(obtener_temas_gnews())        # noticias en español verificadas
+    todos.extend(obtener_temas_newsapi())       # noticias internacionales
+    todos.extend(obtener_temas_newsdata())      # noticias globales
+    todos.extend(obtener_temas_rss_medios())    # BBC, CNN, El País, Infobae, NYT
+    todos.extend(obtener_temas_reddit())        # worldnews, latinoamerica
+    todos.extend(obtener_temas_google_trends()) # trending del día
 
     if not todos:
         log("Sin temas disponibles en ninguna fuente", 'error')
@@ -496,13 +493,12 @@ def seleccionar_tema(h):
             vistos.append(tema)
             unicos.append(t)
 
-    # Aplicar puntuación editorial a cada tema
+    # Aplicar puntuación editorial
     for t in unicos:
         ajuste = puntuar_tema(t['tema'])
         t['puntaje'] = t.get('puntaje', 5) + ajuste
-        t['puntaje_editorial'] = ajuste
 
-    # Filtrar temas claramente fuera de línea editorial
+    # Filtrar temas fuera de línea editorial (deportes/farándula)
     aceptables = [t for t in unicos if es_tema_aceptable(t['tema'])]
     if not aceptables:
         log("⚠️ Sin temas aceptables — usando todos", 'warn')
@@ -514,16 +510,15 @@ def seleccionar_tema(h):
         log("Todos usados — tomando mejor aceptable", 'warn')
         candidatos = aceptables
 
-    # Ordenar: puntaje editorial primero, luego puntaje base
-    candidatos.sort(key=lambda x: (x.get('puntaje', 0)), reverse=True)
+    # Ordenar por puntaje
+    candidatos.sort(key=lambda x: x.get('puntaje', 0), reverse=True)
 
     # Log top 5 para diagnóstico
     for i, c in enumerate(candidatos[:5]):
         log(f"   [{i+1}] p={c.get('puntaje',0):+d} | {c['tema'][:70]}", 'debug')
 
     seleccionado = candidatos[0]
-    tipo = "📅 EFEMÉRIDE" if seleccionado.get('tipo') == 'efemeride' else "📰 NOTICIA"
-    log(f"✅ {tipo} seleccionado (p={seleccionado.get('puntaje',0):+d}): {seleccionado['tema'][:80]}", 'ok')
+    log(f"✅ NOTICIA seleccionada (p={seleccionado.get('puntaje',0):+d}): {seleccionado['tema'][:80]}", 'ok')
     return seleccionado
 
 # ──────────────────────────────────────────────
@@ -1142,98 +1137,108 @@ def agregar_watermark_video(img_pil):
 
 def recopilar_imagenes(datos_verificados, guion, palabras_clave):
     """
-    Busca imágenes ESPECÍFICAS del tema usando los queries generados por la IA.
-    Coherencia total: todas las imágenes deben corresponder a la misma noticia.
+    Estrategia de coherencia estricta:
+    1. PRIMERO: imágenes del artículo fuente (og:image) — 100% relevantes
+    2. SEGUNDO: Pixabay/Pexels con queries específicos de la IA
+    3. FALLBACK: imágenes generadas con Pillow mostrando texto del guión
 
-    Jerarquía de queries (de más a menos específico):
-    1. queries_imagenes de la IA (los más específicos del tema)
-    2. Título de la noticia
-    3. Palabras clave del guión
-    4. Fallback genérico solo si todo falla
+    Wikimedia DESACTIVADO — devuelve resultados irrelevantes con frecuencia.
+    Si las imágenes descargadas son < 3, se prefiere completar con Pillow
+    antes que usar imágenes no relacionadas.
     """
-    log("🖼️ Recopilando imágenes coherentes con el tema...", 'img')
+    log("🖼️ Recopilando imágenes (coherencia estricta)...", 'img')
     tema   = datos_verificados['tema']
     titulo = guion.get('titulo', tema)
-
-    # Queries específicos generados por la IA para ESTE tema
-    queries_ia = guion.get('queries_imagenes', [])
-
-    # Construir lista de queries en orden de especificidad
-    queries_ordenados = []
-
-    # 1. Queries específicos de la IA (en inglés, más precisos para APIs)
-    queries_ordenados.extend([q.strip() for q in queries_ia if q.strip()])
-
-    # 2. Título de la noticia (palabras significativas)
-    palabras_titulo = [w for w in titulo.split() if len(w) > 3
-                       and w.lower() not in {'para','como','pero','desde','hasta','sobre','este','esta'}]
-    if palabras_titulo:
-        queries_ordenados.append(' '.join(palabras_titulo[:4]))
-        queries_ordenados.append(' '.join(palabras_titulo[:2]))
-
-    # 3. Palabras clave del guión
-    for kw in (palabras_clave or [])[:3]:
-        if kw and len(kw) > 3:
-            queries_ordenados.append(kw)
-
-    # Deduplicar queries manteniendo orden
-    queries_ordenados = list(dict.fromkeys([q for q in queries_ordenados if q]))
-    log(f"   Queries específicos: {queries_ordenados[:5]}", 'img')
-
+    puntos = guion.get('puntos', [])
     NUM_OBJETIVO = 10
 
-    # ── Recolectar URLs usando queries específicos ──────────────────
-    urls_crudas = list(datos_verificados.get('imagenes_urls', []))  # og:image del artículo fuente
-
-    for query in queries_ordenados:
-        if len(urls_crudas) >= NUM_OBJETIVO * 3:
-            break
-        urls_crudas.extend(buscar_wikimedia(query, 4))
-
-    for query in queries_ordenados:
-        if len(urls_crudas) >= NUM_OBJETIVO * 3:
-            break
-        urls_crudas.extend(buscar_pixabay(query, 6))
-
-    for query in queries_ordenados:
-        if len(urls_crudas) >= NUM_OBJETIVO * 3:
-            break
-        urls_crudas.extend(buscar_pexels(query, 5))
-
-    # Deduplicar URLs
-    urls_crudas = list(dict.fromkeys([u for u in urls_crudas if u and len(u) > 10]))
-    log(f"   URLs disponibles: {len(urls_crudas)}", 'img')
-
-    # ── Descargar y validar ─────────────────────────────────────────
-    paths_reales = []
-    for i, url in enumerate(urls_crudas):
-        if len(paths_reales) >= NUM_OBJETIVO:
-            break
+    # ── FUENTE 1: imágenes del artículo original ────────────────────
+    # Estas son las más relevantes — vienen del mismo artículo de la noticia
+    urls_articulo = list(datos_verificados.get('imagenes_urls', []))
+    paths_articulo = []
+    for i, url in enumerate(urls_articulo[:6]):
         p = descargar_imagen(url, i)
         if p:
-            paths_reales.append(p)
+            paths_articulo.append(p)
+    log(f"   Imágenes del artículo: {len(paths_articulo)}", 'img')
 
-    log(f"   Imágenes reales: {len(paths_reales)}/{NUM_OBJETIVO}", 'img')
+    # ── FUENTE 2: búsqueda con queries específicos de la IA ─────────
+    # Solo si faltan imágenes del artículo
+    paths_buscadas = []
+    if len(paths_articulo) < NUM_OBJETIVO:
+        queries_ia = guion.get('queries_imagenes', [])
 
-    # ── Completar con imágenes generadas si faltan ──────────────────
-    # Cada imagen generada muestra un punto clave ESPECÍFICO del guión
-    puntos  = guion.get('puntos', [])
+        # Construir queries ordenados por especificidad
+        queries = list(dict.fromkeys([q.strip() for q in queries_ia if q.strip()]))
+
+        # Agregar queries del título como respaldo
+        palabras_titulo = [w for w in titulo.split()
+                           if len(w) > 4 and w.lower() not in
+                           {'para','como','pero','desde','hasta','sobre','este','esta','como','tras','ante'}]
+        if palabras_titulo:
+            queries.append(' '.join(palabras_titulo[:3]))
+
+        log(f"   Queries IA: {queries[:4]}", 'img')
+
+        faltan = NUM_OBJETIVO - len(paths_articulo)
+        idx_base = len(paths_articulo)
+
+        for query in queries:
+            if len(paths_buscadas) >= faltan:
+                break
+            # Pixabay primero (resultados más controlados)
+            urls_px = buscar_pixabay(query, min(6, faltan - len(paths_buscadas) + 2))
+            for url in urls_px:
+                if len(paths_buscadas) >= faltan:
+                    break
+                p = descargar_imagen(url, idx_base + len(paths_buscadas))
+                if p:
+                    paths_buscadas.append(p)
+
+        for query in queries:
+            if len(paths_buscadas) >= faltan:
+                break
+            # Pexels como segunda opción
+            urls_pe = buscar_pexels(query, min(5, faltan - len(paths_buscadas) + 2))
+            for url in urls_pe:
+                if len(paths_buscadas) >= faltan:
+                    break
+                p = descargar_imagen(url, idx_base + len(paths_buscadas))
+                if p:
+                    paths_buscadas.append(p)
+
+    log(f"   Imágenes buscadas: {len(paths_buscadas)}", 'img')
+
+    # ── Combinar fuentes reales ──────────────────────────────────────
+    paths_reales = paths_articulo + paths_buscadas
+    log(f"   Total imágenes reales: {len(paths_reales)}", 'img')
+
+    # ── FUENTE 3: generadas con Pillow — coherentes 100% ────────────
+    # Cada imagen generada muestra un dato concreto del guión
+    # Rotación: subtítulo → punto1 → punto2 → ... → conclusión
+    contenidos_texto = [guion.get('subtitulo', titulo)]
+    contenidos_texto.extend(puntos)
+    contenidos_texto.append(guion.get('conclusion', '¿Qué opinas? Comenta 👇'))
+
     paths_final = list(paths_reales)
-
-    for idx_gen in range(NUM_OBJETIVO - len(paths_final)):
-        # Rotar entre título y puntos clave para variedad visual
-        if idx_gen == 0:
-            subtitulo = guion.get('subtitulo', titulo)
-        else:
-            subtitulo = puntos[(idx_gen - 1) % len(puntos)] if puntos else titulo
-        p = generar_imagen_texto(titulo, subtitulo, idx_gen, NUM_OBJETIVO)
+    idx_gen = 0
+    while len(paths_final) < NUM_OBJETIVO:
+        texto_slide = contenidos_texto[idx_gen % len(contenidos_texto)]
+        p = generar_imagen_texto(titulo, texto_slide, idx_gen, NUM_OBJETIVO)
         if p:
             paths_final.append(p)
         else:
             break
+        idx_gen += 1
 
-    pct = int(len(paths_reales) / max(len(paths_final), 1) * 100)
-    log(f"   ✅ Total: {len(paths_final)} imágenes ({pct}% reales del tema, {100-pct}% generadas)", 'ok')
+    pct_real = int(len(paths_reales) / max(len(paths_final), 1) * 100)
+    pct_gen  = 100 - pct_real
+    log(f"   ✅ Total: {len(paths_final)} imágenes — {len(paths_articulo)} artículo + {len(paths_buscadas)} búsqueda + {len(paths_final)-len(paths_reales)} generadas", 'ok')
+
+    # Advertencia si hay pocas imágenes reales del tema
+    if len(paths_reales) < 3:
+        log(f"   ℹ️ Pocas imágenes reales ({len(paths_reales)}) — video mayormente con tarjetas de texto del guión", 'warn')
+
     return paths_final, NUM_OBJETIVO
 
 # ──────────────────────────────────────────────

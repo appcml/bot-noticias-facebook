@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V6.0
-NUEVO EN V6:
+Bot de Noticias Internacionales - V7.0
+NUEVO EN V7:
   - Publica PRIMERO en WordPress (cada 30 min, todo el día)
-  - Luego publica en Facebook (8 veces/día, solo horario pico)
+  - Facebook SIEMPRE publica como VIDEO/Reel (no más alternancia)
+  - Categorías ampliadas: latinoamerica, entretenimiento, salud, clima, mundo
+  - Detección de tema mejorada para nuevas categorías
   - Link de verdadhoy.com incluido en cada post de Facebook
   - Imagen OBLIGATORIA para publicar (no se publica sin imagen)
-  - Categorías sincronizadas con WordPress
 """
 
 import requests
@@ -65,14 +66,19 @@ HORARIOS_PICO_UTC = [
 # ── CATEGORÍAS WORDPRESS ────────────────────────────────────
 # Deben coincidir con los slugs que creaste en WordPress
 CATEGORIA_WP = {
-    'guerra':       'internacional',
-    'politica':     'politica',
-    'economia':     'economia',
-    'tecnologia':   'tecnologia',
-    'desastre':     'internacional',
-    'deportes':     'deportes',
-    'ciencia':      'ciencia-y-salud',
-    'general':      'internacional',
+    'guerra':           'internacional',
+    'politica':         'politica',
+    'economia':         'economia',
+    'tecnologia':       'tecnologia',
+    'desastre':         'mundo',
+    'deportes':         'deportes',
+    'ciencia':          'ciencia-y-salud',
+    'salud':            'ciencia-y-salud',
+    'entretenimiento':  'entretenimiento',
+    'latinoamerica':    'latinoamerica',
+    'clima':            'medio-ambiente',
+    'mundo':            'mundo',
+    'general':          'internacional',
 }
 
 # IDs de categorías WordPress (se obtienen automáticamente al publicar)
@@ -104,6 +110,41 @@ CTAS_POR_TEMA = {
         "Nuestros pensamientos con los afectados 🙏 Comenta abajo 👇",
         "¿Cómo podemos ayudar en situaciones así? Opina 👇",
     ],
+    'deportes': [
+        "¿Qué opinas de este resultado? Comenta 👇",
+        "¿Estás de acuerdo con esta decisión deportiva? SÍ o NO 👇",
+        "¿Tu equipo favorito puede superarlo? Dinos 👇",
+    ],
+    'ciencia': [
+        "¿Crees que la ciencia avanza lo suficiente? Comenta 👇",
+        "¿Cambiaría esto tu vida? SÍ o NO 👇",
+        "¿Lo sabías? Dinos abajo 👇",
+    ],
+    'salud': [
+        "¿Cuidas tu salud? Comparte tu experiencia 👇",
+        "¿Sabías esto sobre tu salud? Comenta 👇",
+        "¿Crees que la medicina avanza rápido? SÍ o NO 👇",
+    ],
+    'entretenimiento': [
+        "¿Lo viste? ¿Qué te pareció? Comenta 👇",
+        "¿Estás de acuerdo? SÍ o NO 👇",
+        "¿Tu favorito de siempre o hay nuevos? Opina 👇",
+    ],
+    'latinoamerica': [
+        "¿Cómo afecta esto a tu país? Cuéntanos 👇",
+        "¿Crees que Latinoamérica va por buen camino? Opina 👇",
+        "¿Lo sentiste en tu región? Comenta abajo 👇",
+    ],
+    'clima': [
+        "¿Sientes el cambio climático en tu ciudad? Comenta 👇",
+        "¿Hacemos suficiente por el planeta? SÍ o NO 👇",
+        "¿Qué haces tú para ayudar? Cuéntanos 👇",
+    ],
+    'mundo': [
+        "¿Qué piensas de lo que pasa en el mundo? Comenta 👇",
+        "¿Estamos ante un cambio histórico? Opina 👇",
+        "¿Sabías esto? Dinos SÍ o NO 👇",
+    ],
     'general': [
         "¿Qué piensas de esta noticia? Comenta abajo 👇",
         "¿Sabías esto? Dinos SÍ o NO 👇",
@@ -112,12 +153,19 @@ CTAS_POR_TEMA = {
 }
 
 CTAS_VIDEO_POR_TEMA = {
-    'guerra':     "¿Crees que esto escalará?",
-    'politica':   "¿Estás de acuerdo?  SÍ o NO",
-    'economia':   "¿Te afecta esto?",
-    'tecnologia': "¿A favor o en contra?",
-    'desastre':   "Deja tu mensaje de apoyo 🙏",
-    'general':    "¿Qué opinas de esta noticia?",
+    'guerra':          "¿Crees que esto escalará?",
+    'politica':        "¿Estás de acuerdo?  SÍ o NO",
+    'economia':        "¿Te afecta esto?",
+    'tecnologia':      "¿A favor o en contra?",
+    'desastre':        "Deja tu mensaje de apoyo 🙏",
+    'deportes':        "¿Qué opinas del resultado?",
+    'ciencia':         "¿Lo sabías? ¡Comenta!",
+    'salud':           "¿Cuidas tu salud? SÍ o NO",
+    'entretenimiento': "¿Estás de acuerdo? Opina",
+    'latinoamerica':   "¿Cómo afecta a tu país?",
+    'clima':           "¿Sientes el cambio climático?",
+    'mundo':           "¿Qué opinas del mundo hoy?",
+    'general':         "¿Qué opinas de esta noticia?",
 }
 
 CTA_VIDEO_CIERRE = "💬 Comenta · 👍 Reacciona · 🔁 Comparte\nMás detalles en la descripción 👇"
@@ -143,20 +191,41 @@ def detectar_tema(titulo, descripcion=""):
                                "golpe de estado", "otan", "nato"]):
         return 'politica'
     if any(p in txt for p in ["economia", "inflacion", "recesion", "bolsa", "mercado",
-                               "petroleo", "dolar", "fmi", "banco", "crisis economica"]):
+                               "petroleo", "dolar", "fmi", "banco", "crisis economica",
+                               "aranceles", "comercio"]):
         return 'economia'
-    if any(p in txt for p in ["inteligencia artificial", "tecnologia", "ia ", "robot",
-                               "ciberataque", "hackeo", "elon musk", "openai"]):
+    if any(p in txt for p in ["inteligencia artificial", "tecnologia", "ia ", " ia,", "robot",
+                               "ciberataque", "hackeo", "elon musk", "openai", "software",
+                               "startup", "samsung", "apple", "google", "microsoft"]):
         return 'tecnologia'
     if any(p in txt for p in ["terremoto", "huracan", "inundacion", "desastre",
-                               "victimas", "muertos", "evacuacion", "tsunami"]):
+                               "victimas", "muertos", "evacuacion", "tsunami", "explosion"]):
         return 'desastre'
     if any(p in txt for p in ["futbol", "deporte", "olimpiadas", "mundial", "copa",
-                               "atletismo", "tenis", "baloncesto", "nba", "fifa"]):
+                               "atletismo", "tenis", "baloncesto", "nba", "fifa",
+                               "formula 1", "f1", "champions", "liga", "gol"]):
         return 'deportes'
-    if any(p in txt for p in ["salud", "medicina", "ciencia", "investigacion",
-                               "vacuna", "virus", "cancer", "enfermedad"]):
+    if any(p in txt for p in ["cancer", "enfermedad", "hospital", "medico", "tratamiento",
+                               "pandemia", "vacuna", "virus", "salud publica", "oms"]):
+        return 'salud'
+    if any(p in txt for p in ["ciencia", "investigacion", "descubrimiento", "estudio",
+                               "espacio", "nasa", "planeta", "universo", "fisica", "quimica"]):
         return 'ciencia'
+    if any(p in txt for p in ["clima", "cambio climatico", "calentamiento", "temperatura",
+                               "sequia", "incendio forestal", "contaminacion", "co2",
+                               "medio ambiente", "cop", "emision"]):
+        return 'clima'
+    if any(p in txt for p in ["mexico", "colombia", "argentina", "chile", "peru", "venezuela",
+                               "brasil", "cuba", "bolivia", "ecuador", "america latina",
+                               "latinoamerica", "centroamerica", "caribe"]):
+        return 'latinoamerica'
+    if any(p in txt for p in ["pelicula", "serie", "musica", "artista", "actor", "actriz",
+                               "famoso", "celebridad", "hollywood", "netflix", "oscar",
+                               "album", "concierto", "entretenimiento"]):
+        return 'entretenimiento'
+    if any(p in txt for p in ["africa", "asia", "europa", "oriente medio", "pacifico",
+                               "naciones unidas", "onu", "g20", "g7", "cumbre mundial"]):
+        return 'mundo'
     return 'general'
 
 def agregar_cta(texto, titulo="", descripcion=""):
@@ -1453,11 +1522,9 @@ def main():
         pub = agregar_cta(pub, seleccionada['titulo'], seleccionada.get('descripcion', ''))
         ht  = generar_hashtags(seleccionada['titulo'], contenido)
 
-        # Determinar formato: alternar VIDEO / IMAGEN
-        fmt_estado = cargar_json(ESTADO_FORMATO_PATH, {'ultimo_formato': 'imagen'})
-        ultimo_formato = fmt_estado.get('ultimo_formato', 'imagen')
-        usar_video = (ultimo_formato == 'imagen')  # alterna cada vez
-        log(f"🎬 Formato FB: {'VIDEO' if usar_video else 'IMAGEN'} (anterior: {ultimo_formato})", 'info')
+        # SIEMPRE VIDEO — Facebook publica como Reel
+        usar_video = True
+        log("🎬 Formato FB: SIEMPRE VIDEO (Reel)", 'info')
 
         resumen_video = contenido[:300] if contenido else seleccionada.get('descripcion', '')
 
@@ -1468,7 +1535,7 @@ def main():
                 fondo_path = img_path,
             )
             if video_path:
-                log("📹 Publicando como VIDEO en Facebook...", 'info')
+                log("📹 Publicando como VIDEO/Reel en Facebook...", 'info')
                 exito_fb = publicar_facebook_video(seleccionada['titulo'], pub, video_path, ht)
                 try:
                     if os.path.exists(video_path):
@@ -1478,10 +1545,7 @@ def main():
             if not exito_fb:
                 log("🖼️ Video falló — fallback a imagen...", 'advertencia')
                 exito_fb = publicar_facebook_imagen(seleccionada['titulo'], pub, img_path, ht)
-                usar_video = False  # registrar como imagen si el video falló
-        else:
-            log("🖼️ Publicando como IMAGEN en Facebook...", 'info')
-            exito_fb = publicar_facebook_imagen(seleccionada['titulo'], pub, img_path, ht)
+                usar_video = False
 
         # Guardar formato usado para alternar la próxima vez
         if exito_fb:

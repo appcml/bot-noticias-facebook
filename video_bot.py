@@ -738,28 +738,45 @@ def verificar_tema_en_fuentes(tema_info):
 # ──────────────────────────────────────────────
 # PASO 3: SÍNTESIS CON IA
 # ──────────────────────────────────────────────
-PROMPT_SINTESIS = """Eres un editor de contenido para redes sociales en español latino.
-Dado el siguiente texto sobre el tema "{tema}", genera un guión para un video corto de 90-120 segundos optimizado para SEO y engagement en Facebook Reels.
+PROMPT_SINTESIS = """Eres un editor de noticias para redes sociales en español latino.
 
-RESPONDE SOLO EN JSON con esta estructura exacta:
+TAREA: Generar un guión de video de 90-120 segundos sobre UNA SOLA noticia específica.
+
+NOTICIA: "{tema}"
+
+REGLAS ESTRICTAS:
+1. TODO el contenido debe hablar ÚNICAMENTE de esta noticia. No mezcles otros temas.
+2. Los puntos clave deben ser datos concretos de ESTA noticia (fechas, cifras, nombres, lugares).
+3. El guion_tts debe narrar SOLO esta historia de principio a fin, coherentemente.
+4. Las queries_imagenes deben buscar imágenes ESPECÍFICAS de este tema (personas, lugares, eventos reales mencionados).
+5. El titulo debe reflejar exactamente lo que pasó, sin sensacionalismo vacío.
+
+RESPONDE SOLO EN JSON sin texto adicional, sin markdown:
 {{
-  "titulo": "Titular impactante máx 80 chars",
-  "subtitulo": "Subtítulo complementario máx 100 chars",
+  "titulo": "Titular preciso de la noticia, máx 80 chars",
+  "subtitulo": "Contexto adicional específico, máx 100 chars",
   "puntos": [
-    "Punto clave 1 — dato concreto, máx 120 chars",
-    "Punto clave 2 — dato concreto, máx 120 chars",
-    "Punto clave 3 — dato concreto, máx 120 chars",
-    "Punto clave 4 — dato concreto, máx 120 chars",
-    "Punto clave 5 — dato concreto, máx 120 chars"
+    "Dato concreto 1 de ESTA noticia — cifra, nombre o lugar real",
+    "Dato concreto 2 de ESTA noticia — cifra, nombre o lugar real",
+    "Dato concreto 3 de ESTA noticia — cifra, nombre o lugar real",
+    "Dato concreto 4 de ESTA noticia — cifra, nombre o lugar real",
+    "Dato concreto 5 de ESTA noticia — cifra, nombre o lugar real"
   ],
-  "conclusion": "Frase de cierre con CTA, máx 120 chars",
-  "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5",
-  "descripcion_wp": "Párrafo SEO de 150-200 palabras para WordPress",
-  "palabras_clave": ["keyword1", "keyword2", "keyword3"],
-  "guion_tts": "Texto completo para narración en voz. Debe durar 90-120 segundos al leerse. Incluye todo: introducción, datos, conclusión y llamada a acción."
+  "conclusion": "Cierre con contexto e invitación a comentar, máx 120 chars",
+  "hashtags": "#TagEspecifico1 #TagEspecifico2 #TagEspecifico3 #VerdadHoy #NoticiasInternacionales",
+  "descripcion_wp": "2-3 oraciones completas que resumen la noticia para el post de Facebook. Específico, sin cortes, máx 280 chars.",
+  "palabras_clave": ["keyword_especifico_1", "keyword_especifico_2", "keyword_especifico_3"],
+  "queries_imagenes": [
+    "query imagen específica 1 en inglés para buscar en Pixabay/Pexels",
+    "query imagen específica 2 en inglés",
+    "query imagen específica 3 en inglés",
+    "query imagen específica 4 en inglés (lugar o persona del tema)",
+    "query imagen específica 5 en inglés (contexto visual del tema)"
+  ],
+  "guion_tts": "Narración completa de 90-120 segundos. Comienza con el hecho principal. Desarrolla con datos concretos. Cierra con contexto e invitación a comentar. Habla SOLO de esta noticia."
 }}
 
-Texto fuente:
+Texto fuente sobre la noticia:
 {texto}"""
 
 def sintetizar_gemini(tema, texto):
@@ -805,38 +822,129 @@ def sintetizar_openrouter(tema, texto):
         log(f"OpenRouter error: {e}", 'debug')
         return None
 
+def validar_coherencia_guion(guion, tema):
+    """
+    Verifica que el guión habla realmente de UN solo tema.
+    Detecta si los puntos mezclan contenidos distintos.
+    Retorna (True, '') si es coherente, (False, razón) si no.
+    """
+    if not guion:
+        return False, "guion vacío"
+
+    titulo    = guion.get('titulo', '').lower()
+    puntos    = guion.get('puntos', [])
+    guion_tts = guion.get('guion_tts', '').lower()
+    tema_l    = tema.lower()
+
+    # Extraer palabras clave del tema (las de más de 4 chars)
+    palabras_tema = [w for w in re.findall(r'\b\w{4,}\b', tema_l)
+                     if w not in {'este','esta','para','como','pero','desde','hasta','sobre'}]
+
+    if not palabras_tema:
+        return True, "ok"
+
+    # Verificar que al menos 2 palabras del tema aparecen en título + guión
+    encontradas = sum(1 for p in palabras_tema
+                      if p in titulo or p in guion_tts)
+    if encontradas < min(2, len(palabras_tema)):
+        return False, f"guión no habla del tema ({encontradas}/{len(palabras_tema)} palabras encontradas)"
+
+    # Verificar que los puntos no están vacíos ni son genéricos
+    puntos_vacios = sum(1 for p in puntos
+                        if not p or 'verdadhoy' in p.lower() or len(p) < 20)
+    if puntos_vacios > 2:
+        return False, f"demasiados puntos genéricos ({puntos_vacios}/5)"
+
+    return True, "ok"
+
 def sintetizar_extractivo(tema, texto):
-    """Fallback sin IA — construye guión desde el texto crudo."""
+    """Fallback sin IA — construye guión coherente desde el texto crudo."""
     log("IA: usando síntesis extractiva (fallback)", 'warn')
-    oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', texto) if len(o.strip()) > 30]
-    puntos = oraciones[1:6] if len(oraciones) > 5 else oraciones[:5]
-    puntos = [p[:120] for p in puntos]
+    oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', texto)
+                 if len(o.strip()) > 30]
+
+    # Tomar oraciones que mencionan palabras del tema
+    palabras_tema = [w for w in re.findall(r'\b\w{4,}\b', tema.lower())]
+    oraciones_relevantes = []
+    for o in oraciones:
+        o_l = o.lower()
+        if any(p in o_l for p in palabras_tema):
+            oraciones_relevantes.append(o)
+    # Si pocas relevantes, completar con las primeras
+    if len(oraciones_relevantes) < 5:
+        for o in oraciones:
+            if o not in oraciones_relevantes:
+                oraciones_relevantes.append(o)
+            if len(oraciones_relevantes) >= 8:
+                break
+
+    puntos = [p[:120] for p in oraciones_relevantes[1:6]]
     while len(puntos) < 5:
-        puntos.append(f"Sigue la cobertura en verdadhoy.com")
-    guion = f"{tema}. {' '.join(oraciones[:15])} Síguenos para más información en verdadhoy.com"
+        puntos.append(oraciones_relevantes[0][:120] if oraciones_relevantes else tema[:120])
+
+    guion_tts = (f"{tema}. "
+                 f"{' '.join(oraciones_relevantes[:12])} "
+                 f"Síguenos en verdadhoy.com para más información.")
+
+    # Queries de imagen basados en el tema específico
+    palabras_img = [w for w in tema.split() if len(w) > 3][:4]
+    queries_imgs = [
+        ' '.join(palabras_img[:3]),
+        ' '.join(palabras_img[:2]),
+        palabras_img[0] if palabras_img else 'world news',
+        'international news',
+        'history event',
+    ]
+
     return {
-        'titulo': tema[:80],
-        'subtitulo': "Verdad Hoy — Lo más importante del día",
-        'puntos': puntos,
-        'conclusion': "Síguenos para más. Comenta tu opinión 👇",
-        'hashtags': "#NoticiasLatinas #VerdadHoy #ÚltimaHora #Noticias #Trending",
-        'descripcion_wp': f"{tema}. {' '.join(oraciones[:5])} Más información en verdadhoy.com",
-        'palabras_clave': [tema.split()[0], 'noticias', 'verdadhoy'],
-        'guion_tts': guion[:3000],
+        'titulo':          tema[:80],
+        'subtitulo':       "Verdad Hoy — Noticias al minuto",
+        'puntos':          puntos,
+        'conclusion':      "¿Qué opinas? Comenta 👇 Comparte 🔁",
+        'hashtags':        "#NoticiasInternacionales #VerdadHoy #ÚltimaHora #Noticias #Mundo",
+        'descripcion_wp':  ' '.join(oraciones_relevantes[:3])[:280],
+        'palabras_clave':  palabras_img[:3] if palabras_img else ['noticias', 'mundo'],
+        'queries_imagenes': queries_imgs,
+        'guion_tts':       guion_tts[:3000],
     }
 
 def sintetizar_contenido(datos_verificados):
-    tema = datos_verificados['tema']
+    tema  = datos_verificados['tema']
     texto = datos_verificados['texto_consolidado']
     log(f"🤖 Sintetizando contenido para: '{tema[:60]}'", 'ia')
 
     # Cascada: Gemini → OpenRouter → Extractivo
     resultado = sintetizar_gemini(tema, texto)
+    if resultado:
+        ok, razon = validar_coherencia_guion(resultado, tema)
+        if not ok:
+            log(f"   ⚠️ Gemini: guión incoherente ({razon}) — reintentando con OpenRouter", 'warn')
+            resultado = None
+
     if not resultado:
         resultado = sintetizar_openrouter(tema, texto)
+        if resultado:
+            ok, razon = validar_coherencia_guion(resultado, tema)
+            if not ok:
+                log(f"   ⚠️ OpenRouter: guión incoherente ({razon}) — usando extractivo", 'warn')
+                resultado = None
+
     if not resultado:
         resultado = sintetizar_extractivo(tema, texto)
 
+    # Asegurar que queries_imagenes existe siempre
+    if resultado and not resultado.get('queries_imagenes'):
+        palabras = [w for w in tema.split() if len(w) > 3][:4]
+        resultado['queries_imagenes'] = [
+            ' '.join(palabras[:3]),
+            ' '.join(palabras[:2]),
+            palabras[0] if palabras else 'news',
+            'world news international',
+            'breaking news',
+        ]
+
+    log(f"   ✅ Guión listo: '{resultado.get('titulo','')[:60]}'", 'ok')
+    log(f"   📷 Queries imagen: {resultado.get('queries_imagenes', [])[:3]}", 'debug')
     return resultado
 
 # ──────────────────────────────────────────────
@@ -1034,63 +1142,69 @@ def agregar_watermark_video(img_pil):
 
 def recopilar_imagenes(datos_verificados, guion, palabras_clave):
     """
-    Estrategia: PRIORIZAR IMÁGENES — buscar agresivamente con múltiples
-    queries para garantizar mínimo 8 imágenes reales antes de generar con Pillow.
-    No se usan videos de stock (sin APIs pagas / sin YouTube).
-    Con Ken Burns + transiciones fluidas, 8-12 imágenes dan sensación de video real.
-    """
-    log("🖼️ Recopilando imágenes (modo agresivo)...", 'img')
-    tema    = datos_verificados['tema']
-    titulo  = guion.get('titulo', tema)
-    puntos  = guion.get('puntos', [])
-    kws     = palabras_clave or [tema.split()[0]]
+    Busca imágenes ESPECÍFICAS del tema usando los queries generados por la IA.
+    Coherencia total: todas las imágenes deben corresponder a la misma noticia.
 
-    # Objetivo: siempre 10 imágenes (suficiente para ~100s con Ken Burns)
+    Jerarquía de queries (de más a menos específico):
+    1. queries_imagenes de la IA (los más específicos del tema)
+    2. Título de la noticia
+    3. Palabras clave del guión
+    4. Fallback genérico solo si todo falla
+    """
+    log("🖼️ Recopilando imágenes coherentes con el tema...", 'img')
+    tema   = datos_verificados['tema']
+    titulo = guion.get('titulo', tema)
+
+    # Queries específicos generados por la IA para ESTE tema
+    queries_ia = guion.get('queries_imagenes', [])
+
+    # Construir lista de queries en orden de especificidad
+    queries_ordenados = []
+
+    # 1. Queries específicos de la IA (en inglés, más precisos para APIs)
+    queries_ordenados.extend([q.strip() for q in queries_ia if q.strip()])
+
+    # 2. Título de la noticia (palabras significativas)
+    palabras_titulo = [w for w in titulo.split() if len(w) > 3
+                       and w.lower() not in {'para','como','pero','desde','hasta','sobre','este','esta'}]
+    if palabras_titulo:
+        queries_ordenados.append(' '.join(palabras_titulo[:4]))
+        queries_ordenados.append(' '.join(palabras_titulo[:2]))
+
+    # 3. Palabras clave del guión
+    for kw in (palabras_clave or [])[:3]:
+        if kw and len(kw) > 3:
+            queries_ordenados.append(kw)
+
+    # Deduplicar queries manteniendo orden
+    queries_ordenados = list(dict.fromkeys([q for q in queries_ordenados if q]))
+    log(f"   Queries específicos: {queries_ordenados[:5]}", 'img')
+
     NUM_OBJETIVO = 10
 
-    # ── Construir pool de queries variados ─────────────────────────────
-    queries = []
-    queries.append(' '.join(kws[:3]))                          # ej: "Atlético Madrid Champions"
-    queries.append(kws[0] if kws else tema.split()[0])         # ej: "Atlético"
-    queries.append(' '.join(tema.split()[:3]))                 # primeras 3 palabras del tema
-    # Queries de contexto desde puntos clave
-    for p in puntos[:3]:
-        palabras_p = [w for w in p.split() if len(w) > 4][:3]
-        if palabras_p:
-            queries.append(' '.join(palabras_p))
-    # Queries genéricos de respaldo (siempre tienen imágenes)
-    queries.append('noticias mundo')
-    queries.append('breaking news')
-    # Deduplicar queries
-    queries = list(dict.fromkeys([q.strip() for q in queries if q.strip()]))
-    log(f"   Queries: {queries[:5]}", 'debug')
+    # ── Recolectar URLs usando queries específicos ──────────────────
+    urls_crudas = list(datos_verificados.get('imagenes_urls', []))  # og:image del artículo fuente
 
-    # ── Recolectar URLs de todas las fuentes ───────────────────────────
-    urls_crudas = list(datos_verificados.get('imagenes_urls', []))  # og:image de artículos
-
-    for q in queries:
+    for query in queries_ordenados:
         if len(urls_crudas) >= NUM_OBJETIVO * 3:
             break
-        # Wikimedia primero (gratis, sin key, siempre disponible)
-        urls_crudas.extend(buscar_wikimedia(q, 5))
+        urls_crudas.extend(buscar_wikimedia(query, 4))
 
-    for q in queries:
+    for query in queries_ordenados:
         if len(urls_crudas) >= NUM_OBJETIVO * 3:
             break
-        # Pixabay (gratis con key)
-        urls_crudas.extend(buscar_pixabay(q, 8))
+        urls_crudas.extend(buscar_pixabay(query, 6))
 
-    for q in queries:
+    for query in queries_ordenados:
         if len(urls_crudas) >= NUM_OBJETIVO * 3:
             break
-        # Pexels (gratis con key)
-        urls_crudas.extend(buscar_pexels(q, 6))
+        urls_crudas.extend(buscar_pexels(query, 5))
 
-    # Deduplicar URLs manteniendo orden
+    # Deduplicar URLs
     urls_crudas = list(dict.fromkeys([u for u in urls_crudas if u and len(u) > 10]))
-    log(f"   URLs brutas disponibles: {len(urls_crudas)}", 'img')
+    log(f"   URLs disponibles: {len(urls_crudas)}", 'img')
 
-    # ── Descargar y validar ────────────────────────────────────────────
+    # ── Descargar y validar ─────────────────────────────────────────
     paths_reales = []
     for i, url in enumerate(urls_crudas):
         if len(paths_reales) >= NUM_OBJETIVO:
@@ -1099,25 +1213,27 @@ def recopilar_imagenes(datos_verificados, guion, palabras_clave):
         if p:
             paths_reales.append(p)
 
-    log(f"   Imágenes reales descargadas: {len(paths_reales)}/{NUM_OBJETIVO}", 'img')
+    log(f"   Imágenes reales: {len(paths_reales)}/{NUM_OBJETIVO}", 'img')
 
-    # ── Completar con imágenes generadas si y solo si faltan ──────────
-    # Cada imagen generada muestra un punto clave distinto del guión
+    # ── Completar con imágenes generadas si faltan ──────────────────
+    # Cada imagen generada muestra un punto clave ESPECÍFICO del guión
+    puntos  = guion.get('puntos', [])
     paths_final = list(paths_reales)
-    idx_gen = 0
-    while len(paths_final) < NUM_OBJETIVO:
-        sub = puntos[idx_gen % len(puntos)] if puntos else guion.get('subtitulo', titulo)
-        p = generar_imagen_texto(titulo, sub, idx_gen, NUM_OBJETIVO)
+
+    for idx_gen in range(NUM_OBJETIVO - len(paths_final)):
+        # Rotar entre título y puntos clave para variedad visual
+        if idx_gen == 0:
+            subtitulo = guion.get('subtitulo', titulo)
+        else:
+            subtitulo = puntos[(idx_gen - 1) % len(puntos)] if puntos else titulo
+        p = generar_imagen_texto(titulo, subtitulo, idx_gen, NUM_OBJETIVO)
         if p:
             paths_final.append(p)
-            log(f"   🎨 Imagen generada {idx_gen+1}: punto '{sub[:40]}'", 'debug')
         else:
-            log(f"   ⚠️ Falló generación imagen {idx_gen}", 'warn')
             break
-        idx_gen += 1
 
-    pct_reales = int(len(paths_reales) / max(len(paths_final), 1) * 100)
-    log(f"   ✅ Total: {len(paths_final)} imágenes ({pct_reales}% reales, {100-pct_reales}% generadas)", 'ok')
+    pct = int(len(paths_reales) / max(len(paths_final), 1) * 100)
+    log(f"   ✅ Total: {len(paths_final)} imágenes ({pct}% reales del tema, {100-pct}% generadas)", 'ok')
     return paths_final, NUM_OBJETIVO
 
 # ──────────────────────────────────────────────

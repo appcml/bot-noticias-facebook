@@ -1057,7 +1057,10 @@ def crear_video_multiimagen(paths_imagenes, guion, audio_path, tema):
     try:
         import numpy as np
         from PIL import Image
-        from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, ImageClip
+        try:
+            from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_videoclips, ImageClip
+        except ImportError:
+            from moviepy import ImageSequenceClip, AudioFileClip, concatenate_videoclips, ImageClip
 
         total_imagenes = len(paths_imagenes)
         if total_imagenes == 0:

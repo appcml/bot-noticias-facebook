@@ -709,15 +709,39 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
 <p><em>Información verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
 """
 
+    # ── SEO: Extracto y frase clave para Yoast ────────────────
+    # Extracto limpio de máx 155 caracteres (aparece en Google y en Yoast)
+    extracto_crudo = ' '.join(contenido.split())
+    if len(extracto_crudo) > 155:
+        extracto = extracto_crudo[:152].rsplit(' ', 1)[0] + '...'
+    else:
+        extracto = extracto_crudo
+
+    # Frase clave: palabras significativas del título (ignora stopwords)
+    stopwords_es = {
+        'para','como','este','esta','esto','pero','porque','cuando','donde',
+        'quien','cuyo','cuya','ante','bajo','cabe','cada','con','contra',
+        'desde','durante','entre','hacia','hasta','mediante','por','según',
+        'tras','versus','vía','una','uno','unos','unas','los','las','del',
+        'que','sus','les','más','sin','sobre','también','hay','han','sido'
+    }
+    palabras_clave = [
+        p for p in re.findall(r'\b\w{4,}\b', titulo.lower())
+        if p not in stopwords_es
+    ]
+    frase_clave = ' '.join(palabras_clave[:4])
+
     # Datos del post
     post_data = {
         'title':          titulo,
         'content':        contenido_html,
+        'excerpt':        extracto,       # Extracto visible en listados y Yoast
         'status':         'publish',
         'featured_media': imagen_id,
         'categories':     categorias,
         'meta': {
-            '_yoast_wpseo_metadesc': contenido[:155],  # Meta descripción para SEO
+            '_yoast_wpseo_metadesc': extracto,     # Meta descripción SEO
+            '_yoast_wpseo_focuskw':  frase_clave,  # Frase clave Yoast ✅
         }
     }
 
@@ -1374,7 +1398,7 @@ def publicar_facebook_imagen(titulo, texto, imagen_path, hashtags):
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V6.0 (WordPress + Facebook)")
+    print("🌍 BOT DE NOTICIAS - V7.1 (WordPress + Facebook + SEO Yoast)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 

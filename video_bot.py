@@ -285,6 +285,10 @@ def obtener_temas_rss_medios():
         "https://cnnespanol.cnn.com/feed/",
         "https://www.infobae.com/feeds/rss/",
         "https://rss.nytimes.com/services/xml/rss/nyt/es/HomePage.xml",
+        # Feeds específicos de internacional
+        "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada",
+        "https://www.bbc.com/mundo/noticias/index.xml",
+        "https://cnnespanol.cnn.com/category/mundo/feed/",
     ]
     for url in feeds:
         try:
@@ -299,10 +303,178 @@ def obtener_temas_rss_medios():
     log(f"RSS medios: {len(temas)} temas", 'info')
     return temas
 
+# ──────────────────────────────────────────────
+# EFEMÉRIDES — eventos históricos de hoy
+# ──────────────────────────────────────────────
+
+# Base de efemérides por (mes, día) — eventos significativos mundiales
+EFEMERIDES = {
+    (1,  1):  ["Año Nuevo 1999: nace el euro como moneda europea", "1804: Haití declara independencia de Francia"],
+    (1,  6):  ["1412: nace Juana de Arco, heroína francesa", "1994: entra en vigor el Tratado de Libre Comercio TLCAN"],
+    (1, 15):  ["1929: nace Martin Luther King Jr., líder de derechos civiles", "2009: vuelo US Airways ameriza en el río Hudson sin víctimas"],
+    (1, 20):  ["1961: John F. Kennedy asume como presidente de EEUU", "2021: Joe Biden jura como presidente número 46 de EEUU"],
+    (1, 27):  ["1945: liberación del campo de concentración de Auschwitz", "Día Internacional en Memoria del Holocausto"],
+    (2,  4):  ["1945: Conferencia de Yalta entre Churchill, Roosevelt y Stalin", "2004: nace Facebook fundado por Mark Zuckerberg"],
+    (2, 11):  ["1990: Nelson Mandela es liberado tras 27 años en prisión", "1979: Revolución Islámica en Irán con Jomeini al poder"],
+    (2, 14):  ["1929: La masacre de San Valentín en Chicago", "Día de San Valentín: origen histórico del amor romántico"],
+    (2, 24):  ["2022: Rusia invade Ucrania desatando la mayor crisis europea desde la WWII"],
+    (3,  5):  ["1953: muere José Stalin tras 30 años gobernando la URSS"],
+    (3,  8):  ["1911: primer Día Internacional de la Mujer celebrado en Europa", "Día Internacional de la Mujer Trabajadora"],
+    (3, 11):  ["2011: terremoto y tsunami en Japón destruyen la planta de Fukushima", "2004: atentados en trenes de Madrid: 191 muertos"],
+    (3, 20):  ["2003: EEUU invade Irak, comienza la Segunda Guerra del Golfo"],
+    (3, 31):  ["1889: inauguración de la Torre Eiffel en París"],
+    (4,  4):  ["1968: asesinato de Martin Luther King Jr. en Memphis"],
+    (4, 12):  ["1961: Yuri Gagarin se convierte en el primer humano en el espacio"],
+    (4, 15):  ["1912: el Titanic se hunde en el Atlántico Norte con 1500 víctimas", "2019: incendio destruye gran parte de la catedral de Notre Dame"],
+    (4, 17):  ["1961: fracasa la invasión de Bahía de Cochinos en Cuba"],
+    (4, 22):  ["1970: se celebra el primer Día de la Tierra", "Día de la Tierra: origen y significado ambiental"],
+    (4, 26):  ["1986: explosión en la planta nuclear de Chernóbil, Ucrania"],
+    (5,  1):  ["Día Internacional del Trabajo: origen en la masacre de Chicago 1886"],
+    (5,  2):  ["1945: cae Berlín y termina la Segunda Guerra Mundial en Europa", "2011: muere Osama Bin Laden en operación de EEUU en Pakistán"],
+    (5,  5):  ["1821: muere Napoleón Bonaparte exiliado en Santa Elena", "1862: Batalla de Puebla, México derrota al ejército francés"],
+    (5,  8):  ["1945: Día de la Victoria en Europa, fin de la WWII"],
+    (5, 14):  ["1948: Israel declara su independencia como estado"],
+    (5, 17):  ["1954: EEUU desegrega escuelas en fallo histórico Brown vs Board of Education"],
+    (5, 25):  ["1961: JFK anuncia el programa Apollo para llegar a la Luna", "1977: estreno de Star Wars, que cambia el cine para siempre"],
+    (6,  4):  ["1989: masacre de Tiananmen en China", "1989: elecciones históricas en Polonia, primeras libres desde la WWII"],
+    (6,  6):  ["1944: Desembarco de Normandía (Día D), punto de inflexión de la WWII"],
+    (6, 12):  ["1987: Reagan pide a Gorbachov 'derribar este muro' en Berlín"],
+    (6, 25):  ["1950: comienza la Guerra de Corea", "1991: Yugoslavia se disuelve, Eslovenia y Croacia declaran independencia"],
+    (7,  4):  ["1776: EEUU firma la Declaración de Independencia", "Día de la Independencia de Estados Unidos: historia y significado"],
+    (7, 16):  ["1945: primer ensayo nuclear de la historia en Nuevo México, EEUU"],
+    (7, 20):  ["1969: Neil Armstrong pisa la Luna por primera vez en la historia"],
+    (7, 28):  ["1914: Austria-Hungría declara guerra a Serbia, inicia la Primera Guerra Mundial"],
+    (8,  6):  ["1945: EEUU lanza la bomba atómica sobre Hiroshima, Japón"],
+    (8,  9):  ["1945: segunda bomba atómica cae sobre Nagasaki, Japón"],
+    (8, 13):  ["1961: comienza construcción del Muro de Berlín"],
+    (8, 15):  ["1945: Japón se rinde, termina la Segunda Guerra Mundial"],
+    (9,  1):  ["1939: Alemania nazi invade Polonia, comienza la Segunda Guerra Mundial"],
+    (9, 11):  ["2001: atentados terroristas destruyen las Torres Gemelas de Nueva York", "1973: golpe de estado en Chile derroca a Salvador Allende"],
+    (9, 21):  ["1991: Armenia declara independencia de la URSS", "Día Internacional de la Paz"],
+    (10,  3): ["1990: reunificación de Alemania tras caída del Muro de Berlín"],
+    (10, 12): ["1492: Cristóbal Colón llega a América", "Día de la Hispanidad: 1492 y el encuentro de dos mundos"],
+    (10, 14): ["1962: Kennedy descubre misiles soviéticos en Cuba, inicia Crisis de los Misiles"],
+    (10, 29): ["1929: el 'Martes Negro' derrumba la bolsa de Wall Street, inicia Gran Depresión"],
+    (11,  9): ["1989: cae el Muro de Berlín, símbolo del fin de la Guerra Fría"],
+    (11, 11): ["1918: armisticio que pone fin a la Primera Guerra Mundial"],
+    (11, 22): ["1963: asesinato del presidente John F. Kennedy en Dallas"],
+    (12,  1): ["1955: Rosa Parks se niega a ceder su asiento, inicia movimiento de derechos civiles"],
+    (12,  8): ["1980: asesinato de John Lennon en Nueva York"],
+    (12, 10): ["1948: Naciones Unidas adopta la Declaración Universal de los Derechos Humanos"],
+    (12, 25): ["1991: Mijail Gorbachov renuncia y se disuelve la Unión Soviética"],
+    (12, 26): ["2004: tsunami en el océano Índico mata a más de 200,000 personas"],
+}
+
+def obtener_efemerides_hoy():
+    """Retorna efemérides del día actual como temas de alta prioridad."""
+    hoy = datetime.now()
+    mes, dia = hoy.month, hoy.day
+    temas = []
+
+    eventos = EFEMERIDES.get((mes, dia), [])
+    for evento in eventos:
+        # Calcular años transcurridos si hay año en el texto
+        match = re.search(r'\b(1[0-9]{3}|20[0-2][0-9])\b', evento)
+        años_str = ""
+        if match:
+            año_evento = int(match.group(1))
+            años = hoy.year - año_evento
+            años_str = f" — se cumplen {años} años"
+        tema_completo = f"Efeméride: {evento}{años_str}"
+        temas.append({
+            'tema': tema_completo,
+            'fuente': 'efemeride',
+            'puntaje': 15,  # máxima prioridad
+            'url_ref': '',
+            'tipo': 'efemeride',
+        })
+        log(f"📅 Efeméride hoy: {tema_completo[:80]}", 'info')
+
+    return temas
+
+# ──────────────────────────────────────────────
+# FILTRO DE CONTENIDO — línea editorial
+# ──────────────────────────────────────────────
+
+# Palabras que BAJAN el puntaje (no van con la línea editorial)
+PALABRAS_PENALIZAR = [
+    'futbol', 'fútbol', 'gol', 'partido', 'liga', 'champions league', 'premier league',
+    'nba', 'nfl', 'mlb', 'serie a', 'bundesliga', 'laliga', 'la liga', 'copa del rey',
+    'supercopa', 'atletico', 'atlético', 'barcelona', 'real madrid', 'manchester',
+    'arsenal', 'chelsea', 'liverpool', 'bayern', 'psg', 'juventus',
+    'messi', 'ronaldo', 'neymar', 'mbappé', 'mbappe', 'haaland',
+    'formula 1', 'formula1', 'f1', 'verstappen', 'hamilton',
+    'tenis', 'wimbledon', 'roland garros', 'us open', 'australian open',
+    'golf', 'baloncesto', 'basquet', 'béisbol', 'beisbol', 'softbol',
+    'olimpiadas', 'olimpicos', 'mundiales de atletismo',
+    'celebrity', 'famoso', 'famosa', 'actor', 'actriz', 'cantante', 'influencer',
+    'tiktoker', 'youtuber', 'instagram', 'reality', 'gran hermano',
+    'kardashian', 'taylor swift', 'bad bunny', 'reggaeton',
+]
+
+# Palabras que SUBEN el puntaje (alineadas con la línea editorial)
+PALABRAS_PRIORIZAR = [
+    'guerra', 'conflicto', 'invasión', 'invasion', 'ataque', 'misil', 'bomba',
+    'ucrania', 'rusia', 'israel', 'gaza', 'iran', 'china', 'corea', 'taiwán',
+    'otan', 'nato', 'onu', 'naciones unidas', 'g7', 'g20',
+    'presidente', 'gobierno', 'elección', 'elecciones', 'congreso', 'golpe',
+    'sanción', 'diplomacia', 'cumbre', 'tratado', 'acuerdo', 'crisis',
+    'economía', 'inflación', 'recesión', 'bolsa', 'mercado', 'banco mundial', 'fmi',
+    'petróleo', 'gas', 'energía', 'aranceles', 'comercio',
+    'cambio climático', 'catástrofe', 'terremoto', 'tsunami', 'huracán',
+    'ciencia', 'tecnología', 'inteligencia artificial', 'ia', 'nasa', 'espacio',
+    'descubrimiento', 'investigación', 'pandemia', 'vacuna', 'virus',
+    'historia', 'histórico', 'aniversario', 'efeméride', 'se cumplen',
+    'latinoamérica', 'latinoamerica', 'america latina', 'mexico', 'colombia',
+    'argentina', 'chile', 'venezuela', 'brasil', 'perú', 'cuba', 'bolivia',
+    'migrantes', 'migración', 'refugiados', 'derechos humanos',
+    'trump', 'biden', 'putin', 'zelensky', 'xi jinping', 'macron',
+    'urgente', 'última hora', 'breaking',
+]
+
+def puntuar_tema(tema_str):
+    """
+    Calcula un puntaje editorial para el tema.
+    + por noticias internacionales, historia, ciencia
+    - por deportes, entretenimiento, farándula
+    """
+    t = tema_str.lower()
+    puntaje = 0
+
+    for palabra in PALABRAS_PRIORIZAR:
+        if palabra in t:
+            puntaje += 5
+
+    for palabra in PALABRAS_PENALIZAR:
+        if palabra in t:
+            puntaje -= 8  # penalización fuerte
+
+    return puntaje
+
+def es_tema_aceptable(tema_str):
+    """Retorna False si el tema es claramente de deportes/farándula."""
+    t = tema_str.lower()
+    # Contar cuántas palabras de penalización hay
+    penalizaciones = sum(1 for p in PALABRAS_PENALIZAR if p in t)
+    priorizaciones = sum(1 for p in PALABRAS_PRIORIZAR if p in t)
+    # Bloquear si tiene 2+ palabras deportivas y ninguna de prioridad
+    if penalizaciones >= 2 and priorizaciones == 0:
+        return False
+    return True
+
 def seleccionar_tema(h):
-    """Recopila temas de todas las fuentes y selecciona el mejor no usado."""
+    """
+    Recopila temas de todas las fuentes, aplica filtro editorial
+    y selecciona el mejor alineado con la línea de Verdad Hoy:
+    noticias internacionales + historia + ciencia + efemérides.
+    Deportes y farándula quedan excluidos.
+    """
     log("🔍 Buscando temas trending...", 'info')
     todos = []
+
+    # Efemérides primero — máxima prioridad
+    todos.extend(obtener_efemerides_hoy())
+
     todos.extend(obtener_temas_google_trends())
     todos.extend(obtener_temas_gnews())
     todos.extend(obtener_temas_newsapi())
@@ -315,29 +487,43 @@ def seleccionar_tema(h):
         return None
 
     # Deduplicar por similitud
-    vistos = []
-    unicos = []
+    vistos, unicos = [], []
     for t in todos:
         tema = t['tema']
-        dup = False
-        for v in vistos:
-            if SequenceMatcher(None, tema.lower(), v.lower()).ratio() > 0.7:
-                dup = True
-                break
+        dup = any(SequenceMatcher(None, tema.lower(), v.lower()).ratio() > 0.7
+                  for v in vistos)
         if not dup:
             vistos.append(tema)
             unicos.append(t)
 
-    # Filtrar ya usados
-    candidatos = [t for t in unicos if not tema_ya_usado(t['tema'], h)]
-    if not candidatos:
-        log("Todos los temas ya fueron usados — usando igualmente el mejor", 'warn')
-        candidatos = unicos
+    # Aplicar puntuación editorial a cada tema
+    for t in unicos:
+        ajuste = puntuar_tema(t['tema'])
+        t['puntaje'] = t.get('puntaje', 5) + ajuste
+        t['puntaje_editorial'] = ajuste
 
-    # Ordenar por puntaje
-    candidatos.sort(key=lambda x: x.get('puntaje', 0), reverse=True)
+    # Filtrar temas claramente fuera de línea editorial
+    aceptables = [t for t in unicos if es_tema_aceptable(t['tema'])]
+    if not aceptables:
+        log("⚠️ Sin temas aceptables — usando todos", 'warn')
+        aceptables = unicos
+
+    # Filtrar ya usados
+    candidatos = [t for t in aceptables if not tema_ya_usado(t['tema'], h)]
+    if not candidatos:
+        log("Todos usados — tomando mejor aceptable", 'warn')
+        candidatos = aceptables
+
+    # Ordenar: puntaje editorial primero, luego puntaje base
+    candidatos.sort(key=lambda x: (x.get('puntaje', 0)), reverse=True)
+
+    # Log top 5 para diagnóstico
+    for i, c in enumerate(candidatos[:5]):
+        log(f"   [{i+1}] p={c.get('puntaje',0):+d} | {c['tema'][:70]}", 'debug')
+
     seleccionado = candidatos[0]
-    log(f"✅ Tema seleccionado: {seleccionado['tema']} (fuente: {seleccionado['fuente']})", 'ok')
+    tipo = "📅 EFEMÉRIDE" if seleccionado.get('tipo') == 'efemeride' else "📰 NOTICIA"
+    log(f"✅ {tipo} seleccionado (p={seleccionado.get('puntaje',0):+d}): {seleccionado['tema'][:80]}", 'ok')
     return seleccionado
 
 # ──────────────────────────────────────────────
@@ -958,37 +1144,50 @@ def generar_audio_tts(guion_tts, tema):
     return None
 
 def aplicar_ken_burns(frame_pil, progreso, direccion='derecha'):
-    """Efecto Ken Burns: zoom + paneo suave sobre una imagen PIL."""
+    """
+    Efecto Ken Burns suave con easing sinusoidal.
+    Zoom máximo reducido a 5% para movimiento sutil y fluido.
+    """
+    import math
     from PIL import Image
     w, h = frame_pil.size
-    zoom = 1.0 + 0.08 * progreso  # zoom máximo 8%
+
+    # Easing suave: sin(x * π/2) para aceleración y desaceleración natural
+    p_smooth = math.sin(progreso * math.pi / 2)
+
+    zoom = 1.0 + 0.05 * p_smooth  # zoom máximo 5% — sutil
     nw = int(w * zoom)
     nh = int(h * zoom)
-    frame_zoom = frame_pil.resize((nw, nh), Image.LANCZOS)
+
+    # Usar BILINEAR en vez de LANCZOS para frames intermedios — mucho más rápido
+    frame_zoom = frame_pil.resize((nw, nh), Image.BILINEAR)
 
     if direccion == 'derecha':
-        x = int((nw - w) * progreso)
-        y = int((nh - h) * 0.5)
+        x = int((nw - w) * p_smooth)
+        y = (nh - h) // 2
     elif direccion == 'izquierda':
-        x = int((nw - w) * (1 - progreso))
-        y = int((nh - h) * 0.5)
+        x = int((nw - w) * (1.0 - p_smooth))
+        y = (nh - h) // 2
     elif direccion == 'arriba':
-        x = int((nw - w) * 0.5)
-        y = int((nh - h) * progreso)
+        x = (nw - w) // 2
+        y = int((nh - h) * p_smooth)
     else:  # abajo
-        x = int((nw - w) * 0.5)
-        y = int((nh - h) * (1 - progreso))
+        x = (nw - w) // 2
+        y = int((nh - h) * (1.0 - p_smooth))
 
     x = max(0, min(x, nw - w))
     y = max(0, min(y, nh - h))
     return frame_zoom.crop((x, y, x + w, y + h))
 
 def blend_imagenes(img1, img2, alpha):
-    """Cross-dissolve entre dos imágenes PIL."""
+    """Cross-dissolve suave con easing cúbico entre dos imágenes PIL."""
+    import math
     from PIL import Image
+    # Easing cúbico: alpha³ para transición más suave al inicio y final
+    alpha_smooth = alpha * alpha * (3 - 2 * alpha)  # smoothstep
     if img1.size != img2.size:
-        img2 = img2.resize(img1.size, Image.LANCZOS)
-    return Image.blend(img1, img2, alpha)
+        img2 = img2.resize(img1.size, Image.BILINEAR)
+    return Image.blend(img1, img2, alpha_smooth)
 
 def slide_transicion(img1, img2, progreso, direccion='izquierda'):
     """Efecto slide entre dos imágenes PIL."""
@@ -1367,12 +1566,74 @@ def crear_video_multiimagen(paths_imagenes, guion, audio_tts_path, tema):
 # ──────────────────────────────────────────────
 # PASO 6: PUBLICACIÓN
 # ──────────────────────────────────────────────
-def publicar_facebook_reel(titulo, descripcion, hashtags, video_path):
-    """Publica el video como Reel en Facebook."""
+def construir_texto_post_fb(guion, tema):
+    """
+    Construye el texto del post de Facebook para un Reel:
+    - Titular con emoji
+    - Párrafo resumen COMPLETO (2-3 oraciones, sin cortes)
+    - Línea separadora
+    - Hashtags
+    - Link a verdadhoy.com
+
+    El párrafo resumen se toma de descripcion_wp y se recorta
+    solo en un punto o punto final para que nunca quede cortado.
+    """
+    titulo    = guion.get('titulo', tema).strip()
+    desc_raw  = guion.get('descripcion_wp', '').strip()
+    hashtags  = guion.get('hashtags', '#VerdadHoy #NoticiasInternacionales #ÚltimaHora').strip()
+
+    # ── Construir párrafo resumen completo ───────────────
+    # Dividir en oraciones y tomar las primeras 2-3 que sumen ~300 chars
+    oraciones = re.split(r'(?<=[.!?])\s+', desc_raw)
+    parrafo = ''
+    for oracion in oraciones:
+        oracion = oracion.strip()
+        if not oracion:
+            continue
+        candidato = (parrafo + ' ' + oracion).strip() if parrafo else oracion
+        if len(candidato) <= 320:
+            parrafo = candidato
+        else:
+            break  # no agregar más — el párrafo ya está completo
+
+    # Si no se pudo armar párrafo, usar primera oración completa
+    if not parrafo and oraciones:
+        parrafo = oraciones[0].strip()
+
+    # Asegurar que termina en puntuación
+    if parrafo and parrafo[-1] not in '.!?':
+        # Cortar en el último punto antes del límite
+        ultimo_punto = max(parrafo.rfind('.'), parrafo.rfind('!'), parrafo.rfind('?'))
+        if ultimo_punto > 50:
+            parrafo = parrafo[:ultimo_punto + 1]
+        else:
+            parrafo = parrafo.rstrip() + '.'
+
+    # ── Ensamblar post ───────────────────────────────────
+    lineas = [
+        f"📰 {titulo}",
+        "",
+        parrafo,
+        "",
+        "─" * 28,
+        "",
+        hashtags,
+        "",
+        "🌐 Más en verdadhoy.com",
+    ]
+    return '\n'.join(lineas)
+
+def publicar_facebook_reel(guion, tema, video_path):
+    """Publica el video como Reel en Facebook con texto limpio y completo."""
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         log("FB: sin credenciales", 'warn')
         return None
-    texto = f"{descripcion}\n\n{hashtags}\n\n🌐 verdadhoy.com"
+
+    titulo = guion.get('titulo', tema)
+    texto  = construir_texto_post_fb(guion, tema)
+
+    log(f"   Texto post FB:\n{texto[:200]}...", 'debug')
+
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/videos"
         with open(video_path, 'rb') as f:
@@ -1380,15 +1641,15 @@ def publicar_facebook_reel(titulo, descripcion, hashtags, video_path):
                 url,
                 files={'source': ('video.mp4', f, 'video/mp4')},
                 data={
-                    'title': titulo[:255],
-                    'description': texto[:60000],
+                    'title':        titulo[:255],
+                    'description':  texto,
                     'access_token': FB_ACCESS_TOKEN,
                 },
                 timeout=180
             ).json()
         if 'id' in r:
             video_id = r['id']
-            url_fb = f"https://www.facebook.com/watch/?v={video_id}"
+            url_fb   = f"https://www.facebook.com/watch/?v={video_id}"
             log(f"✅ Facebook Reel publicado: {video_id}", 'ok')
             return url_fb
         else:
@@ -1525,9 +1786,8 @@ def main():
 
     # PASO 6 — Publicar
     url_fb = publicar_facebook_reel(
-        titulo=guion.get('titulo', tema),
-        descripcion=guion.get('descripcion_wp', '')[:500],
-        hashtags=guion.get('hashtags', '#VerdadHoy #Noticias'),
+        guion=guion,
+        tema=tema,
         video_path=video_path
     )
 

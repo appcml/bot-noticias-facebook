@@ -709,15 +709,7 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
 <p><em>Información verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
 """
 
-    # ── SEO: Extracto y frase clave para Yoast ────────────────
-    # Extracto limpio de máx 155 caracteres (aparece en Google y en Yoast)
-    extracto_crudo = ' '.join(contenido.split())
-    if len(extracto_crudo) > 155:
-        extracto = extracto_crudo[:152].rsplit(' ', 1)[0] + '...'
-    else:
-        extracto = extracto_crudo
-
-    # Frase clave: palabras significativas del título (ignora stopwords)
+    # ── SEO: Título, metadescripción y frase clave para Yoast ────
     stopwords_es = {
         'para','como','este','esta','esto','pero','porque','cuando','donde',
         'quien','cuyo','cuya','ante','bajo','cabe','cada','con','contra',
@@ -725,23 +717,49 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
         'tras','versus','vía','una','uno','unos','unas','los','las','del',
         'que','sus','les','más','sin','sobre','también','hay','han','sido'
     }
+
+    # Frase clave: palabras significativas del título (ignora stopwords)
     palabras_clave = [
         p for p in re.findall(r'\b\w{4,}\b', titulo.lower())
         if p not in stopwords_es
     ]
     frase_clave = ' '.join(palabras_clave[:4])
 
+    # Título SEO: máx 60 caracteres — "Título | Verdad Hoy"
+    sufijo_seo = ' | Verdad Hoy'
+    max_titulo  = 60 - len(sufijo_seo)
+    titulo_seo  = (titulo[:max_titulo].rsplit(' ', 1)[0] if len(titulo) > max_titulo else titulo) + sufijo_seo
+
+    # Metadescripción SEO: primera oración del contenido, máx 155 caracteres
+    primera_oracion = re.split(r'(?<=[.!?])\s+', ' '.join(contenido.split()))[0]
+    if len(primera_oracion) > 155:
+        meta_desc = primera_oracion[:152].rsplit(' ', 1)[0] + '...'
+    elif len(primera_oracion) < 50:
+        # Si la primera oración es muy corta, tomar más texto
+        extracto_crudo = ' '.join(contenido.split())
+        meta_desc = extracto_crudo[:152].rsplit(' ', 1)[0] + '...'
+    else:
+        meta_desc = primera_oracion
+
+    # Extracto WordPress (listados internos): igual a la metadescripción
+    extracto = meta_desc
+
+    log(f"🔍 SEO — Título: {titulo_seo}", 'info')
+    log(f"🔍 SEO — Meta: {meta_desc[:80]}...", 'info')
+    log(f"🔍 SEO — Frase clave: {frase_clave}", 'info')
+
     # Datos del post
     post_data = {
         'title':          titulo,
         'content':        contenido_html,
-        'excerpt':        extracto,       # Extracto visible en listados y Yoast
+        'excerpt':        extracto,
         'status':         'publish',
         'featured_media': imagen_id,
         'categories':     categorias,
         'meta': {
-            '_yoast_wpseo_metadesc': extracto,     # Meta descripción SEO
-            '_yoast_wpseo_focuskw':  frase_clave,  # Frase clave Yoast ✅
+            '_yoast_wpseo_title':    titulo_seo,   # ✅ Título SEO personalizado
+            '_yoast_wpseo_metadesc': meta_desc,    # ✅ Metadescripción SEO
+            '_yoast_wpseo_focuskw':  frase_clave,  # ✅ Frase clave Yoast
         }
     }
 

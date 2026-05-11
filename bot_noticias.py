@@ -1192,6 +1192,9 @@ def construir_publicacion_fb(titulo, contenido, fuente, url_wp):
     elif len(parrafo) > 280:
         parrafo = parrafo[:277].rsplit(' ', 1)[0] + '...'
 
+    # Agregar UTM params para tracking en Analytics
+    url_utm = f"{url_wp}?utm_source=facebook&utm_medium=social&utm_campaign=bot_noticias"
+
     lineas = [
         f"📰 {t}",
         "",
@@ -1200,7 +1203,7 @@ def construir_publicacion_fb(titulo, contenido, fuente, url_wp):
         "─────────────────────────────",
         "",
         "🔗 Lee la noticia completa:",
-        f"👉 {url_wp}",
+        f"👉 {url_utm}",
         "",
         "🌐 verdadhoy.com",
     ]

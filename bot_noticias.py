@@ -37,6 +37,9 @@ WP_URL             = os.getenv('WP_URL', 'https://verdadhoy.com')
 WP_USER            = os.getenv('WP_USER', 'verdadhoy_admin')
 WP_APP_PASSWORD    = os.getenv('WP_APP_PASSWORD', '')
 
+# ── NUEVO V8: Pinterest ─────────────────────────────────────
+PINTEREST_TOKEN    = os.getenv('PINTEREST_TOKEN', '')
+
 # RUTAS
 HISTORIAL_PATH     = os.getenv('HISTORIAL_PATH', 'historial_publicaciones.json')
 ESTADO_PATH        = os.getenv('ESTADO_PATH',    'estado_bot.json')
@@ -83,6 +86,24 @@ CATEGORIA_WP = {
 
 # IDs de categorías WordPress (se obtienen automáticamente al publicar)
 _cache_categorias_wp = {}
+
+# ── TABLEROS PINTEREST (nombres exactos como los creaste) ───
+TABLEROS_PINTEREST = {
+    'guerra':          'Noticias del Mundo',
+    'politica':        'Politica',
+    'economia':        'Economia',
+    'tecnologia':      'Tecnologia',
+    'desastre':        'Noticias del Mundo',
+    'deportes':        'Noticias del Mundo',
+    'ciencia':         'Noticias del Mundo',
+    'salud':           'Noticias del Mundo',
+    'entretenimiento': 'Noticias del Mundo',
+    'latinoamerica':   'Latinoamerica',
+    'clima':           'Noticias del Mundo',
+    'mundo':           'Noticias del Mundo',
+    'general':         'Noticias del Mundo',
+}
+_cache_tableros_pinterest = {}  # nombre -> board_id
 
 # CTAs por tema para Facebook
 CTAS_POR_TEMA = {
@@ -1209,6 +1230,109 @@ def construir_publicacion_fb(titulo, contenido, fuente, url_wp):
     ]
     return '\n'.join(lineas)
 
+# ──────────────────────────────────────────────────────────
+# PINTEREST
+# ──────────────────────────────────────────────────────────
+
+def obtener_tableros_pinterest():
+    """Obtiene los tableros del usuario y los guarda en caché."""
+    global _cache_tableros_pinterest
+    if _cache_tableros_pinterest:
+        return _cache_tableros_pinterest
+    if not PINTEREST_TOKEN:
+        return {}
+    try:
+        resp = requests.get(
+            'https://api.pinterest.com/v5/boards',
+            headers={'Authorization': f'Bearer {PINTEREST_TOKEN}'},
+            timeout=15
+        )
+        if resp.status_code == 200:
+            for board in resp.json().get('items', []):
+                _cache_tableros_pinterest[board['name']] = board['id']
+            log(f"📌 Tableros Pinterest: {list(_cache_tableros_pinterest.keys())}", 'info')
+        else:
+            log(f"⚠️ Pinterest boards error: {resp.status_code}", 'advertencia')
+    except Exception as e:
+        log(f"⚠️ Pinterest boards excepción: {e}", 'advertencia')
+    return _cache_tableros_pinterest
+
+def publicar_pinterest(titulo, descripcion, url_articulo, img_path, categoria):
+    """Publica un Pin en Pinterest en el tablero correspondiente a la categoría."""
+    if not PINTEREST_TOKEN:
+        log("⚠️ Pinterest: sin token, omitiendo", 'advertencia')
+        return False
+    if not img_path or not os.path.exists(img_path):
+        log("⚠️ Pinterest: sin imagen, omitiendo", 'advertencia')
+        return False
+
+    try:
+        # Obtener tableros
+        tableros = obtener_tableros_pinterest()
+        nombre_tablero = TABLEROS_PINTEREST.get(categoria, 'Noticias del Mundo')
+        board_id = tableros.get(nombre_tablero)
+
+        if not board_id:
+            # Fallback al tablero principal
+            board_id = tableros.get('Noticias del Mundo') or (list(tableros.values())[0] if tableros else None)
+
+        if not board_id:
+            log("⚠️ Pinterest: no se encontró tablero", 'advertencia')
+            return False
+
+        # URL con UTM para Pinterest
+        url_utm = f"{url_articulo}?utm_source=pinterest&utm_medium=social&utm_campaign=bot_noticias"
+
+        # Subir imagen primero
+        with open(img_path, 'rb') as f:
+            resp_img = requests.post(
+                'https://api.pinterest.com/v5/media',
+                headers={'Authorization': f'Bearer {PINTEREST_TOKEN}'},
+                files={'file': ('image.jpg', f, 'image/jpeg')},
+                timeout=30
+            )
+
+        media_id = None
+        if resp_img.status_code in (200, 201):
+            media_id = resp_img.json().get('media_id')
+
+        # Crear el Pin
+        desc_limpia = descripcion[:490] if descripcion else titulo
+        payload = {
+            'board_id': board_id,
+            'title': titulo[:100],
+            'description': desc_limpia,
+            'link': url_utm,
+        }
+        if media_id:
+            payload['media_source'] = {'source_type': 'media_id', 'media_id': media_id}
+        else:
+            # Fallback: usar URL de imagen desde WordPress
+            payload['media_source'] = {'source_type': 'image_url', 'url': url_articulo}
+
+        resp_pin = requests.post(
+            'https://api.pinterest.com/v5/pins',
+            headers={
+                'Authorization': f'Bearer {PINTEREST_TOKEN}',
+                'Content-Type': 'application/json'
+            },
+            json=payload,
+            timeout=20
+        )
+
+        if resp_pin.status_code in (200, 201):
+            pin_id = resp_pin.json().get('id', '')
+            log(f"✅ Pinterest OK: pin {pin_id} en tablero '{nombre_tablero}'", 'exito')
+            return True
+        else:
+            log(f"❌ Pinterest error {resp_pin.status_code}: {resp_pin.text[:200]}", 'error')
+            return False
+
+    except Exception as e:
+        log(f"❌ Pinterest excepción: {e}", 'error')
+        return False
+
+
 def generar_hashtags(titulo, contenido):
     txt = f"{titulo} {contenido}".lower()
     tags = ['#NoticiasInternacionales', '#ÚltimaHora']
@@ -1548,6 +1672,19 @@ def main():
             guardar_estado_wp()
             h['estadisticas']['total_wp'] = h['estadisticas'].get('total_wp', 0) + 1
             log(f"✅ WordPress OK: {url_articulo_wp}", 'exito')
+
+            # ── PASO 1b: Publicar en Pinterest ────────────────
+            if PINTEREST_TOKEN:
+                log("\n📌 Publicando en Pinterest...", 'info')
+                exito_pinterest = publicar_pinterest(
+                    titulo      = seleccionada['titulo'],
+                    descripcion = contenido[:490] if contenido else seleccionada.get('descripcion', ''),
+                    url_articulo = url_articulo_wp,
+                    img_path    = img_path,
+                    categoria   = tema,
+                )
+                if exito_pinterest:
+                    h['estadisticas']['total_pinterest'] = h['estadisticas'].get('total_pinterest', 0) + 1
         else:
             log("❌ WordPress falló", 'error')
 
@@ -1614,7 +1751,8 @@ def main():
         total = h.get('estadisticas', {}).get('total_publicadas', 0)
         wp_total = h.get('estadisticas', {}).get('total_wp', 0)
         fb_total = h.get('estadisticas', {}).get('total_fb', 0)
-        log(f"\n✅ RESUMEN: Total={total} | WP={wp_total} | FB={fb_total}", 'exito')
+        pt_total = h.get('estadisticas', {}).get('total_pinterest', 0)
+        log(f"\n✅ RESUMEN: Total={total} | WP={wp_total} | FB={fb_total} | Pinterest={pt_total}", 'exito')
         log(f"💡 IMPORTANTE: El workflow debe hacer git push de los archivos JSON", 'advertencia')
         return True
     else:

@@ -1,11 +1,5 @@
 {
   "urls": [
-    "https://www.infobae.com/estados-unidos/2026/04/27/el-rey-carlos-iii-llego-a-washington-para-tender-puentes-con-trump-en-medio-de-la-crisis-por-la-guerra-en-iran/",
-    "https://www.elcolombiano.com/cultura/estados-alterados-sinfonico-metro-medellin-vinilo-2026-DM35931064",
-    "https://www.dw.com/es/israel-amenaza-con-arrasar-el-l%C3%ADbano-por-ataques-de-hezbol%C3%A1/a-76958585",
-    "https://www.elpoderbanilejo.com/v6/index.php/mundo/17261-el-estrecho-de-ormuz-cerrado-o-abierto-cual-es-el-estado-actual-del-estrecho",
-    "https://elpais.com/internacional/2026-04-28/por-que-nadie-puede-permitirse-que-ormuz-llegue-cerrado-al-verano.html",
-    "https://www.elperiodico.com/es/internacional/20260428/iran-estados-unidos-eeuu-guerra-paz-dos-meses-129585161",
     "https://www.eltiempo.com/mundo/europa/vuelos-cancelados-y-aumento-de-precios-la-crisis-del-combustible-por-la-guerra-en-medio-oriente-golpea-a-las-aerolineas-de-bajo-costo-en-europa-3551440",
     "https://www.diariolibre.com/mundo/estados-unidos/2026/04/28/trump-y-carlos-iii-en-visita-de-estado-a-la-casa-blanca/3517369",
     "https://www.diariolibre.com/actualidad/justicia/2026/04/29/la-inteligencia-artificial-y-el-crimen-desafian-a-la-justicia/3517107",
@@ -153,15 +147,10 @@
     "https://cnnespanol.cnn.com/2026/05/11/mundo/live-news/guerra-ee-uu-e-israel-iran-vivo-trax",
     "https://www.elcolombiano.com/cultura/festival-de-cannes-peliculas-cortos-colombianos-2026-BB36401257",
     "https://elpais.com/internacional/2026-05-11/ultima-hora-de-la-guerra-de-estados-unidos-e-israel-contra-iran-en-directo.html",
-    "https://www.qore.com/ai/openai-abre-su-ia-a-la-ue-anthropic-restringe-a-mythos/"
+    "https://www.qore.com/ai/openai-abre-su-ia-a-la-ue-anthropic-restringe-a-mythos/",
+    "https://www.france24.com/es/medio-oriente/20260512-conversaciones-entre-estados-unidos-e-ir%C3%A1n-est%C3%A1n-estancadas-y-el-estrecho-de-ormuz-sigue-cerrado"
   ],
   "hashes": [
-    "f4e64f1aac88f460023729b5d27d27a9",
-    "3fbcc74486dcaa9908d683fc5dbd3270",
-    "4a4442481b670ee120010abccfa43857",
-    "c1be97429911e0a9e708a2d9d5032a62",
-    "0c821126bc18be8b7f51cfd7bf49edb7",
-    "aa768fe115fa881c51e07e9fe264a363",
     "42efe7e892b1578d25390b9e538b373c",
     "1f3cb63470f8e43d15ef816e128fa31f",
     "bd551188900f039aff14e8c3deeb3236",
@@ -309,15 +298,10 @@
     "0d8ad2c092d65ab8ce348f9e55b3878e",
     "bb3048b9a225536abac0209d0795473d",
     "e4c0811c716a69c07422dea2097f3052",
-    "4808d0e9f2f6bfaf93ad2aa7d449d589"
+    "4808d0e9f2f6bfaf93ad2aa7d449d589",
+    "e24f6b4c3ff8d8a0844e61814646a03d"
   ],
   "timestamps": [
-    "2026-04-28T12:47:56.893679",
-    "2026-04-28T13:47:17.838072",
-    "2026-04-28T15:03:30.082356",
-    "2026-04-28T15:25:59.864360",
-    "2026-04-28T15:41:09.297911",
-    "2026-04-28T16:07:36.729589",
     "2026-04-29T00:02:05.378497",
     "2026-04-29T10:14:47.850933",
     "2026-04-29T12:21:37.564736",
@@ -465,15 +449,10 @@
     "2026-05-12T05:00:04.869408",
     "2026-05-12T07:49:52.267557",
     "2026-05-12T10:30:24.625569",
-    "2026-05-12T12:27:30.792018"
+    "2026-05-12T12:27:30.792018",
+    "2026-05-12T17:42:06.339672"
   ],
   "titulos": [
-    "El rey Carlos III llegó a Washington para tender puentes con Trump en medio de la crisis por la guerra en Irán.",
-    "Estados Alterados lanza su álbum sinfónico con La Metro y lo masterizaron para vinilo en Abbey Road.",
-    "Israel amenaza con \"arrasar\" el Líbano por actos de Hezbolá.",
-    "El estrecho de Ormuz ¿cerrado o abierto? Cuál es el estado actual del estrecho.",
-    "Por qué nadie puede permitirse que Ormuz llegue cerrado al verano.",
-    "Ni guerra ni paz: Irán y EEUU entran en una fase de 'guerra fría' tras dos meses de conflicto.",
     "Vuelos cancelados y aumento de precios: la crisis del combustible por la guerra en Medio Oriente golpea a las aerolíneas de bajo costo en Europa.",
     "Trump y Carlos III en visita de Estado a la Casa Blanca.",
     "La Inteligencia artificial y el crimen desafían a la justicia.",
@@ -621,15 +600,10 @@
     "Guerra de EE.UU. e Israel con Irán y ataques en Medio Oriente, en vivo: noticias y más.",
     "Así será la presencia colombiana en el Festival de Cannes 2026.",
     "Última hora de la guerra de Estados Unidos e Israel contra Irán, en directo | Irán advierte a Estados Unidos contra la reanudación de las hostilidades: “Se sorprenderán”.",
-    "OpenAI abre su IA a la UE; Anthropic restringe a Mythos."
+    "OpenAI abre su IA a la UE; Anthropic restringe a Mythos.",
+    "Conversaciones entre Estados Unidos e Irán están estancadas y el estrecho de Ormuz sigue cerrado."
   ],
   "descripciones": [
-    "El rey inicia una visita de Estado de cuatro días marcada por la tensión entre Londres y Washington y por el tiroteo que perturbó la capital estadounidense 48 horas antes de su llegada. El rey Carlos III y la reina Camila aterrizaron este lunes en la base aérea de Joint Base Andrews, en Maryland, para iniciar la visita de Estado más cargada de expectativas del reinado del monarca. En la Casa Blanca, el presidente Donald Trump y la primera dama, Melania Trump, los recibieron en el pórtico sur antes de compartir un té privado en el Salón Verde. La velada concluyó con un recorrido p",
-    "La historia de la música hecha en Medellín tiene un capítulo aparte –y sobresaliente– con las bandas que en los años 80 marcaron el ritmo de los jóvenes de la ciudad. Una de esas bandas fue Estados Alterados , dueños de un sonido único, de ese rock electrónico con ecos new wave y tecno que aún sigue vivo. La banda acaba de lanzar su álbum Sinfónico , donde reúne 12 canciones esenciales de su discografía y lo hacen acompañados de la Orquesta Filarmónica Metropolitana del Valle de Aburrá (La Metro). “El sinfónico siempre fue un sueño de Estados Alterados. Concebir un sinfónico",
-    "El ministro de Defensa israelí exigió al gobierno libanés garantizar el desarme del grupo chií, que entró en la guerra en apoyo a Irán. El ministro de Defensa israelí, Israel Katz, aseguró el lunes (27.04.2026) a la enviada de la ONU para Líbano, Jeanine Hennis-Plasschaert, que si el gobierno del país vecino \"continúa amparándose en Hezbolá, se desatará un incendio que arrasará Líbano\". \"Naim Qassem está jugando con fuego y el fuego quemará a Hezbolá y a todo el Líbano (...) Si el gobierno libanés continúa amparándose en la organi",
-    "Elpoderbanilejo.com Irán ha bloqueado el paso del estrecho de Ormuz, reduciendo drásticamente el flujo de petróleo y gas y disparando los precios, mientras que Estados Unidos ha bloqueado los puertos iraníes. Teherán también ha manifestado su intención de imponer tasas de tránsito como parte de cualquier acuerdo de paz duradero. La ruta marítima sigue siendo un punto clave de fricción en las negociaciones entre Washington y Teherán, incluso mientras el frágil alto el fuego del 8 de abril se mantiene vigente. Fuente: El Caribe. Elpoderbanilejo.com Irán ha bloqueado el paso del estr",
-    "Con el paso de los días, el riesgo de que la crisis de precios mute en escasez generalizada se multiplica. Irán sufre sin poder exportar y Trump se asoma a las elecciones de medio mandato con la gasolina disparada. Con el paso de los días, el riesgo de que la crisis de precios mute en escasez generalizada se multiplica. Irán sufre sin poder exportar y Trump se asoma a las elecciones de medio mandato con la gasolina disparada.",
-    "No hay ni paz ni guerra; ni resolución ni conflicto. La contienda iniciada hace justo dos meses este martes está atrapada en un interregno del que las negociaciones , hasta el momento fallidas , no han conseguido arrancarla. Desde el alto el fuego del 7 de abril y, sobre todo, desde que Trump anunció la semana pasada que el cese de las hostilidades pasaba a ser indefinido pero condicional al avance de las negociaciones, la guerra en Oriente Medio ha quedado suspendida en un limbo indefinido, sin guerra porque los aviones israelíes y de EEUU no están constantemente sobrevolando y atacando ",
     "Es usual que las aerolíneas ajusten sus planes de vuelo en verano, pero las aerolíneas como Ryanair o Transavia son vulnerables al aumento de costos. Un avión de pasajeros Boeing 787-10 de All Nippon Airways (ANA) en el aeropuerto de Haneda, Tokio, Japón. Foto: AFP. 28.04.2026 06:52 Actualizado: 28.04.2026 06:52. Ingrese o regístrese acá para guardar los artículos en su zona de usuario y leerlos cuando quiera. Ryanair redujo a la mitad su programa de vuelos desde Berlín a partir de octubre. Foto:Ryanair Coporate. La guerra ha provocado un aumen",
     "La Casa Blanca compartió este martes una fotografía del presidente de Estados Unidos, Donald Trump , junto al monarca británico, Carlos III , durante su visita de Estado a Washington, acompañada de la leyenda \" dos reyes \", lo que generó críticas en redes sociales. En la imagen aparecen Trump y Carlos III en uno de los jardines de la Casa Blanca durante la ceremonia militar con la que dio la bienvenida al monarca, en la primera visita de Estado desde su regreso al ejecutivo. \" Dos reyes \", tituló la Casa Blanca la imagen publicada en su cuenta oficial de X , donde aparecen ambos lídere",
     "La irrupción de la inteligencia artificial y la evolución del crimen organizado están reconfigurando los sistemas de justicia penal , coincidieron los juristas franceses Raphaële Parizot y Xabier Pin durante un panel celebrado en la Fundación Global Democracia y Desarrollo ( Funglode ), centrado en el análisis del nuevo Código Penal dominicano a partir de la experiencia del modelo francés y del enfoque europeo comparado. Parizot , catedrática de Derecho y codirectora del Departamento de Derecho Penal de la Universidad París 1 Panthéon-Sorbonne, expuso que la transformación digital ",
@@ -777,15 +751,10 @@
     "Según medios estatales iraníes, la respuesta de Irán a la propuesta estadounidense para poner fin a la guerra incluyó el reconocimiento de la soberanía sobre el estrecho de Ormuz. El presidente Donald Trump la calificó este domingo de “totalmente inaceptable”. Según medios estatales iraníes, la respuesta de Irán a la propuesta estadounidense para poner fin a la guerra incluyó el reconocimiento de la soberanía sobre el estrecho de Ormuz. El presidente Donald Trump la calificó este domingo de “totalmente inaceptable”.",
     "Del 12 al 23 de mayo, Colombia tendrá una destacada participación en la edición 79 del Festival de Cannes y su mercado de industria, el Marché du Film, con productores, proyectos y empresas presentes en espacios estratégicos de coproducción, networking y formación. La delegación nacional hace parte del Plan Integral de Promoción Internacional del Cine Colombiano liderado por Proimágenes Colombia, que busca fortalecer alianzas y visibilizar el talento colombiano en el panorama audiovisual global. Será la edición 79 de este afamado festival y en este Colombia cuenta con una amplia re",
     "Trump califica de “estúpida” la respuesta de Teherán a la propuesta de paz y afirma que la tregua está “agonizando” | El ejército israelí ordena evacuar localidades del sur de Líbano. Trump califica de “estúpida” la respuesta de Teherán a la propuesta de paz y afirma que la tregua está “agonizando” | El ejército israelí ordena evacuar localidades del sur de Líbano.",
-    "✨︎ Resumen (TL;DR): OpenAI ofreció a la Unión Europea utilizar su modelo de ciberseguridad ante el aumento de amenazas digitales. Anthropic limitó el acceso de su modelo Claude Mythos Preview a solo 40 corporaciones de Estados Unidos. El Bundesbank de Alemania advirtió que los bancos europeos están en desventaja al no poder probar su infraestructura sin esta tecnología. La Comisión Europea confirmó que OpenAI otorgará acceso a su modelo más reciente de inteligencia artificial para operaciones de ciberseguridad. En paralelo, las negociaciones con Anthropic para utilizar su tecnología"
+    "✨︎ Resumen (TL;DR): OpenAI ofreció a la Unión Europea utilizar su modelo de ciberseguridad ante el aumento de amenazas digitales. Anthropic limitó el acceso de su modelo Claude Mythos Preview a solo 40 corporaciones de Estados Unidos. El Bundesbank de Alemania advirtió que los bancos europeos están en desventaja al no poder probar su infraestructura sin esta tecnología. La Comisión Europea confirmó que OpenAI otorgará acceso a su modelo más reciente de inteligencia artificial para operaciones de ciberseguridad. En paralelo, las negociaciones con Anthropic para utilizar su tecnología",
+    "La tregua en Medio Oriente volvió a quedar al borde del colapso después de que Donald Trump rechazara la contrapropuesta de Irán y advirtiera que el alto el fuego estaba \"en cuidados intensivos\", mientras Teherán aseguró estar listo para responder a cualquier agresión. El estrecho de Ormuz sigue cerrado. En los mercados energéticos, la tensión se reflejó este martes en una subida del petróleo, mientras que, en Líbano, ataques israelíes en el sur dejaron seis muertos pese al alto el fuego vigente. La tregua en Medio Oriente volvió a quedar al borde del colapso después de que Donal"
   ],
   "hashes_contenido": [
-    "e56b8e642ed4daf00f15d571d697acc3",
-    "e4facf924bd260de4fa033c805dcce9f",
-    "c3496a53cd04640627ca38e6300a5b3d",
-    "af94e4734e195cc825a68a5f466f7369",
-    "90ef45e46a24feb690a4f96fe585e692",
-    "c8433e5fd95a1191a22095fb3b635178",
     "785693f1cee706d7079e3cf01d09618f",
     "c7edae69b528f2e0270bd0b555b12ff2",
     "d84f2c67c97a6d10e5690e4a1b797e43",
@@ -933,7 +902,8 @@
     "6b3e69d8e51788fde591c0b285e9a3c9",
     "28e75967cb25743c75de41fe8b04b3d9",
     "6c03d7daf921295376c57ac312b2bf09",
-    "e1f811e6d5763d32cb4997187aef192d"
+    "e1f811e6d5763d32cb4997187aef192d",
+    "6eeadfbc759478270856acceb159e1e6"
   ],
   "hashes_permanentes": [
     "52fa1afaf2d29f5dc6d21b6620cbd32b",
@@ -1154,20 +1124,15 @@
     "0d8ad2c092d65ab8ce348f9e55b3878e",
     "bb3048b9a225536abac0209d0795473d",
     "e4c0811c716a69c07422dea2097f3052",
-    "4808d0e9f2f6bfaf93ad2aa7d449d589"
+    "4808d0e9f2f6bfaf93ad2aa7d449d589",
+    "e24f6b4c3ff8d8a0844e61814646a03d"
   ],
   "estadisticas": {
-    "total_publicadas": 219,
-    "total_fb": 45,
-    "total_wp": 113
+    "total_publicadas": 220,
+    "total_fb": 46,
+    "total_wp": 114
   },
   "urls_normalizadas": [
-    "infobae.com/estados-unidos/2026/04/27/el-rey-carlos-iii-llego-a-washington-para-tender-puentes-con-trump-en-medio-de-la-crisis-por-la-guerra-en-iran",
-    "elcolombiano.com/cultura/estados-alterados-sinfonico-metro-medellin-vinilo-2026-dm35931064",
-    "dw.com/es/israel-amenaza-con-arrasar-el-l%c3%adbano-por-ataques-de-hezbol%c3%a1/a-76958585",
-    "elpoderbanilejo.com/v6/index.php/mundo/17261-el-estrecho-de-ormuz-cerrado-o-abierto-cual-es-el-estado-actual-del-estrecho",
-    "elpais.com/internacional/2026-04-28/por-que-nadie-puede-permitirse-que-ormuz-llegue-cerrado-al-verano",
-    "elperiodico.com/es/internacional/20260428/iran-estados-unidos-eeuu-guerra-paz-dos-meses-129585161",
     "eltiempo.com/mundo/europa/vuelos-cancelados-y-aumento-de-precios-la-crisis-del-combustible-por-la-guerra-en-medio-oriente-golpea-a-las-aerolineas-de-bajo-costo-en-europa-3551440",
     "diariolibre.com/mundo/estados-unidos/2026/04/28/trump-y-carlos-iii-en-visita-de-estado-a-la-casa-blanca/3517369",
     "diariolibre.com/actualidad/justicia/2026/04/29/la-inteligencia-artificial-y-el-crimen-desafian-a-la-justicia/3517107",
@@ -1315,6 +1280,7 @@
     "cnnespanol.cnn.com/2026/05/11/mundo/live-news/guerra-ee-uu-e-israel-iran-vivo-trax",
     "elcolombiano.com/cultura/festival-de-cannes-peliculas-cortos-colombianos-2026-bb36401257",
     "elpais.com/internacional/2026-05-11/ultima-hora-de-la-guerra-de-estados-unidos-e-israel-contra-iran-en-directo",
-    "qore.com/ai/openai-abre-su-ia-a-la-ue-anthropic-restringe-a-mythos"
+    "qore.com/ai/openai-abre-su-ia-a-la-ue-anthropic-restringe-a-mythos",
+    "france24.com/es/medio-oriente/20260512-conversaciones-entre-estados-unidos-e-ir%c3%a1n-est%c3%a1n-estancadas-y-el-estrecho-de-ormuz-sigue-cerrado"
   ]
 }

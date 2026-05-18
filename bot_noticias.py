@@ -77,7 +77,7 @@ PINTEREST_TOKEN    = os.getenv('PINTEREST_TOKEN', '')
 
 # ── NUEVO V8.1: YouTube embed ───────────────────────────────
 YOUTUBE_API_KEY    = os.getenv('YOUTUBE_API_KEY', '')
-# Canales confiables en español permitidos para embed
+# Canales oficiales en español — únicos autorizados para embed de video
 CANALES_YT_CONFIABLES = [
     "CNN en Español", "CNN en espanol",
     "DW Español", "DW en español",
@@ -85,10 +85,19 @@ CANALES_YT_CONFIABLES = [
     "BBC News Mundo",
     "Al Jazeera Español",
     "Euronews en español", "euronews (en español)",
-    "RT en Español",
     "NTN24",
-    "Telesur"
 ]
+
+# Mapeo de dominios/fuentes de noticias → nombre de canal YouTube oficial
+FUENTE_A_CANAL_YT = {
+    "cnn":        "CNN en Español",
+    "dw":         "DW Español",
+    "france24":   "France 24",
+    "bbc":        "BBC News Mundo",
+    "aljazeera":  "Al Jazeera Español",
+    "euronews":   "Euronews en español",
+    "ntn24":      "NTN24",
+}
 
 # RUTAS
 HISTORIAL_PATH     = os.getenv('HISTORIAL_PATH', 'historial_publicaciones.json')
@@ -683,6 +692,22 @@ _FRASES_SUSCRIPCION = re.compile(
     re.IGNORECASE
 )
 
+# Links de redes sociales incrustados en el contenido scrapeado (V9)
+_LINKS_SOCIALES = re.compile(
+    r'(Ver\s+(video|publicación|post|nota)\s+en\s+(Facebook|Instagram|Twitter|X|TikTok|YouTube)[^.]*\.?'
+    r'|Ver\s+en\s+(Facebook|Instagram|Twitter|X|TikTok|YouTube)[^.]*\.?'
+    r'|Mira\s+(esto|el video|la publicación)\s+en\s+[^.]*\.?'
+    r'|Compartir\s+en\s+[^.]*\.?'
+    r'|Seguir\s+leyendo[^.]*\.?'
+    r'|Leer\s+más[^.]*\.?'
+    r'|Ver\s+más[^.]*\.?'
+    r'|Continúa\s+leyendo[^.]*\.?'
+    r'|Continua\s+leyendo[^.]*\.?'
+    r'|La\s+nota\s+completa[^.]*\.?'
+    r'|El\s+artículo\s+completo[^.]*\.?)',
+    re.IGNORECASE
+)
+
 def limpiar_texto(texto):
     if not texto:
         return ""
@@ -695,6 +720,8 @@ def limpiar_texto(texto):
     t = _FUENTES_INCRUSTADAS.sub('', t)
     # V9: Eliminar frases de suscripción/promoción de medios
     t = _FRASES_SUSCRIPCION.sub('', t)
+    # V9: Eliminar links/referencias a redes sociales incrustados
+    t = _LINKS_SOCIALES.sub('', t)
     t = re.sub(r'\s+', ' ', t).strip()
     if t and t[-1] not in '.!?':
         t += '.'
@@ -931,36 +958,51 @@ def subir_imagen_wp(imagen_path, titulo):
         log(f"⚠️ Excepción subiendo imagen WP: {e}", 'advertencia')
     return None
 
-def buscar_video_youtube(titulo, tema):
+def detectar_canal_oficial(fuente_str):
     """
-    Busca un video relacionado en YouTube de canales confiables.
-    Retorna el HTML del embed o None si no encuentra nada adecuado.
-    Solo se ejecuta si YOUTUBE_API_KEY está configurada.
+    Detecta si la noticia viene de un canal oficial con video en YouTube.
+    Retorna el nombre del canal YouTube o None si no es fuente oficial.
+    """
+    if not fuente_str:
+        return None
+    fuente_lower = fuente_str.lower()
+    for clave, canal in FUENTE_A_CANAL_YT.items():
+        if clave in fuente_lower:
+            return canal
+    return None
+
+def buscar_video_youtube(titulo, canal_preferido=None):
+    """
+    Busca en YouTube el video de la noticia en el canal oficial correspondiente.
+    - Solo se ejecuta si la noticia viene de un canal oficial (canal_preferido definido).
+    - Verifica que el video encontrado sea del mismo canal oficial.
+    - Retorna HTML del iframe o None si no encuentra.
     """
     if not YOUTUBE_API_KEY:
         return None
 
+    if not canal_preferido:
+        return None  # Solo buscar si la noticia viene de canal oficial
+
     try:
-        # Construir query combinando título + tema para mayor precisión
-        palabras_titulo = ' '.join(titulo.split()[:6])  # primeras 6 palabras
-        query = f"{palabras_titulo}"
+        palabras_titulo = ' '.join(titulo.split()[:7])
+        query = f"{palabras_titulo} {canal_preferido}"
 
-        # Fecha límite: solo videos de los últimos 7 días (noticias recientes)
         from datetime import timezone
-        fecha_limite = (datetime.now(timezone.utc) - timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%SZ')
+        fecha_limite = (datetime.now(timezone.utc) - timedelta(days=3)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
-        url = "https://www.googleapis.com/youtube/v3/search"
         params = {
             "q": query,
             "type": "video",
-            "maxResults": 5,
+            "maxResults": 8,
             "relevanceLanguage": "es",
             "order": "relevance",
             "publishedAfter": fecha_limite,
             "key": YOUTUBE_API_KEY
         }
 
-        resp = requests.get(url, params=params, timeout=10)
+        resp = requests.get("https://www.googleapis.com/youtube/v3/search",
+                            params=params, timeout=10)
         data = resp.json()
 
         if "error" in data:
@@ -972,18 +1014,13 @@ def buscar_video_youtube(titulo, tema):
             log(f"📭 Sin videos YouTube para: {titulo[:50]}", 'info')
             return None
 
-        # Filtrar por canal confiable
+        # Solo aceptar video si el canal coincide con el canal oficial de la noticia
         for item in items:
-            channel = item["snippet"]["channelTitle"]
-            video_id = item["id"]["videoId"]
+            channel     = item["snippet"]["channelTitle"]
+            video_id    = item["id"]["videoId"]
             video_titulo = item["snippet"]["title"]
 
-            canal_ok = any(
-                c.lower() in channel.lower()
-                for c in CANALES_YT_CONFIABLES
-            )
-
-            if canal_ok:
+            if canal_preferido.lower() in channel.lower():
                 log(f"🎬 Video encontrado: {video_titulo[:50]} | Canal: {channel}", 'exito')
                 embed_html = f"""
 <div class="video-relacionado" style="margin:30px 0; padding:20px; background:#f8f8f8; border-left:4px solid #cc0000; border-radius:4px;">
@@ -1002,7 +1039,7 @@ def buscar_video_youtube(titulo, tema):
 </div>"""
                 return embed_html
 
-        log(f"📭 No se encontró canal confiable para: {titulo[:50]}", 'info')
+        log(f"📭 No se encontró video de '{canal_preferido}' para: {titulo[:50]}", 'info')
         return None
 
     except Exception as e:
@@ -1010,7 +1047,7 @@ def buscar_video_youtube(titulo, tema):
         return None
 
 
-def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fecha_fuente=None):
+def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fecha_fuente=None, fuente_noticia=None):
     """
     Publica una noticia en WordPress y retorna la URL del artículo.
     REQUIERE imagen obligatoriamente.
@@ -1103,23 +1140,17 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         meta_desc  = ""
         frase_clave = ""
 
-    # ── NUEVO V8.1: Video YouTube embebido ─────────────────────
-    # Buscar video si: artículo corto (<200 palabras) → siempre
-    # O con probabilidad 30% en artículos normales
+    # ── V9: Video YouTube — solo si la noticia viene de canal oficial ──
     video_embed_html = ""
-    total_palabras = len(contenido.split())
-
     if YOUTUBE_API_KEY:
-        buscar_video = False
-        if total_palabras < 200:
-            buscar_video = True
-            log(f"🎬 Artículo corto ({total_palabras} palabras) → buscando video YouTube", 'info')
-        elif random.random() < 0.30:
-            buscar_video = True
-            log(f"🎬 Seleccionado para video YouTube (30% prob, {total_palabras} palabras)", 'info')
-
-        if buscar_video:
-            video_embed_html = buscar_video_youtube(titulo, tema) or ""
+        canal_oficial = detectar_canal_oficial(fuente_noticia)
+        if canal_oficial:
+            log(f"🎬 Noticia de canal oficial '{canal_oficial}' → buscando video en YouTube...", 'info')
+            video_embed_html = buscar_video_youtube(titulo, canal_oficial) or ""
+            if not video_embed_html:
+                log(f"📭 Sin video disponible — publicando solo con imagen", 'info')
+        else:
+            log(f"📰 Fuente no oficial → sin búsqueda de video", 'info')
 
     contenido_html = f"""
 {contenido_formateado}
@@ -2086,12 +2117,13 @@ def main():
     if publicar_wp:
         log("\n🌐 Publicando en WordPress...", 'info')
         url_articulo_wp = publicar_en_wordpress(
-            titulo      = seleccionada['titulo'],
-            contenido   = contenido,
-            tema        = tema,
-            imagen_path = img_path,
-            fuente_url  = seleccionada['url'],
-            fecha_fuente = seleccionada.get('fecha'),   # V9: fecha real de la fuente
+            titulo       = seleccionada['titulo'],
+            contenido    = contenido,
+            tema         = tema,
+            imagen_path  = img_path,
+            fuente_url   = seleccionada['url'],
+            fecha_fuente = seleccionada.get('fecha'),
+            fuente_noticia = seleccionada.get('fuente', ''),  # V9: para detectar canal oficial
         )
         if url_articulo_wp:
             exito_wp = True

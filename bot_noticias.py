@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V7.0
+Bot de Noticias Internacionales - V8.1
 NUEVO EN V7:
   - Publica PRIMERO en WordPress (cada 30 min, todo el día)
   - Facebook SIEMPRE publica como VIDEO/Reel (no más alternancia)
@@ -9,6 +9,11 @@ NUEVO EN V7:
   - Detección de tema mejorada para nuevas categorías
   - Link de verdadhoy.com incluido en cada post de Facebook
   - Imagen OBLIGATORIA para publicar (no se publica sin imagen)
+  - NUEVO V8.1: Videos de YouTube embebidos automáticos en WordPress (~30-40% noticias)
+    · Prioriza noticias con poco texto (más impacto visual)
+    · Canales confiables: CNN, DW, BBC, France24, Al Jazeera, Euronews
+    · Si no encuentra video relevante, publica como siempre
+    · Requiere YOUTUBE_API_KEY en GitHub Secrets
 """
 
 import requests
@@ -39,6 +44,21 @@ WP_APP_PASSWORD    = os.getenv('WP_APP_PASSWORD', '')
 
 # ── NUEVO V8: Pinterest ─────────────────────────────────────
 PINTEREST_TOKEN    = os.getenv('PINTEREST_TOKEN', '')
+
+# ── NUEVO V8.1: YouTube embed ───────────────────────────────
+YOUTUBE_API_KEY    = os.getenv('YOUTUBE_API_KEY', '')
+# Canales confiables en español permitidos para embed
+CANALES_YT_CONFIABLES = [
+    "CNN en Español", "CNN en espanol",
+    "DW Español", "DW en español",
+    "France 24", "France24 Español",
+    "BBC News Mundo",
+    "Al Jazeera Español",
+    "Euronews en español", "euronews (en español)",
+    "RT en Español",
+    "NTN24",
+    "Telesur"
+]
 
 # RUTAS
 HISTORIAL_PATH     = os.getenv('HISTORIAL_PATH', 'historial_publicaciones.json')
@@ -647,6 +667,85 @@ def subir_imagen_wp(imagen_path, titulo):
         log(f"⚠️ Excepción subiendo imagen WP: {e}", 'advertencia')
     return None
 
+def buscar_video_youtube(titulo, tema):
+    """
+    Busca un video relacionado en YouTube de canales confiables.
+    Retorna el HTML del embed o None si no encuentra nada adecuado.
+    Solo se ejecuta si YOUTUBE_API_KEY está configurada.
+    """
+    if not YOUTUBE_API_KEY:
+        return None
+
+    try:
+        # Construir query combinando título + tema para mayor precisión
+        palabras_titulo = ' '.join(titulo.split()[:6])  # primeras 6 palabras
+        query = f"{palabras_titulo}"
+
+        # Fecha límite: solo videos de los últimos 7 días (noticias recientes)
+        from datetime import timezone
+        fecha_limite = (datetime.now(timezone.utc) - timedelta(days=7)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+        url = "https://www.googleapis.com/youtube/v3/search"
+        params = {
+            "q": query,
+            "type": "video",
+            "maxResults": 5,
+            "relevanceLanguage": "es",
+            "order": "relevance",
+            "publishedAfter": fecha_limite,
+            "key": YOUTUBE_API_KEY
+        }
+
+        resp = requests.get(url, params=params, timeout=10)
+        data = resp.json()
+
+        if "error" in data:
+            log(f"⚠️ YouTube API error: {data['error'].get('message','')}", 'advertencia')
+            return None
+
+        items = data.get("items", [])
+        if not items:
+            log(f"📭 Sin videos YouTube para: {titulo[:50]}", 'info')
+            return None
+
+        # Filtrar por canal confiable
+        for item in items:
+            channel = item["snippet"]["channelTitle"]
+            video_id = item["id"]["videoId"]
+            video_titulo = item["snippet"]["title"]
+
+            canal_ok = any(
+                c.lower() in channel.lower()
+                for c in CANALES_YT_CONFIABLES
+            )
+
+            if canal_ok:
+                log(f"🎬 Video encontrado: {video_titulo[:50]} | Canal: {channel}", 'exito')
+                embed_html = f"""
+<div class="video-relacionado" style="margin:30px 0; padding:20px; background:#f8f8f8; border-left:4px solid #cc0000; border-radius:4px;">
+<h3 style="margin-top:0; color:#1a1a2e; font-size:1.1em;">📺 Video relacionado</h3>
+<div style="position:relative; padding-bottom:56.25%; height:0; overflow:hidden;">
+<iframe
+    style="position:absolute; top:0; left:0; width:100%; height:100%;"
+    src="https://www.youtube.com/embed/{video_id}?rel=0"
+    title="{video_titulo}"
+    frameborder="0"
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+    allowfullscreen>
+</iframe>
+</div>
+<p style="margin-bottom:0; font-size:0.85em; color:#666;">Fuente: {channel} (YouTube)</p>
+</div>"""
+                return embed_html
+
+        log(f"📭 No se encontró canal confiable para: {titulo[:50]}", 'info')
+        return None
+
+    except Exception as e:
+        log(f"⚠️ Error buscando video YouTube: {e}", 'advertencia')
+        return None
+
+
 def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
     """
     Publica una noticia en WordPress y retorna la URL del artículo.
@@ -722,8 +821,28 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
 
     contenido_formateado = '\n'.join(parrafos_html[:15])  # máx 15 párrafos
 
+    # ── NUEVO V8.1: Video YouTube embebido ─────────────────────
+    # Buscar video si: artículo corto (<200 palabras) → siempre
+    # O con probabilidad 30% en artículos normales
+    video_embed_html = ""
+    total_palabras = len(contenido.split())
+
+    if YOUTUBE_API_KEY:
+        buscar_video = False
+        if total_palabras < 200:
+            buscar_video = True
+            log(f"🎬 Artículo corto ({total_palabras} palabras) → buscando video YouTube", 'info')
+        elif random.random() < 0.30:
+            buscar_video = True
+            log(f"🎬 Seleccionado para video YouTube (30% prob, {total_palabras} palabras)", 'info')
+
+        if buscar_video:
+            video_embed_html = buscar_video_youtube(titulo, tema) or ""
+
     contenido_html = f"""
 {contenido_formateado}
+
+{video_embed_html}
 
 <hr>
 <p><strong>Fuente:</strong> {nombre_medio}</p>

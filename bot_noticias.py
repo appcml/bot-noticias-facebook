@@ -643,7 +643,43 @@ _FUENTES_INCRUSTADAS = re.compile(
     r'AP News|Associated Press|INFOBAE|Infobae|EFE|France 24|'
     r'DW|Euronews|RT|Sputnik|Al Jazeera|The Guardian|'
     r'NYT|New York Times|Washington Post|Fox News|'
-    r'ANSA|NHK|Deutsche Welle|RFI)\b[,.]?\s*',
+    r'ANSA|NHK|Deutsche Welle|RFI|Clarín|Clarin|'
+    r'El Mundo|La Nación|La Nacion|Milenio|Univision|'
+    r'Telemundo|La Vanguardia|El Confidencial|20minutos)\b[,.]?\s*',
+    re.IGNORECASE
+)
+
+# Frases de suscripción/promoción de medios que se cuelan en el contenido (V9)
+_FRASES_SUSCRIPCION = re.compile(
+    r'(Recib[ií]\s+en\s+tu\s+mail[^.]*\.?'
+    r'|Suscr[ií]bete\s+[^.]*\.?'
+    r'|Registrate\s+[^.]*\.?'
+    r'|Regístrate\s+[^.]*\.?'
+    r'|Suscríbete\s+[^.]*\.?'
+    r'|Newsletter\s+[^.]*\.?'
+    r'|Boletín\s+[^.]*\.?'
+    r'|Boletin\s+[^.]*\.?'
+    r'|Haz\s+click\s+[^.]*\.?'
+    r'|Haz\s+clic\s+[^.]*\.?'
+    r'|Descarga\s+la\s+app\s+[^.]*\.?'
+    r'|Descarga\s+nuestra\s+app\s+[^.]*\.?'
+    r'|Síguenos\s+en\s+[^.]*\.?'
+    r'|Siguenos\s+en\s+[^.]*\.?'
+    r'|Todas\s+las\s+noticias[^.]*\.?'
+    r'|Más\s+información\s+en\s+[^.]*\.?'
+    r'|Para\s+más\s+información[^.]*\.?'
+    r'|Lee\s+también[^.]*\.?'
+    r'|También\s+te\s+puede\s+interesar[^.]*\.?'
+    r'|Te\s+puede\s+interesar[^.]*\.?'
+    r'|Enterate\s+[^.]*\.?'
+    r'|Entérate\s+[^.]*\.?'
+    r'|Mirá\s+también[^.]*\.?'
+    r'|Mira\s+también[^.]*\.?'
+    r'|Con\s+información\s+de\s+[^.]*\.?'
+    r'|Fuente:\s*[A-Z][^.]*\.?'
+    r'|Copyright\s+[^.]*\.?'
+    r'|Todos\s+los\s+derechos\s+reservados[^.]*\.?'
+    r'|©[^.]*\.?)',
     re.IGNORECASE
 )
 
@@ -657,7 +693,9 @@ def limpiar_texto(texto):
     t = re.sub(r'https?://\S*', '', t)
     # Eliminar nombres de fuentes incrustados en medio del texto
     t = _FUENTES_INCRUSTADAS.sub('', t)
-    t = t.strip()
+    # V9: Eliminar frases de suscripción/promoción de medios
+    t = _FRASES_SUSCRIPCION.sub('', t)
+    t = re.sub(r'\s+', ' ', t).strip()
     if t and t[-1] not in '.!?':
         t += '.'
     return t.strip()

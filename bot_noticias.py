@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V8.1
-NUEVO EN V7:
-  - Publica PRIMERO en WordPress (cada 30 min, todo el día)
-  - Facebook SIEMPRE publica como VIDEO/Reel (no más alternancia)
-  - Categorías ampliadas: latinoamerica, entretenimiento, salud, clima, mundo
-  - Detección de tema mejorada para nuevas categorías
-  - Link de verdadhoy.com incluido en cada post de Facebook
-  - Imagen OBLIGATORIA para publicar (no se publica sin imagen)
-  - NUEVO V8.1: Videos de YouTube embebidos automáticos en WordPress (~30-40% noticias)
-    · Prioriza noticias con poco texto (más impacto visual)
-    · Canales confiables: CNN, DW, BBC, France24, Al Jazeera, Euronews
-    · Si no encuentra video relevante, publica como siempre
-    · Requiere YOUTUBE_API_KEY en GitHub Secrets
+Bot de Noticias Internacionales - V9.0
+NUEVO EN V9 (mejoras de monetización y SEO):
+  - Cuotas de mezcla editorial por categoría (CPM optimizado)
+      · Tecnología 15% | Economía 15% | Finanzas 10% | Internacional 15%
+      · Ciencia/Salud 10% | Clima 5% | Política 10% | Mundo 10% | Deportes/Ent 10%
+  - Prompt SEO avanzado:
+      · H1 ≤60 chars con keyword principal al inicio
+      · Meta descripción entre 140-155 caracteres exactos
+      · Pirámide invertida en primeras 50 palabras
+      · H2/H3 con keywords secundarias cada 150-200 palabras
+      · 3-4 términos en negrita, viñetas para contexto/causas
+  - Brand safety automático: noticias de conflicto/violencia
+    reencuadradas hacia implicaciones económicas/diplomáticas
+  - Fecha de publicación tomada desde la fuente original
+  - Sección "Te puede interesar" con 2 artículos relacionados de WordPress
+HEREDADO DE V8.1:
+  - Videos YouTube embebidos automáticos en WordPress
+  - Pinterest con tableros por categoría
+  - Facebook siempre como VIDEO/Reel
+  - Watermark verdadhoy.com en imágenes
 """
 
 import requests
@@ -27,6 +34,29 @@ from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
+
+# ──────────────────────────────────────────────────────────
+# V9: CUOTAS EDITORIALES POR CATEGORÍA (monetización)
+# ──────────────────────────────────────────────────────────
+# Distribuye artículos diarios según CPM relativo de cada categoría.
+# brand_safe=True → mayor valorización publicitaria (AdSense)
+CUOTAS_CATEGORIA = {
+    'tecnologia':      {'cuota': 0.15, 'cpm_relativo': 1.45, 'brand_safe': True},
+    'economia':        {'cuota': 0.15, 'cpm_relativo': 1.55, 'brand_safe': True},
+    'ciencia':         {'cuota': 0.10, 'cpm_relativo': 1.40, 'brand_safe': True},
+    'salud':           {'cuota': 0.10, 'cpm_relativo': 1.40, 'brand_safe': True},
+    'general':         {'cuota': 0.10, 'cpm_relativo': 1.35, 'brand_safe': True},
+    'deportes':        {'cuota': 0.05, 'cpm_relativo': 1.20, 'brand_safe': True},
+    'entretenimiento': {'cuota': 0.05, 'cpm_relativo': 1.15, 'brand_safe': True},
+    'clima':           {'cuota': 0.05, 'cpm_relativo': 1.30, 'brand_safe': True},
+    'latinoamerica':   {'cuota': 0.10, 'cpm_relativo': 1.10, 'brand_safe': True},
+    'politica':        {'cuota': 0.05, 'cpm_relativo': 1.05, 'brand_safe': False},
+    'guerra':          {'cuota': 0.05, 'cpm_relativo': 0.90, 'brand_safe': False},
+    'desastre':        {'cuota': 0.05, 'cpm_relativo': 0.95, 'brand_safe': False},
+    'mundo':           {'cuota': 0.10, 'cpm_relativo': 1.00, 'brand_safe': True},
+}
+# Archivo para control de cuotas diarias (se resetea automáticamente cada día)
+CUOTAS_CONTROL_PATH = 'estado_cuotas.json'
 
 # ──────────────────────────────────────────────────────────
 # CONFIGURACIÓN
@@ -217,6 +247,202 @@ VOCES_TTS = [
     "es-CO-SalomeNeural",
     "es-AR-ElenaNeural",
 ]
+
+# ──────────────────────────────────────────────────────────
+# V9: CONTROL DE CUOTAS DIARIAS POR CATEGORÍA
+# ──────────────────────────────────────────────────────────
+def cargar_cuotas_hoy():
+    """Carga el conteo de artículos publicados hoy por categoría."""
+    datos = cargar_json(CUOTAS_CONTROL_PATH, {})
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    if datos.get('fecha') != hoy:
+        return {'fecha': hoy, 'conteo': {}}
+    return datos
+
+def registrar_cuota(categoria):
+    """Suma 1 al conteo de la categoría del día."""
+    datos = cargar_cuotas_hoy()
+    datos['conteo'][categoria] = datos['conteo'].get(categoria, 0) + 1
+    guardar_json(CUOTAS_CONTROL_PATH, datos)
+
+def categoria_disponible(categoria, total_dia=48):
+    """
+    Retorna True si la categoría aún tiene cuota disponible para hoy.
+    Si la categoría supera su cuota, se busca una alternativa brand-safe.
+    """
+    datos = cargar_cuotas_hoy()
+    conteo = datos['conteo'].get(categoria, 0)
+    maximo = max(1, int(total_dia * CUOTAS_CATEGORIA.get(categoria, {}).get('cuota', 0.10)))
+    return conteo < maximo
+
+def ajustar_categoria_por_cuota(categoria):
+    """
+    Si la categoría detectada ya agotó su cuota diaria,
+    retorna la categoría brand-safe con más cuota disponible.
+    """
+    if categoria_disponible(categoria):
+        return categoria
+    log(f"📊 Cuota llena para '{categoria}' — buscando alternativa brand-safe", 'advertencia')
+    # Ordenar por CPM descendente, solo brand-safe con cuota disponible
+    alternativas = sorted(
+        [(c, v) for c, v in CUOTAS_CATEGORIA.items()
+         if v.get('brand_safe') and categoria_disponible(c)],
+        key=lambda x: -x[1]['cpm_relativo']
+    )
+    if alternativas:
+        nueva = alternativas[0][0]
+        log(f"   → Reasignado a '{nueva}' (CPM {CUOTAS_CATEGORIA[nueva]['cpm_relativo']}x)", 'info')
+        return nueva
+    return categoria  # si todo lleno, publicar igual
+
+def es_brand_safe(categoria):
+    """Retorna True si la categoría es brand-safe para AdSense."""
+    return CUOTAS_CATEGORIA.get(categoria, {}).get('brand_safe', True)
+
+# ──────────────────────────────────────────────────────────
+# V9: REESCRITURA MEJORADA CON SEO Y BRAND SAFETY
+# ──────────────────────────────────────────────────────────
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
+OPENAI_API_KEY     = os.getenv('OPENAI_API_KEY', '')
+
+def reescribir_noticia_v9(titulo, contenido, categoria):
+    """
+    Reescribe la noticia con prompt optimizado para SEO y monetización.
+    Aplica brand safety automático en categorías de conflicto/violencia.
+    Retorna dict con: titulo_seo, meta_descripcion, contenido_html,
+                      keyword_principal, keywords_secundarias
+    Requiere OPENROUTER_API_KEY u OPENAI_API_KEY en GitHub Secrets.
+    """
+    api_key = OPENROUTER_API_KEY or OPENAI_API_KEY
+    if not api_key:
+        return None  # sin clave IA, usar flujo anterior
+
+    brand_safe = es_brand_safe(categoria)
+    instruccion_brand_safe = ""
+    if not brand_safe:
+        instruccion_brand_safe = """
+BRAND SAFETY (OBLIGATORIO): Esta noticia involucra conflicto, violencia o política sensible.
+Reencuadra el contenido enfocándote EN:
+- Implicaciones económicas y de mercados financieros
+- Consecuencias geopolíticas y diplomáticas a largo plazo
+- Impacto en energía, comercio o tecnología
+- Respuesta humanitaria e institucional
+EVITA completamente: lenguaje violento o gráfico, conteo de bajas,
+detalles militares tácticos, imágenes de shock emocional negativo."""
+
+    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español para audiencia global hispanohablante. Tu objetivo es maximizar SEO, tiempo de lectura y seguridad de marca para monetización con Google AdSense.
+
+NOTICIA ORIGINAL:
+Título: {titulo}
+Categoría: {categoria}
+Contenido: {contenido[:2500]}
+{instruccion_brand_safe}
+
+REGLAS DE FORMATO (OBLIGATORIAS):
+
+TÍTULO H1:
+- Máximo 60 caracteres incluyendo espacios
+- Keyword principal en las primeras 3 palabras
+- Directo e informativo, sin clickbait
+
+META DESCRIPCIÓN:
+- Entre 140 y 155 caracteres exactos
+- Resume el valor informativo
+- Incluye keyword secundaria natural
+
+CUERPO DEL ARTÍCULO (HTML):
+- PRIMER PÁRRAFO: responde Qué/Quién/Cuándo/Dónde/Por qué en máximo 50 palabras (pirámide invertida)
+- Subtítulos <h2> cada 150-200 palabras con keywords secundarias
+- Párrafos de máximo 3 líneas
+- 1 lista <ul><li> con 3-4 puntos si hay causas, consecuencias o datos clave
+- Entre 3 y 4 palabras o frases en <strong> (términos técnicos o nombres clave)
+- Mínimo 350 palabras, máximo 600 palabras
+- Al final del artículo agrega EXACTAMENTE esta línea: [ENLACES_INTERNOS]
+
+TONO: Profesional, informativo, en español neutro internacional. Sin opinión política explícita.
+
+RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto adicional:
+{{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<p>...</p>...[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["...", "..."]}}"""
+
+    try:
+        # Intentar con OpenRouter primero, luego OpenAI directo
+        if OPENROUTER_API_KEY:
+            url_api   = "https://openrouter.ai/api/v1/chat/completions"
+            headers   = {"Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                         "Content-Type": "application/json"}
+            modelo    = "openai/gpt-4o-mini"
+        else:
+            url_api   = "https://api.openai.com/v1/chat/completions"
+            headers   = {"Authorization": f"Bearer {OPENAI_API_KEY}",
+                         "Content-Type": "application/json"}
+            modelo    = "gpt-4o-mini"
+
+        payload = {
+            "model": modelo,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.7,
+            "max_tokens": 1400,
+        }
+        resp = requests.post(url_api, headers=headers, json=payload, timeout=30)
+        texto = resp.json()["choices"][0]["message"]["content"].strip()
+        # Limpiar posibles markdown fences
+        texto = re.sub(r'^```json\s*|```$', '', texto, flags=re.MULTILINE).strip()
+        resultado = json.loads(texto)
+        log(f"✅ V9 SEO — Título: {resultado.get('titulo_seo','')[:55]}", 'info')
+        log(f"✅ V9 SEO — Meta ({len(resultado.get('meta_descripcion',''))} chars)", 'info')
+        return resultado
+    except Exception as e:
+        log(f"⚠️ reescribir_noticia_v9 error: {e} — usando flujo estándar", 'advertencia')
+        return None
+
+# ──────────────────────────────────────────────────────────
+# V9: ENLACES INTERNOS AUTOMÁTICOS
+# ──────────────────────────────────────────────────────────
+def obtener_articulos_wp_recientes(num=3):
+    """Obtiene títulos y URLs de artículos recientes de WordPress."""
+    if not WP_APP_PASSWORD:
+        return []
+    try:
+        resp = requests.get(
+            f"{WP_URL}/wp-json/wp/v2/posts",
+            params={'per_page': num + 1, 'status': 'publish',
+                    'orderby': 'date', 'order': 'desc',
+                    '_fields': 'id,title,link'},
+            auth=(WP_USER, WP_APP_PASSWORD),
+            timeout=10
+        )
+        if resp.status_code == 200:
+            return resp.json()[:num]
+    except Exception as e:
+        log(f"⚠️ No se pudieron obtener artículos relacionados: {e}", 'debug')
+    return []
+
+def generar_seccion_relacionados(articulos):
+    """Genera HTML de la sección 'Te puede interesar'."""
+    if not articulos:
+        return ""
+    items = ""
+    for art in articulos:
+        t = art.get('title', {}).get('rendered', '')
+        l = art.get('link', '#')
+        if t and l:
+            items += f'<li><a href="{l}" style="color:#1a1a1a;text-decoration:none;">{t}</a></li>\n'
+    if not items:
+        return ""
+    return (
+        '\n<div class="vh-relacionadas" style="margin-top:24px;padding:16px;'
+        'background:#f8f9fa;border-left:4px solid #cc0000;border-radius:4px;">\n'
+        '<h3 style="margin:0 0 10px;font-size:1rem;color:#cc0000;">📰 Te puede interesar</h3>\n'
+        f'<ul style="margin:0;padding-left:20px;">\n{items}</ul>\n</div>\n'
+    )
+
+def insertar_enlaces_internos(contenido_html):
+    """Reemplaza [ENLACES_INTERNOS] con artículos reales de WordPress."""
+    articulos = obtener_articulos_wp_recientes(2)
+    html_relacionados = generar_seccion_relacionados(articulos)
+    if "[ENLACES_INTERNOS]" in contenido_html:
+        return contenido_html.replace("[ENLACES_INTERNOS]", html_relacionados)
+    return contenido_html + html_relacionados
 
 # ──────────────────────────────────────────────────────────
 # DETECCIÓN DE TEMA
@@ -746,10 +972,11 @@ def buscar_video_youtube(titulo, tema):
         return None
 
 
-def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
+def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fecha_fuente=None):
     """
     Publica una noticia en WordPress y retorna la URL del artículo.
     REQUIERE imagen obligatoriamente.
+    V9: integra reescritura SEO con IA, brand safety, fecha real y enlaces internos.
     """
     if not WP_APP_PASSWORD:
         log("⚠️ WP_APP_PASSWORD no configurado — saltando WordPress", 'advertencia')
@@ -803,23 +1030,40 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
 
     nombre_medio = extraer_nombre_medio(fuente_url)
 
-    # Construir contenido HTML con párrafos separados
-    # Dividir el contenido en párrafos por oraciones
-    oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
-    parrafos_html = []
-    parrafo_actual = []
-    palabras = 0
-    for oracion in oraciones:
-        parrafo_actual.append(oracion)
-        palabras += len(oracion.split())
-        if palabras >= 60:
-            parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
-            parrafo_actual = []
-            palabras = 0
-    if parrafo_actual:
-        parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
+    # ── V9: Intentar reescritura mejorada con IA ───────────────
+    resultado_ia = reescribir_noticia_v9(titulo, contenido, tema)
 
-    contenido_formateado = '\n'.join(parrafos_html[:15])  # máx 15 párrafos
+    if resultado_ia:
+        # Usar versión mejorada por IA
+        titulo_final       = resultado_ia.get('titulo_seo', titulo)[:60] or titulo
+        meta_desc          = resultado_ia.get('meta_descripcion', '')
+        frase_clave        = resultado_ia.get('keyword_principal', '')
+        contenido_formateado = resultado_ia.get('contenido_html', '')
+        # Insertar enlaces internos reales en lugar del placeholder
+        contenido_formateado = insertar_enlaces_internos(contenido_formateado)
+        log("✅ V9: usando contenido reescrito por IA con SEO avanzado", 'exito')
+    else:
+        # Fallback: flujo estándar V8 (sin clave IA configurada)
+        titulo_final = titulo
+        # Construir contenido HTML con párrafos separados
+        oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
+        parrafos_html = []
+        parrafo_actual = []
+        palabras = 0
+        for oracion in oraciones:
+            parrafo_actual.append(oracion)
+            palabras += len(oracion.split())
+            if palabras >= 60:
+                parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
+                parrafo_actual = []
+                palabras = 0
+        if parrafo_actual:
+            parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
+        contenido_formateado = '\n'.join(parrafos_html[:15])
+        # Agregar sección relacionados al final también en modo fallback
+        contenido_formateado += insertar_enlaces_internos("")
+        meta_desc  = ""
+        frase_clave = ""
 
     # ── NUEVO V8.1: Video YouTube embebido ─────────────────────
     # Buscar video si: artículo corto (<200 palabras) → siempre
@@ -849,7 +1093,7 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
 <p><em>Información verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
 """
 
-    # ── SEO: Título, metadescripción y frase clave para Yoast ────
+    # ── V9: SEO mejorado ─────────────────────────────────────────
     stopwords_es = {
         'para','como','este','esta','esto','pero','porque','cuando','donde',
         'quien','cuyo','cuya','ante','bajo','cabe','cada','con','contra',
@@ -858,50 +1102,70 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url):
         'que','sus','les','más','sin','sobre','también','hay','han','sido'
     }
 
-    # Frase clave: palabras significativas del título (ignora stopwords)
-    palabras_clave = [
-        p for p in re.findall(r'\b\w{4,}\b', titulo.lower())
-        if p not in stopwords_es
-    ]
-    frase_clave = ' '.join(palabras_clave[:4])
+    # Frase clave: usar la de IA si está disponible, si no extraer del título
+    if not frase_clave:
+        palabras_clave = [
+            p for p in re.findall(r'\b\w{4,}\b', titulo_final.lower())
+            if p not in stopwords_es
+        ]
+        frase_clave = ' '.join(palabras_clave[:4])
 
-    # Título SEO: máx 60 caracteres — "Título | Verdad Hoy"
+    # Título SEO
     sufijo_seo = ' | Verdad Hoy'
     max_titulo  = 60 - len(sufijo_seo)
-    titulo_seo  = (titulo[:max_titulo].rsplit(' ', 1)[0] if len(titulo) > max_titulo else titulo) + sufijo_seo
-
-    # Metadescripción SEO: primera oración del contenido, máx 155 caracteres
-    primera_oracion = re.split(r'(?<=[.!?])\s+', ' '.join(contenido.split()))[0]
-    if len(primera_oracion) > 155:
-        meta_desc = primera_oracion[:152].rsplit(' ', 1)[0] + '...'
-    elif len(primera_oracion) < 50:
-        # Si la primera oración es muy corta, tomar más texto
-        extracto_crudo = ' '.join(contenido.split())
-        meta_desc = extracto_crudo[:152].rsplit(' ', 1)[0] + '...'
+    if resultado_ia and resultado_ia.get('titulo_seo'):
+        titulo_seo = resultado_ia['titulo_seo']
+        if ' | Verdad Hoy' not in titulo_seo:
+            titulo_seo = (titulo_seo[:max_titulo].rsplit(' ', 1)[0]
+                          if len(titulo_seo) > max_titulo else titulo_seo) + sufijo_seo
     else:
-        meta_desc = primera_oracion
+        titulo_seo = (titulo_final[:max_titulo].rsplit(' ', 1)[0]
+                      if len(titulo_final) > max_titulo else titulo_final) + sufijo_seo
 
-    # Extracto WordPress (listados internos): igual a la metadescripción
+    # Metadescripción SEO
+    if not meta_desc:
+        primera_oracion = re.split(r'(?<=[.!?])\s+', ' '.join(contenido.split()))[0]
+        if len(primera_oracion) > 155:
+            meta_desc = primera_oracion[:152].rsplit(' ', 1)[0] + '...'
+        elif len(primera_oracion) < 50:
+            extracto_crudo = ' '.join(contenido.split())
+            meta_desc = extracto_crudo[:152].rsplit(' ', 1)[0] + '...'
+        else:
+            meta_desc = primera_oracion
+
     extracto = meta_desc
 
     log(f"🔍 SEO — Título: {titulo_seo}", 'info')
-    log(f"🔍 SEO — Meta: {meta_desc[:80]}...", 'info')
+    log(f"🔍 SEO — Meta ({len(meta_desc)} chars): {meta_desc[:80]}...", 'info')
     log(f"🔍 SEO — Frase clave: {frase_clave}", 'info')
+
+    # ── V9: Fecha desde la fuente original ───────────────────────
+    fecha_wp = None
+    if fecha_fuente:
+        try:
+            fecha_str = str(fecha_fuente).replace('Z', '+00:00')
+            dt = datetime.fromisoformat(fecha_str)
+            fecha_wp = dt.strftime('%Y-%m-%dT%H:%M:%S')
+        except Exception:
+            fecha_wp = None
 
     # Datos del post
     post_data = {
-        'title':          titulo,
+        'title':          titulo_final,
         'content':        contenido_html,
         'excerpt':        extracto,
         'status':         'publish',
         'featured_media': imagen_id,
         'categories':     categorias,
         'meta': {
-            '_yoast_wpseo_title':    titulo_seo,   # ✅ Título SEO personalizado
-            '_yoast_wpseo_metadesc': meta_desc,    # ✅ Metadescripción SEO
-            '_yoast_wpseo_focuskw':  frase_clave,  # ✅ Frase clave Yoast
+            '_yoast_wpseo_title':    titulo_seo,
+            '_yoast_wpseo_metadesc': meta_desc,
+            '_yoast_wpseo_focuskw':  frase_clave,
         }
     }
+    if fecha_wp:
+        post_data['date'] = fecha_wp
+        log(f"📅 Fecha publicación (fuente original): {fecha_wp}", 'info')
 
     try:
         r = requests.post(
@@ -1662,7 +1926,7 @@ def publicar_facebook_imagen(titulo, texto, imagen_path, hashtags):
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V7.1 (WordPress + Facebook + SEO Yoast)")
+    print("🌍 BOT DE NOTICIAS - V9.0 (SEO avanzado + Cuotas editoriales + Brand Safety)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
@@ -1770,7 +2034,11 @@ def main():
     log(f"   Fuente: {seleccionada['fuente']} | Puntaje: {seleccionada.get('puntaje', 0)}")
 
     tema = detectar_tema(seleccionada['titulo'], seleccionada.get('descripcion', ''))
-    log(f"   Tema: {tema}", 'info')
+    log(f"   Tema detectado: {tema}", 'info')
+
+    # ── V9: Ajustar categoría según cuotas editoriales ────────
+    tema = ajustar_categoria_por_cuota(tema)
+    log(f"   Categoría final (con cuota): {tema} | brand_safe={es_brand_safe(tema)} | CPM={CUOTAS_CATEGORIA.get(tema,{}).get('cpm_relativo',1.0)}x", 'info')
 
     exito_wp = False
     exito_fb = False
@@ -1780,15 +2048,17 @@ def main():
     if publicar_wp:
         log("\n🌐 Publicando en WordPress...", 'info')
         url_articulo_wp = publicar_en_wordpress(
-            titulo    = seleccionada['titulo'],
-            contenido = contenido,
-            tema      = tema,
+            titulo      = seleccionada['titulo'],
+            contenido   = contenido,
+            tema        = tema,
             imagen_path = img_path,
             fuente_url  = seleccionada['url'],
+            fecha_fuente = seleccionada.get('fecha'),   # V9: fecha real de la fuente
         )
         if url_articulo_wp:
             exito_wp = True
             guardar_estado_wp()
+            registrar_cuota(tema)  # V9: registrar cuota de categoría
             h['estadisticas']['total_wp'] = h['estadisticas'].get('total_wp', 0) + 1
             log(f"✅ WordPress OK: {url_articulo_wp}", 'exito')
 
@@ -1872,7 +2142,7 @@ def main():
         fb_total = h.get('estadisticas', {}).get('total_fb', 0)
         pt_total = h.get('estadisticas', {}).get('total_pinterest', 0)
         log(f"\n✅ RESUMEN: Total={total} | WP={wp_total} | FB={fb_total} | Pinterest={pt_total}", 'exito')
-        log(f"💡 IMPORTANTE: El workflow debe hacer git push de los archivos JSON", 'advertencia')
+        log(f"💡 IMPORTANTE: El workflow debe hacer git push de los archivos JSON (incluido estado_cuotas.json)", 'advertencia')
         return True
     else:
         log("❌ No se publicó en ninguna plataforma", 'error')

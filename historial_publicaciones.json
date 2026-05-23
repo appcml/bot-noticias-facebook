@@ -1,7 +1,5 @@
 {
   "urls": [
-    "https://bichosdecampo.com/asi-de-una-te-lo-digo-para-el-sector-agricola-la-factura-de-gasoil-de-esta-campana-aumentara-en-1-200-millones-de-dolares-respecto-del-ano-anterior/",
-    "https://www.zocalo.com.mx/inteligencia-artificial-y-derecho-internacional-en-la-1era-enciclica-de-leon-xiv/",
     "https://cnnespanol.cnn.com/2026/05/08/mundo/trump-anuncia-alto-el-fuego-3-dias-rusia-ucrania-trax",
     "https://www.exitosanoticias.pe/exitosa-peru/agricultores-divididos-venden-calle-tras-desalojo-conflictos-internos-agronomica-n175320",
     "https://primicia.com.ve/mundo/trump-dice-que-putin-y-zelenski-han-acordado-un-alto-el-fuego-del-9-al-11-m/",
@@ -167,11 +165,10 @@
     "https://es.gizmodo.com/agua-dulce-bajo-el-mar-el-hallazgo-secreto-que-podria-cambiar-lucha-contra-la-sed-mundial-2000190426",
     "https://www.diariolibre.com/mundo/estados-unidos/2026/05/22/ee-uu-justifica-suspender-venta-de-armas-a-taiwan/3542667",
     "https://www.eldiarioar.com/mundo/iran-aprovecho-alto-fuego-ee-uu-reconstruir-recursos-militares_1_13242610.html",
-    "https://www.qore.com/electronica/wingtech-demanda-a-nexperia-por-1180-mdd-en-un-tribunal-chino/"
+    "https://www.qore.com/electronica/wingtech-demanda-a-nexperia-por-1180-mdd-en-un-tribunal-chino/",
+    "https://www.elplural.com/economia/empresas/ia-chinas-qwen-deepseek-redefinen-reputacion-algoritmica-ibex-35-mapfre-caixabank-alternan-liderazgo-nmrs_390857102"
   ],
   "hashes": [
-    "5c058ccf1ae00c1fbf9f7d6f16e7fe8e",
-    "0eb6e61a4c41a99941f519de961fbf65",
     "1a84fa82fd80d38e83ad675a82615b4e",
     "8d3f19808c6ab4b57bc1659eda87f3d5",
     "3b13ea7a9550bd1d0098cd2adacd7b0b",
@@ -337,11 +334,10 @@
     "19bc824e390a23d58836ce727db5d97c",
     "cbc32d579661199349f7da2c6779f2fe",
     "6f8433bb6b5bb7f27089064d638a72cb",
-    "c03b9d8ccee917b3b520069d5b1357ea"
+    "c03b9d8ccee917b3b520069d5b1357ea",
+    "6927b075ae123f2d2db47b337cceb046"
   ],
   "timestamps": [
-    "2026-05-09T04:46:15.179760",
-    "2026-05-09T07:06:33.492658",
     "2026-05-09T08:58:12.732268",
     "2026-05-09T10:10:22.634722",
     "2026-05-09T11:26:27.002794",
@@ -507,11 +503,10 @@
     "2026-05-22T21:42:10.222778",
     "2026-05-22T22:56:01.648761",
     "2026-05-23T00:07:07.081962",
-    "2026-05-23T04:24:04.672711"
+    "2026-05-23T04:24:04.672711",
+    "2026-05-23T07:15:00.054360"
   ],
   "titulos": [
-    "Así de una te lo digo: Para el sector agrícola, la factura de gasoil de esta campaña aumentará en 1.200 millones de dólares (o 46%) respecto del año anterior.",
-    "Inteligencia Artificial y Derecho Internacional, en la 1era. Encíclica de León XIV.",
     "Mientras Trump anuncia un alto el fuego de 3 días entre Rusia y Ucrania, Putin prepara un Desfile de la Victoria discreto.",
     "Agricultores divididos venden en la calle tras desalojo y conflictos internos en La Agronómica.",
     "Trump dice que Putin y Zelenski han acordado un alto el fuego del 9 al 11-M.",
@@ -677,11 +672,10 @@
     "Científicos descubrieron un gigantesco reservorio de agua dulce oculto bajo las aguas saladas del océano Atlántico y ahora el hallazgo podría cambiar la forma en que enfrenta la futura crisis global de agua.",
     "EE. UU. justifica suspender venta de armas a Taiwán.",
     "Irán aprovechó el alto el fuego con EE.UU. para reconstruir sus recursos militares.",
-    "Wingtech demanda a Nexperia por 1,180 mdd en un tribunal chino."
+    "Wingtech demanda a Nexperia por 1,180 mdd en un tribunal chino.",
+    "Las IA chinas Qwen y DeepSeek redefinen la reputación algorítmica del IBEX‐35: Mapfre y CaixaBank se alternan el liderazgo."
   ],
   "descripciones": [
-    "Es indisimulable el impacto que la guerra en Medio Oriente y la liberalización de los precios internos de los combustibles sobre la estructura de costos del sector agrícola, al punto tal que se puede decir que por el gasoil necesario para levantar y mover la cosecha récord esperada en el ciclo 2025/26, los productores agrícolas [...]. Es indisimulable el impacto que la guerra en Medio Oriente y la liberalización de los precios internos de los combustibles sobre la estructura de costos del sector agrícola, al punto tal que se puede decir que por el gasoil necesario para levantar y mover l",
-    "El Papa León presentará su primera encíclica Magnifica Humanitas, dedicada a la Inteligencia Artificial, la paz y la crisis del Derecho Internacional. El Papa León presentará su primera encíclica Magnifica Humanitas, dedicada a la Inteligencia Artificial, la paz y la crisis del Derecho Internacional.",
     "Durante años, el desfile del Día de la Victoria de Rusia ha simbolizado la fuerza y el poder militar del país, con una deslumbrante exhibición de equipo militar pesado y una corriente de dignatarios visitantes. Durante años, el desfile del Día de la Victoria de Rusia ha simbolizado la fuerza y el poder militar del país, con una deslumbrante exhibición de equipo militar pesado y una corriente de dignatarios visitantes. Este año las cosas se verán muy diferentes. El presidente de Rusia, Vladimir Putin, encabezará un desfile reducido en la Plaza Roja, sin material militar en exhibición debido a l",
     "Agricultores permanecen divididos luego del desalojo ejecutado en La Agronómica y hoy venden en la calle. Dirigentes enfrentados responsabilizan a distintas facciones y autoridades por la crisis que afecta al sector. Agricultores permanecen divididos luego del desalojo ejecutado en La Agronómica y hoy venden en la calle. Dirigentes enfrentados responsabilizan a distintas facciones y autoridades por la crisis que afecta al sector.",
     "El presidente estadounidense ha acordado suspender todo ataque y un intercambio de 1.000 prisioneros de cada país. La entrada Trump dice que Putin y Zelenski han acordado un alto el fuego del 9 al 11-M se publicó primero en Diario Primicia . El presidente estadounidense ha acordado suspender todo ataque y un intercambio de 1.000 prisioneros de cada país. La entrada Trump dice que Putin y Zelenski han acordado un alto el fuego del 9 al 11-M se publicó primero en Diario Primicia .",
@@ -847,11 +841,10 @@
     "Una expedición internacional localizó enormes depósitos de agua dulce enterrados bajo el lecho marino frente a la costa este de Estados Unidos. El descubrimiento sorprendió incluso a la comunidad científica y abrió una posibilidad tan prometedora como delicada: utilizar reservas ocultas bajo el océano en un momento donde la demanda mundial de agua potable amenaza con superar la capacidad natural del planeta. Una expedición internacional localizó enormes depósitos de agua dulce enterrados bajo el lecho marino frente a la costa este de Estados Unidos. El descubrimiento sorprendió incl",
     "El secretario interino de la Marina de Estados Unidos , Hung Cao , afirmó este jueves que Washington pausó una venta de armamento a Taiwán valorada en 14,000 millones de dólares para garantizar el suministro de municiones en la campaña militar contra Irán . Durante una audiencia en el Subcomité de Defensa del Comité de Asignaciones del Senado, Cao explicó que la medida responde a la necesidad de asegurar suficientes reservas de misiles e interceptores , aunque sostuvo que el país aún dispone de \"abundantes\" existencias. El funcionario añadió que las ventas militares al extranjero ",
     "La reconstrucción de las capacidades militares, incluyendo el cambio de emplazamientos de misiles, lanzadores y la capacidad de producción de sistemas de armas clave destruidos durante el conflicto actual significa que Irán sigue siendo una amenaza significativa para los aliados regionales. Irán aprovechó el acto el fuego pactado con Estados Unidos y que ya dura seis semanas para reanudar parte de su producción de drones, una señal de que está reconstruyendo rápidamente ciertas capacidades militares degradadas por los ataques estadounidenses e israelíes, según informa la La cadena, ",
-    "✨︎ Resumen (TL;DR): Wingtech demanda a Nexperia por 1,180 millones de dólares en un juzgado de Guangdong por daños económicos. El conflicto legal invoca la Ley Anti-Sanciones Extranjeras de China tras meses de tensiones diplomáticas e interrupciones de suministro. La disputa ya afectó el abasto de semiconductores clave para los fabricantes de automóviles en Europa. La empresa tecnológica china Wingtech Technology y una de sus subsidiarias presentaron una demanda por 1,180 millones de dólares (8,000 millones de yuanes) contra el fabricante de chips holandés Nexperia ante un tribunal de"
+    "✨︎ Resumen (TL;DR): Wingtech demanda a Nexperia por 1,180 millones de dólares en un juzgado de Guangdong por daños económicos. El conflicto legal invoca la Ley Anti-Sanciones Extranjeras de China tras meses de tensiones diplomáticas e interrupciones de suministro. La disputa ya afectó el abasto de semiconductores clave para los fabricantes de automóviles en Europa. La empresa tecnológica china Wingtech Technology y una de sus subsidiarias presentaron una demanda por 1,180 millones de dólares (8,000 millones de yuanes) contra el fabricante de chips holandés Nexperia ante un tribunal de",
+    "La reputación corporativa del IBEX‐35 ya no puede explicarse con una sola narrativa, ya que un estudio elaborado por la plataforma RepIndex.ai, que analiza la percepción de las empresas cotizadas desde el 1 de enero hasta el 17 de mayo de 2026, muestra que las dos principales inteligencias artificiales chinas –Qwen, de Alibaba, y DeepSeek, del consorcio chino homónimo– asignan valoraciones muy diferentes a las compañías españolas. La horquilla de resultados oscila entre 57,6 y 67,2 puntos, con una diferencia de 9,6 puntos entre ambos modelos: Qwen se muestra claramente más optimista que"
   ],
   "hashes_contenido": [
-    "4c13a55d05520d0eeecb325e5c60fd96",
-    "389f430a896c34da83d0fbe937b479cc",
     "609de513176d09910aa4d55c927779d1",
     "174e8a2183b7860164fc946dd3146ac9",
     "eb36c274e5f845a46e2296dbc3f6add5",
@@ -1017,7 +1010,8 @@
     "e62043c70db357cf78cbe4ca38dd1174",
     "cf7840b6dfeab3bb94452484e550ce46",
     "9b936c08075731f9cac9a3687bfec069",
-    "16df60b415c80a958096eb562ab73989"
+    "16df60b415c80a958096eb562ab73989",
+    "c25a20a3bbadd1883fe74887db095d58"
   ],
   "hashes_permanentes": [
     "52fa1afaf2d29f5dc6d21b6620cbd32b",
@@ -1356,16 +1350,15 @@
     "19bc824e390a23d58836ce727db5d97c",
     "cbc32d579661199349f7da2c6779f2fe",
     "6f8433bb6b5bb7f27089064d638a72cb",
-    "c03b9d8ccee917b3b520069d5b1357ea"
+    "c03b9d8ccee917b3b520069d5b1357ea",
+    "6927b075ae123f2d2db47b337cceb046"
   ],
   "estadisticas": {
-    "total_publicadas": 337,
+    "total_publicadas": 338,
     "total_fb": 84,
-    "total_wp": 231
+    "total_wp": 232
   },
   "urls_normalizadas": [
-    "bichosdecampo.com/asi-de-una-te-lo-digo-para-el-sector-agricola-la-factura-de-gasoil-de-esta-campana-aumentara-en-1-200-millones-de-dolares-respecto-del-ano-anterior",
-    "zocalo.com.mx/inteligencia-artificial-y-derecho-internacional-en-la-1era-enciclica-de-leon-xiv",
     "cnnespanol.cnn.com/2026/05/08/mundo/trump-anuncia-alto-el-fuego-3-dias-rusia-ucrania-trax",
     "exitosanoticias.pe/exitosa-peru/agricultores-divididos-venden-calle-tras-desalojo-conflictos-internos-agronomica-n175320",
     "primicia.com.ve/mundo/trump-dice-que-putin-y-zelenski-han-acordado-un-alto-el-fuego-del-9-al-11-m",
@@ -1531,6 +1524,7 @@
     "es.gizmodo.com/agua-dulce-bajo-el-mar-el-hallazgo-secreto-que-podria-cambiar-lucha-contra-la-sed-mundial-2000190426",
     "diariolibre.com/mundo/estados-unidos/2026/05/22/ee-uu-justifica-suspender-venta-de-armas-a-taiwan/3542667",
     "eldiarioar.com/mundo/iran-aprovecho-alto-fuego-ee-uu-reconstruir-recursos-militares_1_13242610",
-    "qore.com/electronica/wingtech-demanda-a-nexperia-por-1180-mdd-en-un-tribunal-chino"
+    "qore.com/electronica/wingtech-demanda-a-nexperia-por-1180-mdd-en-un-tribunal-chino",
+    "elplural.com/economia/empresas/ia-chinas-qwen-deepseek-redefinen-reputacion-algoritmica-ibex-35-mapfre-caixabank-alternan-liderazgo-nmrs_390857102"
   ]
 }

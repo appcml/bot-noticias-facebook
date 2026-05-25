@@ -1,6 +1,8 @@
 {
   "fecha": "2026-05-25",
   "conteo": {
-    "politica": 1
+    "politica": 1,
+    "ciencia": 1,
+    "guerra": 1
   }
 }

@@ -2325,13 +2325,30 @@ def procesar_pending_videos():
         articulos_rel = obtener_articulos_wp_recientes(2)
         html_rel = generar_seccion_relacionados(articulos_rel)
 
-        # Schema JSON-LD
-        schema = generar_schema_jsonld(
-            titulo=titulo,
-            descripcion=meta_desc,
-            imagen_url=f"{WP_URL}/wp-content/uploads/vh-video-placeholder.jpg",
-            fecha_pub=ahora.strftime('%Y-%m-%dT%H:%M:%S')
-        )
+        # Schema JSON-LD inline
+        titulo_schema = titulo.replace('"', "'").replace('\\', '')
+        meta_schema   = meta_desc.replace('"', "'").replace('\\', '')
+        fecha_schema  = ahora.strftime('%Y-%m-%dT%H:%M:%S')
+        schema = f"""
+<script type=\"application/ld+json\">
+{{
+  \"@context\": \"https://schema.org\",
+  \"@type\": \"NewsArticle\",
+  \"headline\": \"{titulo_schema}\",
+  \"datePublished\": \"{fecha_schema}\",
+  \"dateModified\": \"{fecha_schema}\",
+  \"description\": \"{meta_schema}\",
+  \"publisher\": {{
+    \"@type\": \"Organization\",
+    \"name\": \"Verdad Hoy\",
+    \"url\": \"https://verdadhoy.com\"
+  }},
+  \"mainEntityOfPage\": {{
+    \"@type\": \"WebPage\",
+    \"@id\": \"https://verdadhoy.com\"
+  }}
+}}
+</script>"""
 
         contenido_final = f"""
 {cuerpo_html}

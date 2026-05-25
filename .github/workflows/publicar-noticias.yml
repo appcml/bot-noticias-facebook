@@ -65,7 +65,7 @@ jobs:
           YOUTUBE_API_KEY:      ${{ secrets.YOUTUBE_API_KEY }}
 
           # ── V11: GitHub (para pending_videos) ─────────────
-          # GITHUB_TOKEN ya existe automáticamente en Actions
+          GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY:    ${{ github.repository }}
 
           # ── Control ───────────────────────────────────────

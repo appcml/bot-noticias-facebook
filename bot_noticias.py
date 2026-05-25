@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V10.0
-NUEVO EN V10 (SEO avanzado, Sync FB->WP, Filtro estricto de imágenes):
-  - SEO:
-      · Alt text automático en imágenes subidas a WP (keyword principal de la IA)
-      · Tags automáticos en WP desde keywords_secundarias devueltas por la IA
-        (función obtener_crear_tag_wp crea o busca el tag, con caché)
-      · Schema Markup JSON-LD (NewsArticle) inyectado al final del contenido HTML
-        con imagen URL real de WP, headline, datePublished y description
-  - Filtro estricto de imágenes: NewsAPI, NewsData y GNews descartan noticias
-    sin imagen desde el momento de la obtención (no se guardan sin imagen)
-  - Sync FB → WP: nueva función sincronizar_videos_facebook_a_wp() que lee
-    los últimos videos de la Fanpage via Graph API y los publica en WordPress
-    embebidos con <iframe>, con historial anti-duplicados (estado_fb_to_wp.json)
-    IMPORTANTE: requiere permiso pages_read_user_content en FB_ACCESS_TOKEN
+Bot de Noticias Internacionales - V11.0
+NUEVO EN V11:
+  - FUNCIÓN 3: Video manual via /pending_videos/ en GitHub
+      · Tú subes un archivo .txt con DESCRIPCION y EMBED (iframe de Facebook)
+      · El bot lo detecta, genera título SEO, categoría, slug y metadatos con IA
+      · Publica en WordPress con video incrustado + Pinterest automático
+      · Elimina el archivo de GitHub 24 horas después de publicar
+      · Anti-duplicados: estado_pending_videos.json
+  - ELIMINADO: sincronizar_videos_facebook_a_wp() — ya no republica posts
+    de Facebook a WordPress (generaba contenido pobre: solo descripción + enlace)
+  - Pinterest ahora corre en paralelo con Función 1 Y con Función 3
+
+HEREDADO DE V10 (SEO avanzado, Filtro estricto de imágenes):
+  - Alt text automático en imágenes subidas a WP
+  - Tags automáticos en WP desde keywords_secundarias
+  - Schema Markup JSON-LD (NewsArticle)
+  - Filtro estricto: noticias sin imagen descartadas desde origen
 
 HEREDADO DE V9 (mejoras de monetización y SEO):
   - Cuotas de mezcla editorial por categoría (CPM optimizado)
@@ -112,8 +115,14 @@ ESTADO_PATH        = os.getenv('ESTADO_PATH',    'estado_bot.json')
 ESTADO_WP_PATH     = 'estado_wp.json'   # control separado para WordPress
 ESTADO_FB_PATH     = 'estado_fb.json'   # control separado para Facebook
 ESTADO_FORMATO_PATH = 'estado_formato_fb.json'  # alterna video/imagen
-# V10: Historial para Sync FB -> WP (evitar republicar videos ya procesados)
+# V10: Historial para Sync FB -> WP (ELIMINADO EN V11 — ya no se usa)
 ESTADO_FB_SYNC_PATH = 'estado_fb_to_wp.json'
+
+# V11: Pending videos — carpeta en GitHub y control de estado
+PENDING_VIDEOS_DIR  = 'pending_videos'
+ESTADO_PENDING_PATH = 'estado_pending_videos.json'
+GITHUB_TOKEN        = os.getenv('GITHUB_TOKEN', '')
+GITHUB_REPO         = os.getenv('GITHUB_REPOSITORY', '')  # ej: appcml/bot-noticias-facebook
 
 # Tiempos
 TIEMPO_ENTRE_WP_MIN    = 30   # WordPress: cada 30 minutos
@@ -2066,117 +2075,382 @@ def crear_video_noticia(titulo, resumen, fondo_path=None):
         return None
 
 # ──────────────────────────────────────────────────────────
-# V10: SYNC REVERSO FACEBOOK → WORDPRESS
+# V11: FUNCIÓN 3 — VIDEO MANUAL VIA /pending_videos/
 # ──────────────────────────────────────────────────────────
-def sincronizar_videos_facebook_a_wp():
-    """
-    V10: Lee los videos recientes publicados en la Fanpage de Facebook y los
-    publica en WordPress embebidos con <iframe>.
-    - Requiere permiso pages_read_user_content en FB_ACCESS_TOKEN.
-    - Usa estado_fb_to_wp.json para evitar republicar videos ya procesados.
-    - Solo procesa hasta 3 videos por ciclo para no saturar el log.
-    """
-    if not FB_PAGE_ID or not FB_ACCESS_TOKEN or not WP_APP_PASSWORD:
-        log("⚠️ Sync FB→WP: faltan credenciales (FB_PAGE_ID, FB_ACCESS_TOKEN o WP_APP_PASSWORD)", 'info')
-        return
 
-    log("🔄 Sync FB→WP: revisando videos recientes en Facebook...", 'info')
-    historial_sync = cargar_json(ESTADO_FB_SYNC_PATH, {'procesados': []})
+def listar_pending_videos_github():
+    """
+    Lista los archivos .txt en la carpeta pending_videos/ del repo de GitHub.
+    Retorna lista de dicts con: name, download_url, sha
+    """
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        log("⚠️ Pending videos: GITHUB_TOKEN o GITHUB_REPOSITORY no configurados", 'advertencia')
+        return []
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{PENDING_VIDEOS_DIR}"
+        headers = {
+            'Authorization': f'token {GITHUB_TOKEN}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        resp = requests.get(url, headers=headers, timeout=15)
+        if resp.status_code == 404:
+            log(f"ℹ️ Carpeta {PENDING_VIDEOS_DIR}/ no existe o está vacía", 'info')
+            return []
+        if resp.status_code != 200:
+            log(f"⚠️ GitHub API error {resp.status_code}: {resp.text[:100]}", 'advertencia')
+            return []
+        archivos = [
+            f for f in resp.json()
+            if isinstance(f, dict) and f.get('name', '').endswith('.txt')
+        ]
+        log(f"📂 Pending videos encontrados: {len(archivos)}", 'info')
+        return archivos
+    except Exception as e:
+        log(f"⚠️ Error listando pending_videos: {e}", 'advertencia')
+        return []
+
+
+def leer_archivo_github(download_url):
+    """Descarga y retorna el contenido de un archivo desde GitHub."""
+    try:
+        headers = {'Authorization': f'token {GITHUB_TOKEN}'}
+        resp = requests.get(download_url, headers=headers, timeout=15)
+        if resp.status_code == 200:
+            return resp.text
+    except Exception as e:
+        log(f"⚠️ Error leyendo archivo GitHub: {e}", 'advertencia')
+    return None
+
+
+def eliminar_archivo_github(nombre_archivo, sha):
+    """Elimina un archivo del repo de GitHub."""
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        return False
+    try:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{PENDING_VIDEOS_DIR}/{nombre_archivo}"
+        headers = {
+            'Authorization': f'token {GITHUB_TOKEN}',
+            'Accept': 'application/vnd.github.v3+json'
+        }
+        payload = {
+            'message': f'[bot] Eliminar video procesado: {nombre_archivo}',
+            'sha': sha
+        }
+        resp = requests.delete(url, headers=headers, json=payload, timeout=15)
+        if resp.status_code in (200, 204):
+            log(f"🗑️ Archivo eliminado de GitHub: {nombre_archivo}", 'exito')
+            return True
+        else:
+            log(f"⚠️ No se pudo eliminar {nombre_archivo}: {resp.status_code}", 'advertencia')
+    except Exception as e:
+        log(f"⚠️ Error eliminando archivo GitHub: {e}", 'advertencia')
+    return False
+
+
+def parsear_archivo_pending(contenido):
+    """
+    Parsea el archivo .txt subido manualmente.
+    Formato esperado:
+      DESCRIPCION: texto de la noticia
+      EMBED: <iframe ...></iframe>
+    Retorna dict con: descripcion, embed
+    """
+    resultado = {'descripcion': '', 'embed': ''}
+    lineas = contenido.strip().split('\n')
+    modo = None
+    buffer = []
+
+    for linea in lineas:
+        if linea.strip().upper().startswith('DESCRIPCION:'):
+            if modo == 'embed' and buffer:
+                resultado['embed'] = '\n'.join(buffer).strip()
+            modo = 'descripcion'
+            buffer = [linea.split(':', 1)[1].strip() if ':' in linea else '']
+        elif linea.strip().upper().startswith('EMBED:'):
+            if modo == 'descripcion' and buffer:
+                resultado['descripcion'] = '\n'.join(buffer).strip()
+            modo = 'embed'
+            buffer = [linea.split(':', 1)[1].strip() if ':' in linea else '']
+        else:
+            if modo:
+                buffer.append(linea)
+
+    if modo == 'descripcion' and buffer:
+        resultado['descripcion'] = '\n'.join(buffer).strip()
+    elif modo == 'embed' and buffer:
+        resultado['embed'] = '\n'.join(buffer).strip()
+
+    return resultado
+
+
+def generar_metadatos_video_manual(descripcion, embed):
+    """
+    Usa IA para generar título SEO, categoría, meta descripción y slug
+    a partir de la descripción del video manual.
+    """
+    api_key = OPENROUTER_API_KEY or OPENAI_API_KEY
+    if not api_key:
+        # Fallback sin IA
+        titulo = descripcion[:60].strip()
+        return {
+            'titulo_seo':      titulo,
+            'meta_descripcion': descripcion[:155],
+            'categoria':        detectar_tema(titulo, descripcion),
+            'keyword_principal': titulo.split()[0] if titulo else 'noticia',
+            'keywords_secundarias': [],
+            'contenido_html':  f"<p>{descripcion}</p>"
+        }
+
+    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español.
+Analiza esta descripción de video de noticias y genera los metadatos SEO.
+
+DESCRIPCIÓN DEL VIDEO:
+{descripcion[:1500]}
+
+GENERA en formato JSON exacto (sin markdown, sin explicaciones):
+{{
+  "titulo_seo": "Título H1 máximo 60 caracteres, keyword principal primero, informativo",
+  "meta_descripcion": "Meta descripción 140-155 caracteres exactos con keyword secundaria",
+  "categoria": "una de: guerra|politica|economia|tecnologia|desastre|deportes|ciencia|salud|entretenimiento|latinoamerica|clima|mundo|general",
+  "keyword_principal": "keyword principal 2-4 palabras",
+  "keywords_secundarias": ["kw2", "kw3", "kw4"],
+  "contenido_html": "HTML del artículo: primer párrafo con Qué/Quién/Cuándo/Dónde/Por qué en 50 palabras, luego 2-3 párrafos de contexto con subtítulos <h2>, máximo 400 palabras total, sin repetir el título"
+}}"""
 
     try:
-        url_api = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/videos"
-        params  = {
-            'access_token': FB_ACCESS_TOKEN,
-            'fields':       'id,description,created_time,permalink_url',
-            'limit':        5,
-        }
-        resp = requests.get(url_api, params=params, timeout=15).json()
-
-        if 'error' in resp:
-            msg = resp['error'].get('message', 'error desconocido')
-            log(f"⚠️ Sync FB→WP Graph API error: {msg}", 'advertencia')
-            log("   Verifica que FB_ACCESS_TOKEN tenga permiso pages_read_user_content", 'advertencia')
-            return
-
-        videos = resp.get('data', [])
-        if not videos:
-            log("📭 Sync FB→WP: no hay videos recientes en la página", 'info')
-            return
-
-        nuevos = 0
-        for v in videos:
-            vid = v.get('id')
-            if not vid or vid in historial_sync['procesados']:
-                continue
-
-            desc = v.get('description', '').strip()
-
-            # Construir título desde la primera línea de la descripción
-            lineas = [l.strip() for l in desc.split('\n') if l.strip()]
-            titulo_base = lineas[0][:100] if lineas else "Nuevo video en Verdad Hoy"
-            titulo_base = re.sub(r'#\w+', '', titulo_base).strip()
-            titulo_base = titulo_base or "Video de Verdad Hoy"
-
-            permalink = v.get('permalink_url', f"https://www.facebook.com/{FB_PAGE_ID}/videos/{vid}")
-
-            # HTML del iframe responsive
-            iframe_html = f"""
-<div style="margin:24px 0; text-align:center;">
-  <div style="position:relative; padding-bottom:56.25%; height:0; overflow:hidden; max-width:640px; margin:0 auto;">
-    <iframe
-      src="https://www.facebook.com/plugins/video.php?href={permalink}&show_text=false&width=640"
-      style="position:absolute; top:0; left:0; width:100%; height:100%; border:none; overflow:hidden;"
-      scrolling="no"
-      frameborder="0"
-      allowfullscreen="true"
-      allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share">
-    </iframe>
-  </div>
-  <p style="font-size:0.85em; color:#666; margin-top:8px;">
-    <a href="{permalink}" target="_blank" rel="noopener">Ver en Facebook</a>
-  </p>
-</div>"""
-
-            # Limpiar descripción para el contenido del post
-            desc_limpia = re.sub(r'#\w+', '', desc).strip()
-            desc_html   = f"<p>{desc_limpia.replace(chr(10), '<br>')}</p>" if desc_limpia else ""
-
-            contenido_wp = f"{desc_html}{iframe_html}"
-
-            cat_id = obtener_id_categoria_wp('entretenimiento') or obtener_id_categoria_wp('internacional')
-
-            post_data = {
-                'title':      f"🎥 {titulo_base}",
-                'content':    contenido_wp,
-                'excerpt':    desc_limpia[:155] if desc_limpia else titulo_base,
-                'status':     'publish',
-                'categories': [cat_id] if cat_id else [],
-            }
-
-            try:
-                r = requests.post(
-                    f"{WP_URL}/wp-json/wp/v2/posts",
-                    json=post_data,
-                    auth=(WP_USER, WP_APP_PASSWORD),
-                    timeout=20
-                ).json()
-                if 'id' in r:
-                    log(f"✅ Sync FB→WP: Video {vid} publicado como WP Post ID {r['id']}", 'exito')
-                    historial_sync['procesados'].append(vid)
-                    nuevos += 1
-                else:
-                    log(f"⚠️ Sync FB→WP: no se pudo publicar video {vid}: {r.get('message','?')}", 'advertencia')
-            except Exception as e:
-                log(f"⚠️ Sync FB→WP excepción publicando video {vid}: {e}", 'advertencia')
-
-        if nuevos:
-            guardar_json(ESTADO_FB_SYNC_PATH, historial_sync)
-            log(f"✅ Sync FB→WP: {nuevos} video(s) nuevo(s) publicados en WordPress", 'exito')
+        headers = {'Content-Type': 'application/json'}
+        if OPENROUTER_API_KEY:
+            headers['Authorization'] = f'Bearer {OPENROUTER_API_KEY}'
+            headers['HTTP-Referer']  = 'https://verdadhoy.com'
+            url_ia = 'https://openrouter.ai/api/v1/chat/completions'
+            model  = 'openai/gpt-4o-mini'
         else:
-            log("ℹ️ Sync FB→WP: todos los videos recientes ya estaban procesados", 'info')
+            headers['Authorization'] = f'Bearer {OPENAI_API_KEY}'
+            url_ia = 'https://api.openai.com/v1/chat/completions'
+            model  = 'gpt-4o-mini'
 
+        payload = {
+            'model': model,
+            'messages': [{'role': 'user', 'content': prompt}],
+            'max_tokens': 900,
+            'temperature': 0.4,
+        }
+        resp = requests.post(url_ia, headers=headers, json=payload, timeout=30)
+        texto = resp.json()['choices'][0]['message']['content'].strip()
+        texto = re.sub(r'```json|```', '', texto).strip()
+        datos = json.loads(texto)
+        log(f"✅ IA generó metadatos para video manual: {datos.get('titulo_seo','')[:50]}", 'exito')
+        return datos
     except Exception as e:
-        log(f"⚠️ Sync FB→WP error general: {e}", 'error')
+        log(f"⚠️ Error IA metadatos video: {e} — usando fallback", 'advertencia')
+        titulo = descripcion[:60].strip()
+        return {
+            'titulo_seo':       titulo,
+            'meta_descripcion':  descripcion[:155],
+            'categoria':         detectar_tema(titulo, descripcion),
+            'keyword_principal': titulo.split()[0] if titulo else 'noticia',
+            'keywords_secundarias': [],
+            'contenido_html':   f"<p>{descripcion}</p>"
+        }
+
+
+def procesar_pending_videos():
+    """
+    V11 FUNCIÓN 3: Detecta archivos nuevos en /pending_videos/, los procesa
+    y publica en WordPress + Pinterest. Elimina archivos tras 24h de publicados.
+    """
+    if not WP_APP_PASSWORD:
+        log("⚠️ Pending videos: WP_APP_PASSWORD no configurado", 'advertencia')
+        return
+
+    estado = cargar_json(ESTADO_PENDING_PATH, {'procesados': {}})
+    ahora  = datetime.now()
+
+    # ── Paso 1: Eliminar archivos que llevan +24h publicados ──
+    for nombre, info in list(estado['procesados'].items()):
+        fecha_pub = info.get('publicado_en')
+        sha       = info.get('sha')
+        if fecha_pub and sha:
+            try:
+                dt_pub = datetime.fromisoformat(fecha_pub)
+                if ahora - dt_pub > timedelta(hours=24):
+                    log(f"🗑️ Eliminando {nombre} (24h cumplidas)...", 'info')
+                    if eliminar_archivo_github(nombre, sha):
+                        del estado['procesados'][nombre]
+                        guardar_json(ESTADO_PENDING_PATH, estado)
+            except Exception as e:
+                log(f"⚠️ Error revisando expiración de {nombre}: {e}", 'advertencia')
+
+    # ── Paso 2: Detectar archivos nuevos ──
+    archivos = listar_pending_videos_github()
+    if not archivos:
+        return
+
+    nuevos_publicados = 0
+    for archivo in archivos:
+        nombre = archivo.get('name', '')
+        sha    = archivo.get('sha', '')
+
+        # Saltar si ya fue procesado
+        if nombre in estado['procesados']:
+            log(f"ℹ️ {nombre} ya procesado — omitiendo", 'debug')
+            continue
+
+        log(f"\n🎥 Nuevo video manual detectado: {nombre}", 'info')
+
+        # Leer contenido del archivo
+        contenido_txt = leer_archivo_github(archivo.get('download_url', ''))
+        if not contenido_txt:
+            log(f"⚠️ No se pudo leer {nombre}", 'advertencia')
+            continue
+
+        datos = parsear_archivo_pending(contenido_txt)
+        if not datos['descripcion'] or not datos['embed']:
+            log(f"⚠️ {nombre} no tiene DESCRIPCION o EMBED válidos — omitiendo", 'advertencia')
+            continue
+
+        # Generar metadatos con IA
+        meta = generar_metadatos_video_manual(datos['descripcion'], datos['embed'])
+
+        titulo    = meta.get('titulo_seo', datos['descripcion'][:60])
+        categoria = meta.get('categoria', 'mundo')
+        meta_desc = meta.get('meta_descripcion', datos['descripcion'][:155])
+        cuerpo_html = meta.get('contenido_html', f"<p>{datos['descripcion']}</p>")
+
+        # Ajustar por cuota editorial
+        categoria = ajustar_categoria_por_cuota(categoria)
+
+        # Construir contenido WordPress
+        embed_html = datos['embed']
+        articulos_rel = obtener_articulos_wp_recientes(2)
+        html_rel = generar_seccion_relacionados(articulos_rel)
+
+        # Schema JSON-LD
+        schema = generar_schema_jsonld(
+            titulo=titulo,
+            descripcion=meta_desc,
+            imagen_url=f"{WP_URL}/wp-content/uploads/vh-video-placeholder.jpg",
+            fecha_pub=ahora.strftime('%Y-%m-%dT%H:%M:%S')
+        )
+
+        contenido_final = f"""
+{cuerpo_html}
+
+<div style="margin:28px auto; text-align:center; max-width:267px;">
+  {embed_html}
+  <p style="font-size:0.8em; color:#888; margin-top:8px;">📹 Video: Verdad Hoy en Facebook</p>
+</div>
+
+{html_rel}
+
+{schema}
+"""
+
+        # Obtener categoría WP
+        cat_slug = CATEGORIA_WP.get(categoria, 'internacional')
+        cat_id   = obtener_id_categoria_wp(cat_slug)
+
+        # Obtener/crear tags
+        tag_ids = []
+        for kw in meta.get('keywords_secundarias', [])[:5]:
+            tid = obtener_crear_tag_wp(kw)
+            if tid:
+                tag_ids.append(tid)
+
+        # Construir post WP
+        post_data = {
+            'title':   titulo,
+            'content': contenido_final,
+            'excerpt': meta_desc,
+            'status':  'publish',
+            'meta': {
+                '_yoast_wpseo_title':           titulo,
+                '_yoast_wpseo_metadesc':        meta_desc,
+                '_yoast_wpseo_focuskw':         meta.get('keyword_principal', ''),
+            },
+        }
+        if cat_id:
+            post_data['categories'] = [cat_id]
+        if tag_ids:
+            post_data['tags'] = tag_ids
+
+        try:
+            r = requests.post(
+                f"{WP_URL}/wp-json/wp/v2/posts",
+                json=post_data,
+                auth=(WP_USER, WP_APP_PASSWORD),
+                timeout=20
+            ).json()
+
+            if 'id' in r:
+                url_wp = r.get('link', '')
+                log(f"✅ Video manual publicado en WordPress: {url_wp}", 'exito')
+                registrar_cuota(categoria)
+
+                # Guardar en estado con timestamp para eliminar tras 24h
+                estado['procesados'][nombre] = {
+                    'publicado_en': ahora.isoformat(),
+                    'sha':          sha,
+                    'wp_url':       url_wp,
+                    'wp_id':        r['id']
+                }
+                guardar_json(ESTADO_PENDING_PATH, estado)
+                nuevos_publicados += 1
+
+                # Pinterest en paralelo
+                if PINTEREST_TOKEN:
+                    log("📌 Publicando video manual en Pinterest...", 'info')
+                    # Para video sin imagen usamos URL del artículo como media
+                    publicar_pinterest_video_manual(
+                        titulo=titulo,
+                        descripcion=meta_desc,
+                        url_articulo=url_wp,
+                        categoria=categoria
+                    )
+            else:
+                log(f"❌ Error publicando video manual en WP: {r.get('message','?')}", 'error')
+
+        except Exception as e:
+            log(f"❌ Excepción publicando video manual: {e}", 'error')
+
+    if nuevos_publicados:
+        log(f"\n✅ Pending videos procesados: {nuevos_publicados}", 'exito')
+    else:
+        log("ℹ️ Pending videos: ningún archivo nuevo pendiente", 'info')
+
+
+def publicar_pinterest_video_manual(titulo, descripcion, url_articulo, categoria):
+    """Publica en Pinterest un pin de video manual (sin imagen local, usa URL del artículo)."""
+    if not PINTEREST_TOKEN:
+        return False
+    try:
+        tableros    = obtener_tableros_pinterest()
+        nombre_tab  = TABLEROS_PINTEREST.get(categoria, 'Noticias del Mundo')
+        board_id    = tableros.get(nombre_tab) or (list(tableros.values())[0] if tableros else None)
+        if not board_id:
+            return False
+
+        url_utm = f"{url_articulo}?utm_source=pinterest&utm_medium=social&utm_campaign=video_manual"
+        payload = {
+            'board_id':    board_id,
+            'title':       titulo[:100],
+            'description': descripcion[:490],
+            'link':        url_utm,
+            'media_source': {'source_type': 'image_url', 'url': f"{WP_URL}/wp-content/uploads/vh-og-default.jpg"}
+        }
+        resp = requests.post(
+            'https://api.pinterest.com/v5/pins',
+            headers={'Authorization': f'Bearer {PINTEREST_TOKEN}', 'Content-Type': 'application/json'},
+            json=payload, timeout=20
+        )
+        if resp.status_code in (200, 201):
+            log(f"✅ Pinterest video manual OK: pin en '{nombre_tab}'", 'exito')
+            return True
+        else:
+            log(f"⚠️ Pinterest video manual error {resp.status_code}", 'advertencia')
+    except Exception as e:
+        log(f"⚠️ Pinterest video manual excepción: {e}", 'advertencia')
+    return False
 
 
 # ──────────────────────────────────────────────────────────
@@ -2232,12 +2506,12 @@ def publicar_facebook_imagen(titulo, texto, imagen_path, hashtags):
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V10.0 (SEO Alt+Tags+Schema | Sync FB→WP | Filtro Img estricto)")
+    print("🌍 BOT DE NOTICIAS - V11.0 (Video Manual | Pinterest Paralelo | Sin Sync FB→WP)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
-    # V10: Sincronizar videos de Facebook → WordPress (al inicio del ciclo)
-    sincronizar_videos_facebook_a_wp()
+    # V11: Procesar videos manuales desde /pending_videos/ en GitHub
+    procesar_pending_videos()
 
     # Verificar qué debe publicarse en esta ejecución
     publicar_wp = puede_publicar_wp()

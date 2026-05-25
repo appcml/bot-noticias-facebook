@@ -2020,7 +2020,7 @@ def crear_video_noticia(titulo, resumen, fondo_path=None):
             return np.array(frame)
 
         frames = [crear_frame_pil(progreso=t/duracion) for t in range(duracion * fps)]
-        clip = ImageClip(frames[0]).set_duration(duracion)
+        clip = ImageClip(frames[0]).set_duration(duracion).set_fps(24)
 
         video_path = f'/tmp/video_{generar_hash(titulo)}.mp4'
 

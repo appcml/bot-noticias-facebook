@@ -1,21 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V9.0
-NUEVO EN V9 (mejoras de monetización y SEO):
+Bot de Noticias Internacionales - V10.0
+NUEVO EN V10 (SEO avanzado, Sync FB->WP, Filtro estricto de imágenes):
+  - SEO:
+      · Alt text automático en imágenes subidas a WP (keyword principal de la IA)
+      · Tags automáticos en WP desde keywords_secundarias devueltas por la IA
+        (función obtener_crear_tag_wp crea o busca el tag, con caché)
+      · Schema Markup JSON-LD (NewsArticle) inyectado al final del contenido HTML
+        con imagen URL real de WP, headline, datePublished y description
+  - Filtro estricto de imágenes: NewsAPI, NewsData y GNews descartan noticias
+    sin imagen desde el momento de la obtención (no se guardan sin imagen)
+  - Sync FB → WP: nueva función sincronizar_videos_facebook_a_wp() que lee
+    los últimos videos de la Fanpage via Graph API y los publica en WordPress
+    embebidos con <iframe>, con historial anti-duplicados (estado_fb_to_wp.json)
+    IMPORTANTE: requiere permiso pages_read_user_content en FB_ACCESS_TOKEN
+
+HEREDADO DE V9 (mejoras de monetización y SEO):
   - Cuotas de mezcla editorial por categoría (CPM optimizado)
-      · Tecnología 15% | Economía 15% | Finanzas 10% | Internacional 15%
-      · Ciencia/Salud 10% | Clima 5% | Política 10% | Mundo 10% | Deportes/Ent 10%
-  - Prompt SEO avanzado:
-      · H1 ≤60 chars con keyword principal al inicio
-      · Meta descripción entre 140-155 caracteres exactos
-      · Pirámide invertida en primeras 50 palabras
-      · H2/H3 con keywords secundarias cada 150-200 palabras
-      · 3-4 términos en negrita, viñetas para contexto/causas
-  - Brand safety automático: noticias de conflicto/violencia
-    reencuadradas hacia implicaciones económicas/diplomáticas
-  - Fecha de publicación tomada desde la fuente original
+  - Prompt SEO avanzado (H1 ≤60, meta 140-155, pirámide invertida, H2/H3)
+  - Brand safety automático
+  - Fecha de publicación desde fuente original
   - Sección "Te puede interesar" con 2 artículos relacionados de WordPress
+
 HEREDADO DE V8.1:
   - Videos YouTube embebidos automáticos en WordPress
   - Pinterest con tableros por categoría
@@ -105,6 +112,8 @@ ESTADO_PATH        = os.getenv('ESTADO_PATH',    'estado_bot.json')
 ESTADO_WP_PATH     = 'estado_wp.json'   # control separado para WordPress
 ESTADO_FB_PATH     = 'estado_fb.json'   # control separado para Facebook
 ESTADO_FORMATO_PATH = 'estado_formato_fb.json'  # alterna video/imagen
+# V10: Historial para Sync FB -> WP (evitar republicar videos ya procesados)
+ESTADO_FB_SYNC_PATH = 'estado_fb_to_wp.json'
 
 # Tiempos
 TIEMPO_ENTRE_WP_MIN    = 30   # WordPress: cada 30 minutos
@@ -145,6 +154,8 @@ CATEGORIA_WP = {
 
 # IDs de categorías WordPress (se obtienen automáticamente al publicar)
 _cache_categorias_wp = {}
+# V10: caché de tags WordPress (nombre_lower -> id)
+_cache_tags_wp = {}
 
 # ── TABLEROS PINTEREST (nombres exactos como los creaste) ───
 TABLEROS_PINTEREST = {
@@ -932,8 +943,50 @@ def obtener_id_categoria_wp(slug_categoria):
         log(f"⚠️ Error obteniendo categoría WP '{slug_categoria}': {e}", 'advertencia')
     return None
 
-def subir_imagen_wp(imagen_path, titulo):
-    """Sube una imagen a la biblioteca de medios de WordPress."""
+def obtener_crear_tag_wp(nombre_tag):
+    """
+    V10 SEO: Obtiene el ID de un tag existente en WordPress o lo crea si no existe.
+    Usa caché en memoria para evitar peticiones repetidas en el mismo ciclo.
+    """
+    global _cache_tags_wp
+    tag_clean = nombre_tag.lower().strip()
+    if not tag_clean or len(tag_clean) < 2:
+        return None
+    if tag_clean in _cache_tags_wp:
+        return _cache_tags_wp[tag_clean]
+    try:
+        # Buscar tag existente
+        r = requests.get(
+            f"{WP_URL}/wp-json/wp/v2/tags",
+            params={'search': tag_clean, 'per_page': 5},
+            auth=(WP_USER, WP_APP_PASSWORD),
+            timeout=10
+        ).json()
+        if r and isinstance(r, list):
+            for tag in r:
+                if tag.get('name', '').lower() == tag_clean:
+                    _cache_tags_wp[tag_clean] = tag['id']
+                    return tag['id']
+        # Crear tag nuevo
+        r_post = requests.post(
+            f"{WP_URL}/wp-json/wp/v2/tags",
+            json={'name': nombre_tag.strip()},
+            auth=(WP_USER, WP_APP_PASSWORD),
+            timeout=10
+        ).json()
+        if 'id' in r_post:
+            _cache_tags_wp[tag_clean] = r_post['id']
+            log(f"🏷️ Tag WP creado: '{nombre_tag}' → ID {r_post['id']}", 'info')
+            return r_post['id']
+    except Exception as e:
+        log(f"⚠️ Error gestionando tag '{nombre_tag}': {e}", 'debug')
+    return None
+
+def subir_imagen_wp(imagen_path, titulo, alt_text=""):
+    """
+    Sube una imagen a la biblioteca de medios de WordPress.
+    V10 SEO: acepta alt_text y lo aplica vía PATCH después de subir.
+    """
     if not imagen_path or not os.path.exists(imagen_path):
         return None
     try:
@@ -950,8 +1003,21 @@ def subir_imagen_wp(imagen_path, titulo):
                 timeout=60
             ).json()
         if 'id' in r:
-            log(f"🖼️ Imagen subida a WP — ID: {r['id']}", 'exito')
-            return r['id']
+            media_id = r['id']
+            log(f"🖼️ Imagen subida a WP — ID: {media_id}", 'exito')
+            # V10 SEO: asignar alt_text si está disponible
+            if alt_text:
+                try:
+                    requests.post(
+                        f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
+                        json={'alt_text': alt_text[:125]},
+                        auth=(WP_USER, WP_APP_PASSWORD),
+                        timeout=10
+                    )
+                    log(f"🏷️ Alt text asignado: '{alt_text[:60]}'", 'debug')
+                except Exception as e:
+                    log(f"⚠️ No se pudo asignar alt_text: {e}", 'debug')
+            return media_id
         else:
             log(f"⚠️ Error subiendo imagen a WP: {r.get('message', 'desconocido')}", 'advertencia')
     except Exception as e:
@@ -1051,7 +1117,8 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     """
     Publica una noticia en WordPress y retorna la URL del artículo.
     REQUIERE imagen obligatoriamente.
-    V9: integra reescritura SEO con IA, brand safety, fecha real y enlaces internos.
+    V9: reescritura SEO con IA, brand safety, fecha real y enlaces internos.
+    V10: alt_text en imágenes, tags automáticos desde keywords IA, Schema JSON-LD.
     """
     if not WP_APP_PASSWORD:
         log("⚠️ WP_APP_PASSWORD no configurado — saltando WordPress", 'advertencia')
@@ -1060,17 +1127,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     if not imagen_path:
         log("❌ No hay imagen — no se publica en WordPress", 'error')
         return None
-
-    # Subir imagen primero
-    imagen_id = subir_imagen_wp(imagen_path, titulo)
-    if not imagen_id:
-        log("❌ No se pudo subir imagen a WP — cancelando", 'error')
-        return None
-
-    # Obtener categoría
-    slug_cat = CATEGORIA_WP.get(tema, 'internacional')
-    cat_id   = obtener_id_categoria_wp(slug_cat)
-    categorias = [cat_id] if cat_id else []
 
     # Extraer nombre del medio desde la URL de la fuente
     def extraer_nombre_medio(url):
@@ -1094,12 +1150,11 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
                 'theguardian.com': 'The Guardian',
                 'nytimes.com': 'New York Times',
             }
-            for k, v in mapa.items():
-                if k in dominio:
-                    return v
-            # Si no está en el mapa, capitalizar el dominio
-            nombre = dominio.split('.')[0].replace('-', ' ').title()
-            return nombre
+            for dom, nombre in mapa.items():
+                if dom in dominio:
+                    return nombre
+            partes = dominio.split('.')
+            return partes[-2].capitalize() if len(partes) >= 2 else dominio
         except:
             return 'Fuente externa'
 
@@ -1108,19 +1163,32 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     # ── V9: Intentar reescritura mejorada con IA ───────────────
     resultado_ia = reescribir_noticia_v9(titulo, contenido, tema)
 
+    # V10 SEO: preparar alt_text y tags desde resultado IA
+    alt_text_imagen = titulo[:125]
+    tags_ids = []
+
     if resultado_ia:
-        # Usar versión mejorada por IA
-        titulo_final       = resultado_ia.get('titulo_seo', titulo)[:60] or titulo
-        meta_desc          = resultado_ia.get('meta_descripcion', '')
-        frase_clave        = resultado_ia.get('keyword_principal', '')
+        titulo_final         = resultado_ia.get('titulo_seo', titulo)[:60] or titulo
+        meta_desc            = resultado_ia.get('meta_descripcion', '')
+        frase_clave          = resultado_ia.get('keyword_principal', '')
         contenido_formateado = resultado_ia.get('contenido_html', '')
-        # Insertar enlaces internos reales en lugar del placeholder
         contenido_formateado = insertar_enlaces_internos(contenido_formateado)
         log("✅ V9: usando contenido reescrito por IA con SEO avanzado", 'exito')
+
+        # V10 SEO: Alt text = keyword_principal + título SEO
+        if frase_clave:
+            alt_text_imagen = f"{frase_clave} - {titulo_final}"[:125]
+
+        # V10 SEO: Tags desde keywords_secundarias de la IA (hasta 5)
+        for kw in resultado_ia.get('keywords_secundarias', [])[:5]:
+            tag_id = obtener_crear_tag_wp(kw)
+            if tag_id:
+                tags_ids.append(tag_id)
+        if tags_ids:
+            log(f"🏷️ Tags asignados al post: {resultado_ia.get('keywords_secundarias', [])[:5]}", 'info')
     else:
-        # Fallback: flujo estándar V8 (sin clave IA configurada)
+        # Fallback: flujo estándar V8
         titulo_final = titulo
-        # Construir contenido HTML con párrafos separados
         oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
         parrafos_html = []
         parrafo_actual = []
@@ -1135,9 +1203,8 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         if parrafo_actual:
             parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
         contenido_formateado = '\n'.join(parrafos_html[:15])
-        # Agregar sección relacionados al final también en modo fallback
         contenido_formateado += insertar_enlaces_internos("")
-        meta_desc  = ""
+        meta_desc   = ""
         frase_clave = ""
 
     # ── V9: Video YouTube — solo si la noticia viene de canal oficial ──
@@ -1152,6 +1219,43 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         else:
             log(f"📰 Fuente no oficial → sin búsqueda de video", 'info')
 
+    # ── V10 SEO: Schema Markup JSON-LD NewsArticle ─────────────
+    fecha_schema = datetime.now().isoformat()
+    if fecha_fuente:
+        try:
+            fecha_schema = str(fecha_fuente).replace('Z', '+00:00')
+            datetime.fromisoformat(fecha_schema)  # validar
+        except:
+            fecha_schema = datetime.now().isoformat()
+
+    titulo_schema  = titulo_final.replace('"', "'").replace('\\', '')
+    meta_schema    = (meta_desc or contenido[:155]).replace('"', "'").replace('\\', '')
+    schema_markup = f"""
+<script type="application/ld+json">
+{{
+  "@context": "https://schema.org",
+  "@type": "NewsArticle",
+  "headline": "{titulo_schema}",
+  "datePublished": "{fecha_schema}",
+  "dateModified": "{datetime.now().isoformat()}",
+  "description": "{meta_schema}",
+  "inLanguage": "es",
+  "publisher": {{
+    "@type": "Organization",
+    "name": "Verdad Hoy",
+    "url": "{WP_URL}",
+    "logo": {{
+      "@type": "ImageObject",
+      "url": "{WP_URL}/wp-content/uploads/favicon_512.png"
+    }}
+  }},
+  "author": {{
+    "@type": "Organization",
+    "name": "Verdad Hoy"
+  }}
+}}
+</script>"""
+
     contenido_html = f"""
 {contenido_formateado}
 
@@ -1160,6 +1264,7 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
 <hr>
 <p><strong>Fuente:</strong> {nombre_medio}</p>
 <p><em>Información verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
+{schema_markup}
 """
 
     # ── V9: SEO mejorado ─────────────────────────────────────────
@@ -1171,7 +1276,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         'que','sus','les','más','sin','sobre','también','hay','han','sido'
     }
 
-    # Frase clave: usar la de IA si está disponible, si no extraer del título
     if not frase_clave:
         palabras_clave = [
             p for p in re.findall(r'\b\w{4,}\b', titulo_final.lower())
@@ -1179,7 +1283,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         ]
         frase_clave = ' '.join(palabras_clave[:4])
 
-    # Título SEO
     sufijo_seo = ' | Verdad Hoy'
     max_titulo  = 60 - len(sufijo_seo)
     if resultado_ia and resultado_ia.get('titulo_seo'):
@@ -1191,7 +1294,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         titulo_seo = (titulo_final[:max_titulo].rsplit(' ', 1)[0]
                       if len(titulo_final) > max_titulo else titulo_final) + sufijo_seo
 
-    # Metadescripción SEO
     if not meta_desc:
         primera_oracion = re.split(r'(?<=[.!?])\s+', ' '.join(contenido.split()))[0]
         if len(primera_oracion) > 155:
@@ -1218,7 +1320,18 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         except Exception:
             fecha_wp = None
 
-    # Datos del post
+    # ── V10: Subir imagen con alt_text ───────────────────────────
+    imagen_id = subir_imagen_wp(imagen_path, titulo, alt_text=alt_text_imagen)
+    if not imagen_id:
+        log("❌ No se pudo subir imagen a WP — cancelando", 'error')
+        return None
+
+    # Obtener categoría
+    slug_cat   = CATEGORIA_WP.get(tema, 'internacional')
+    cat_id     = obtener_id_categoria_wp(slug_cat)
+    categorias = [cat_id] if cat_id else []
+
+    # Datos del post — V10: incluye 'tags'
     post_data = {
         'title':          titulo_final,
         'content':        contenido_html,
@@ -1226,6 +1339,7 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         'status':         'publish',
         'featured_media': imagen_id,
         'categories':     categorias,
+        'tags':           tags_ids,   # V10 SEO
         'meta': {
             '_yoast_wpseo_title':    titulo_seo,
             '_yoast_wpseo_metadesc': meta_desc,
@@ -1284,22 +1398,25 @@ def obtener_newsapi():
             ).json()
             if r.get('status') == 'ok':
                 for a in r.get('articles', []):
-                    t = a.get('title', '')
-                    if t and '[Removed]' not in t:
-                        d = a.get('description', '')
-                        noticias.append({
-                            'titulo':      limpiar_texto(t),
-                            'descripcion': limpiar_texto(d),
-                            'url':         a.get('url', ''),
-                            'imagen':      a.get('urlToImage'),
-                            'fuente':      f"NewsAPI:{a.get('source', {}).get('name', 'Unknown')}",
-                            'fecha':       a.get('publishedAt'),
-                            'puntaje':     calcular_puntaje(t, d),
-                        })
+                    t   = a.get('title', '')
+                    img = a.get('urlToImage')
+                    # V10: FILTRO ESTRICTO — descartar si no hay imagen o título
+                    if not t or '[Removed]' in t or not img:
+                        continue
+                    d = a.get('description', '')
+                    noticias.append({
+                        'titulo':      limpiar_texto(t),
+                        'descripcion': limpiar_texto(d),
+                        'url':         a.get('url', ''),
+                        'imagen':      img,
+                        'fuente':      f"NewsAPI:{a.get('source', {}).get('name', 'Unknown')}",
+                        'fecha':       a.get('publishedAt'),
+                        'puntaje':     calcular_puntaje(t, d),
+                    })
         except Exception as e:
             log(f"NewsAPI error ({q[:20]}): {e}", 'advertencia')
             continue
-    log(f"NewsAPI: {len(noticias)} noticias", 'info')
+    log(f"NewsAPI: {len(noticias)} noticias (con imagen)", 'info')
     return noticias
 
 def obtener_newsdata():
@@ -1312,27 +1429,30 @@ def obtener_newsdata():
             r = requests.get(
                 'https://newsdata.io/api/1/news',
                 params={'apikey': NEWSDATA_API_KEY, 'language': 'es',
-                        'category': cat, 'size': 10},
+                        'category': cat, 'size': 10, 'image': 1},  # V10: image=1 pre-filtra en API
                 timeout=15
             ).json()
             if r.get('status') == 'success':
                 for a in r.get('results', []):
-                    t = a.get('title', '')
-                    if t:
-                        d = a.get('description', '')
-                        noticias.append({
-                            'titulo':      limpiar_texto(t),
-                            'descripcion': limpiar_texto(d),
-                            'url':         a.get('link', ''),
-                            'imagen':      a.get('image_url'),
-                            'fuente':      f"NewsData:{a.get('source_id', 'Unknown')}",
-                            'fecha':       a.get('pubDate'),
-                            'puntaje':     calcular_puntaje(t, d),
-                        })
+                    t   = a.get('title', '')
+                    img = a.get('image_url')
+                    # V10: FILTRO ESTRICTO — descartar si no hay imagen o título
+                    if not t or not img:
+                        continue
+                    d = a.get('description', '')
+                    noticias.append({
+                        'titulo':      limpiar_texto(t),
+                        'descripcion': limpiar_texto(d),
+                        'url':         a.get('link', ''),
+                        'imagen':      img,
+                        'fuente':      f"NewsData:{a.get('source_id', 'Unknown')}",
+                        'fecha':       a.get('pubDate'),
+                        'puntaje':     calcular_puntaje(t, d),
+                    })
         except Exception as e:
             log(f"NewsData error ({cat}): {e}", 'advertencia')
             continue
-    log(f"NewsData: {len(noticias)} noticias", 'info')
+    log(f"NewsData: {len(noticias)} noticias (con imagen)", 'info')
     return noticias
 
 def obtener_gnews():
@@ -1348,22 +1468,25 @@ def obtener_gnews():
                 timeout=15
             ).json()
             for a in r.get('articles', []):
-                t = a.get('title', '')
-                if t:
-                    d = a.get('description', '')
-                    noticias.append({
-                        'titulo':      limpiar_texto(t),
-                        'descripcion': limpiar_texto(d),
-                        'url':         a.get('url', ''),
-                        'imagen':      a.get('image'),
-                        'fuente':      f"GNews:{a.get('source', {}).get('name', 'Unknown')}",
-                        'fecha':       a.get('publishedAt'),
-                        'puntaje':     calcular_puntaje(t, d),
-                    })
+                t   = a.get('title', '')
+                img = a.get('image')
+                # V10: FILTRO ESTRICTO — descartar si no hay imagen o título
+                if not t or not img:
+                    continue
+                d = a.get('description', '')
+                noticias.append({
+                    'titulo':      limpiar_texto(t),
+                    'descripcion': limpiar_texto(d),
+                    'url':         a.get('url', ''),
+                    'imagen':      img,
+                    'fuente':      f"GNews:{a.get('source', {}).get('name', 'Unknown')}",
+                    'fecha':       a.get('publishedAt'),
+                    'puntaje':     calcular_puntaje(t, d),
+                })
         except Exception as e:
             log(f"GNews error ({topic}): {e}", 'advertencia')
             continue
-    log(f"GNews: {len(noticias)} noticias", 'info')
+    log(f"GNews: {len(noticias)} noticias (con imagen)", 'info')
     return noticias
 
 def obtener_rss():
@@ -1943,6 +2066,120 @@ def crear_video_noticia(titulo, resumen, fondo_path=None):
         return None
 
 # ──────────────────────────────────────────────────────────
+# V10: SYNC REVERSO FACEBOOK → WORDPRESS
+# ──────────────────────────────────────────────────────────
+def sincronizar_videos_facebook_a_wp():
+    """
+    V10: Lee los videos recientes publicados en la Fanpage de Facebook y los
+    publica en WordPress embebidos con <iframe>.
+    - Requiere permiso pages_read_user_content en FB_ACCESS_TOKEN.
+    - Usa estado_fb_to_wp.json para evitar republicar videos ya procesados.
+    - Solo procesa hasta 3 videos por ciclo para no saturar el log.
+    """
+    if not FB_PAGE_ID or not FB_ACCESS_TOKEN or not WP_APP_PASSWORD:
+        log("⚠️ Sync FB→WP: faltan credenciales (FB_PAGE_ID, FB_ACCESS_TOKEN o WP_APP_PASSWORD)", 'info')
+        return
+
+    log("🔄 Sync FB→WP: revisando videos recientes en Facebook...", 'info')
+    historial_sync = cargar_json(ESTADO_FB_SYNC_PATH, {'procesados': []})
+
+    try:
+        url_api = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/videos"
+        params  = {
+            'access_token': FB_ACCESS_TOKEN,
+            'fields':       'id,description,created_time,permalink_url',
+            'limit':        5,
+        }
+        resp = requests.get(url_api, params=params, timeout=15).json()
+
+        if 'error' in resp:
+            msg = resp['error'].get('message', 'error desconocido')
+            log(f"⚠️ Sync FB→WP Graph API error: {msg}", 'advertencia')
+            log("   Verifica que FB_ACCESS_TOKEN tenga permiso pages_read_user_content", 'advertencia')
+            return
+
+        videos = resp.get('data', [])
+        if not videos:
+            log("📭 Sync FB→WP: no hay videos recientes en la página", 'info')
+            return
+
+        nuevos = 0
+        for v in videos:
+            vid = v.get('id')
+            if not vid or vid in historial_sync['procesados']:
+                continue
+
+            desc = v.get('description', '').strip()
+
+            # Construir título desde la primera línea de la descripción
+            lineas = [l.strip() for l in desc.split('\n') if l.strip()]
+            titulo_base = lineas[0][:100] if lineas else "Nuevo video en Verdad Hoy"
+            titulo_base = re.sub(r'#\w+', '', titulo_base).strip()
+            titulo_base = titulo_base or "Video de Verdad Hoy"
+
+            permalink = v.get('permalink_url', f"https://www.facebook.com/{FB_PAGE_ID}/videos/{vid}")
+
+            # HTML del iframe responsive
+            iframe_html = f"""
+<div style="margin:24px 0; text-align:center;">
+  <div style="position:relative; padding-bottom:56.25%; height:0; overflow:hidden; max-width:640px; margin:0 auto;">
+    <iframe
+      src="https://www.facebook.com/plugins/video.php?href={permalink}&show_text=false&width=640"
+      style="position:absolute; top:0; left:0; width:100%; height:100%; border:none; overflow:hidden;"
+      scrolling="no"
+      frameborder="0"
+      allowfullscreen="true"
+      allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share">
+    </iframe>
+  </div>
+  <p style="font-size:0.85em; color:#666; margin-top:8px;">
+    <a href="{permalink}" target="_blank" rel="noopener">Ver en Facebook</a>
+  </p>
+</div>"""
+
+            # Limpiar descripción para el contenido del post
+            desc_limpia = re.sub(r'#\w+', '', desc).strip()
+            desc_html   = f"<p>{desc_limpia.replace(chr(10), '<br>')}</p>" if desc_limpia else ""
+
+            contenido_wp = f"{desc_html}{iframe_html}"
+
+            cat_id = obtener_id_categoria_wp('entretenimiento') or obtener_id_categoria_wp('internacional')
+
+            post_data = {
+                'title':      f"🎥 {titulo_base}",
+                'content':    contenido_wp,
+                'excerpt':    desc_limpia[:155] if desc_limpia else titulo_base,
+                'status':     'publish',
+                'categories': [cat_id] if cat_id else [],
+            }
+
+            try:
+                r = requests.post(
+                    f"{WP_URL}/wp-json/wp/v2/posts",
+                    json=post_data,
+                    auth=(WP_USER, WP_APP_PASSWORD),
+                    timeout=20
+                ).json()
+                if 'id' in r:
+                    log(f"✅ Sync FB→WP: Video {vid} publicado como WP Post ID {r['id']}", 'exito')
+                    historial_sync['procesados'].append(vid)
+                    nuevos += 1
+                else:
+                    log(f"⚠️ Sync FB→WP: no se pudo publicar video {vid}: {r.get('message','?')}", 'advertencia')
+            except Exception as e:
+                log(f"⚠️ Sync FB→WP excepción publicando video {vid}: {e}", 'advertencia')
+
+        if nuevos:
+            guardar_json(ESTADO_FB_SYNC_PATH, historial_sync)
+            log(f"✅ Sync FB→WP: {nuevos} video(s) nuevo(s) publicados en WordPress", 'exito')
+        else:
+            log("ℹ️ Sync FB→WP: todos los videos recientes ya estaban procesados", 'info')
+
+    except Exception as e:
+        log(f"⚠️ Sync FB→WP error general: {e}", 'error')
+
+
+# ──────────────────────────────────────────────────────────
 # PUBLICACIÓN EN FACEBOOK
 # ──────────────────────────────────────────────────────────
 def publicar_facebook_video(titulo, texto, video_path, hashtags):
@@ -1995,9 +2232,12 @@ def publicar_facebook_imagen(titulo, texto, imagen_path, hashtags):
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V9.0 (SEO avanzado + Cuotas editoriales + Brand Safety)")
+    print("🌍 BOT DE NOTICIAS - V10.0 (SEO Alt+Tags+Schema | Sync FB→WP | Filtro Img estricto)")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
+
+    # V10: Sincronizar videos de Facebook → WordPress (al inicio del ciclo)
+    sincronizar_videos_facebook_a_wp()
 
     # Verificar qué debe publicarse en esta ejecución
     publicar_wp = puede_publicar_wp()

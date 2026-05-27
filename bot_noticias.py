@@ -1,18 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V12.1
-NUEVO EN V12.1:
-  - pending_videos: ahora genera imagen destacada para cada video manual.
-    Estrategia en cascada:
-      1. Stability AI (si STABILITY_API_KEY está configurada) — imagen IA
-         generada desde la descripción del video
-      2. Fallback PIL — imagen editorial con título, categoría y branding
-         Verdad Hoy (rojo/azul oscuro, 1200x630)
-    La imagen se sube a WordPress como featured_media del post, así el
-    artículo aparece con thumbnail en la grilla, búsquedas y redes sociales.
-    Pinterest también recibe la imagen real en lugar del favicon.
-
+Bot de Noticias Internacionales - V12.0
 CAMBIOS EN V12:
   - FACEBOOK: Ya NO genera videos. Publica imagen + texto tomando artículos
     ya publicados en verdadhoy.com (via WP REST API). Formato limpio:
@@ -88,7 +77,6 @@ WP_APP_PASSWORD    = os.getenv('WP_APP_PASSWORD', '')
 
 PINTEREST_TOKEN    = os.getenv('PINTEREST_TOKEN', '')
 YOUTUBE_API_KEY    = os.getenv('YOUTUBE_API_KEY', '')
-STABILITY_API_KEY  = os.getenv('STABILITY_API_KEY', '')  # V12.1: imagen IA para pending_videos
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 OPENAI_API_KEY     = os.getenv('OPENAI_API_KEY', '')
 GITHUB_TOKEN       = os.getenv('GITHUB_TOKEN', '')
@@ -1111,7 +1099,11 @@ def descargar_imagen_para_fb(imagen_url):
 
 
 def publicar_facebook_imagen(titulo, texto, imagen_path):
-    """Publica imagen + texto en la página de Facebook."""
+    """
+    Publica imagen + texto en la página de Facebook.
+    V12.1 Fix: comprime imagen a máx 600px y 200KB antes de enviar.
+    El error 'reduce amount of data' viene del tamaño del archivo, no del texto.
+    """
     if not FB_PAGE_ID or not FB_ACCESS_TOKEN:
         log("⚠️ FB: sin credenciales", 'advertencia')
         return False
@@ -1119,15 +1111,43 @@ def publicar_facebook_imagen(titulo, texto, imagen_path):
         log("❌ FB: sin imagen local para publicar", 'error')
         return False
 
+    # Comprimir imagen para Facebook — máx 720px ancho, calidad 75
+    imagen_fb_path = imagen_path
+    try:
+        from PIL import Image
+        from io import BytesIO
+        img = Image.open(imagen_path).convert('RGB')
+        # Redimensionar si es muy grande
+        max_w = 720
+        if img.width > max_w:
+            ratio = max_w / img.width
+            img = img.resize((max_w, int(img.height * ratio)), Image.LANCZOS)
+        # Guardar con calidad reducida
+        imagen_fb_path = f"{imagen_path}_fb.jpg"
+        img.save(imagen_fb_path, 'JPEG', quality=72, optimize=True)
+        size_kb = os.path.getsize(imagen_fb_path) / 1024
+        log(f"🗜️ Imagen FB comprimida: {img.width}x{img.height} — {size_kb:.0f}KB", 'debug')
+    except Exception as e:
+        log(f"⚠️ No se pudo comprimir imagen FB: {e} — usando original", 'debug')
+        imagen_fb_path = imagen_path
+
     try:
         url = f"https://graph.facebook.com/v18.0/{FB_PAGE_ID}/photos"
-        with open(imagen_path, 'rb') as f:
+        with open(imagen_fb_path, 'rb') as f:
             r = requests.post(
                 url,
                 files={'source': ('imagen.jpg', f, 'image/jpeg')},
                 data={'message': texto, 'access_token': FB_ACCESS_TOKEN},
                 timeout=60
             ).json()
+
+        # Limpiar imagen temporal comprimida
+        try:
+            if imagen_fb_path != imagen_path and os.path.exists(imagen_fb_path):
+                os.remove(imagen_fb_path)
+        except:
+            pass
+
         if 'id' in r:
             log(f"✅ Imagen publicada en Facebook — ID: {r['id']}", 'exito')
             return True
@@ -1936,206 +1956,6 @@ RESPONDE SOLO con JSON exacto:
             'keywords_secundarias': [], 'contenido_html': f"<p>{descripcion}</p>"
         }
 
-def generar_imagen_stability(descripcion, titulo):
-    """
-    V12.1: Genera imagen con Stability AI (SDXL) basada en la descripción del video.
-    Retorna path local del archivo JPG o None si falla.
-    Requiere STABILITY_API_KEY en GitHub Secrets.
-    """
-    if not STABILITY_API_KEY:
-        return None
-    try:
-        # Prompt optimizado para noticias: foto periodística, no ilustración
-        palabras_clave = ' '.join(descripcion.split()[:25])
-        prompt = (
-            f"Editorial news photography, {palabras_clave}. "
-            "Professional photojournalism style, high resolution, dramatic lighting, "
-            "cinematic composition, no text, no watermarks, realistic."
-        )
-        prompt_neg = (
-            "cartoon, illustration, drawing, painting, anime, blurry, low quality, "
-            "text, watermark, logo, border, frame, collage, split image"
-        )
-
-        payload = {
-            "text_prompts": [
-                {"text": prompt,      "weight": 1.0},
-                {"text": prompt_neg,  "weight": -1.0},
-            ],
-            "cfg_scale":    7,
-            "height":       576,   # 1024x576 → ratio 16:9, compatible con WP
-            "width":        1024,
-            "samples":      1,
-            "steps":        30,
-            "style_preset": "photographic",
-        }
-        resp = requests.post(
-            "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image",
-            headers={
-                "Authorization": f"Bearer {STABILITY_API_KEY}",
-                "Content-Type":  "application/json",
-                "Accept":        "application/json",
-            },
-            json=payload,
-            timeout=60,
-        )
-        if resp.status_code != 200:
-            log(f"⚠️ Stability AI error {resp.status_code}: {resp.text[:100]}", 'advertencia')
-            return None
-
-        import base64
-        from PIL import Image
-        from io import BytesIO
-
-        data = resp.json()
-        imagen_b64 = data["artifacts"][0]["base64"]
-        img = Image.open(BytesIO(base64.b64decode(imagen_b64))).convert("RGB")
-
-        # Agregar watermark verdadhoy.com
-        img = agregar_watermark(img)
-
-        path = f"/tmp/pending_ai_{generar_hash(titulo)}.jpg"
-        img.save(path, "JPEG", quality=90)
-        log(f"✅ Imagen Stability AI generada: {img.size}", 'exito')
-        return path
-
-    except Exception as e:
-        log(f"⚠️ Stability AI excepción: {e}", 'advertencia')
-        return None
-
-
-def crear_imagen_pending_video(titulo, descripcion, categoria):
-    """
-    V12.1: Genera imagen destacada para un pending_video.
-    Cascada: Stability AI → PIL editorial branded.
-    La imagen PIL es visualmente más rica que crear_imagen_titulo():
-    incluye categoría, franja de color por tema y branding completo.
-    """
-    # Intento 1: Stability AI
-    img_path = generar_imagen_stability(descripcion, titulo)
-    if img_path:
-        return img_path
-
-    # Intento 2: PIL — imagen editorial de calidad
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        import textwrap
-
-        # Colores por categoría
-        COLORES_CATEGORIA = {
-            'guerra':          ('#7f1d1d', '#ef4444'),  # rojo oscuro / rojo
-            'politica':        ('#1e3a5f', '#3b82f6'),  # azul marino / azul
-            'economia':        ('#14532d', '#22c55e'),  # verde oscuro / verde
-            'tecnologia':      ('#1e1b4b', '#818cf8'),  # índigo oscuro / índigo
-            'salud':           ('#164e63', '#06b6d4'),  # cian oscuro / cian
-            'ciencia':         ('#2e1065', '#a855f7'),  # violeta oscuro / violeta
-            'deportes':        ('#431407', '#f97316'),  # naranja oscuro / naranja
-            'entretenimiento': ('#4a044e', '#e879f9'),  # fucsia oscuro / fucsia
-            'latinoamerica':   ('#1c1917', '#f59e0b'),  # stone oscuro / ámbar
-            'clima':           ('#042f2e', '#14b8a6'),  # teal oscuro / teal
-            'medio_ambiente':  ('#14532d', '#4ade80'),  # verde / verde claro
-            'mundo':           ('#0c1445', '#60a5fa'),  # azul muy oscuro / azul claro
-            'desastre':        ('#431407', '#fb923c'),  # naranja tierra / naranja
-            'crimen':          ('#1c0a00', '#dc2626'),  # marrón oscuro / rojo
-        }
-        color_fondo, color_acento = COLORES_CATEGORIA.get(categoria, ('#0f172a', '#cc0000'))
-
-        W, H = 1200, 630
-        img  = Image.new('RGB', (W, H), color=color_fondo)
-        draw = ImageDraw.Draw(img)
-
-        # Gradiente simulado — franjas más claras hacia arriba
-        for y_px in range(H):
-            factor = 1 - (y_px / H) * 0.35
-            r_base, g_base, b_base = (
-                int(color_fondo[1:3], 16),
-                int(color_fondo[3:5], 16),
-                int(color_fondo[5:7], 16),
-            )
-            r = min(255, int(r_base * factor + 15))
-            g = min(255, int(g_base * factor + 10))
-            b = min(255, int(b_base * factor + 20))
-            draw.line([(0, y_px), (W, y_px)], fill=(r, g, b))
-
-        # Barra superior de color de acento
-        draw.rectangle([(0, 0), (W, 10)], fill=color_acento)
-
-        # Barra lateral izquierda
-        draw.rectangle([(0, 0), (8, H)], fill=color_acento)
-
-        # Ícono de categoría (emoji como texto)
-        ICONOS = {
-            'guerra': '⚔️', 'politica': '🏛️', 'economia': '📈',
-            'tecnologia': '💡', 'salud': '🏥', 'ciencia': '🔬',
-            'deportes': '⚽', 'entretenimiento': '🎬', 'latinoamerica': '🌎',
-            'clima': '🌡️', 'medio_ambiente': '🌿', 'mundo': '🌍',
-            'desastre': '🚨', 'crimen': '⚖️',
-        }
-
-        try:
-            font_grande  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 52)
-            font_medio   = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 28)
-            font_pequeno = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 22)
-        except:
-            font_grande = font_medio = font_pequeno = ImageFont.load_default()
-
-        # Etiqueta categoría
-        cat_label = categoria.upper().replace('_', ' ')
-        draw.text((30, 25), f"▶ {cat_label}", font=font_medio, fill=color_acento)
-
-        # Línea divisoria bajo etiqueta
-        draw.rectangle([(30, 68), (W - 30, 71)], fill=color_acento)
-
-        # Título principal — wrap inteligente
-        titulo_clean = re.sub(r'<[^>]+>', '', titulo)[:120]
-        titulo_wrap  = textwrap.fill(titulo_clean, width=30)
-        lineas = titulo_wrap.split('\n')
-        y_titulo = 95
-        for linea in lineas[:4]:
-            # Sombra suave
-            draw.text((32, y_titulo + 2), linea, font=font_grande, fill=(0, 0, 0, 120))
-            draw.text((30, y_titulo), linea, font=font_grande, fill='white')
-            y_titulo += 62
-
-        # Descripción corta (primeras 12 palabras)
-        desc_corta = ' '.join(descripcion.split()[:12]) + '...'
-        desc_wrap  = textwrap.fill(desc_corta, width=52)
-        y_desc = max(y_titulo + 20, 380)
-        for linea in desc_wrap.split('\n')[:2]:
-            draw.text((30, y_desc), linea, font=font_pequeno, fill='#94a3b8')
-            y_desc += 30
-
-        # Barra inferior con branding
-        draw.rectangle([(0, H - 70), (W, H)], fill='#0f172a')
-        draw.rectangle([(0, H - 72), (W, H - 70)], fill=color_acento)
-
-        # Logo texto izquierda
-        draw.text((30, H - 50), "VERDAD HOY", font=font_medio, fill='white')
-        # Subtítulo derecha
-        draw.text((W - 340, H - 50), "verdadhoy.com  📺 VIDEO", font=font_pequeno, fill='#94a3b8')
-
-        # Ícono play central decorativo
-        cx, cy, r_play = W // 2, H // 2, 45
-        draw.ellipse([(cx - r_play, cy - r_play), (cx + r_play, cy + r_play)],
-                     fill=(255, 255, 255, 30), outline=color_acento, width=3)
-        # Triángulo play
-        draw.polygon(
-            [(cx - 12, cy - 20), (cx - 12, cy + 20), (cx + 22, cy)],
-            fill=color_acento
-        )
-
-        img = agregar_watermark(img)
-        path = f"/tmp/pending_pil_{generar_hash(titulo)}.jpg"
-        img.save(path, "JPEG", quality=92)
-        log(f"✅ Imagen PIL editorial generada para pending_video: {titulo[:40]}", 'exito')
-        return path
-
-    except Exception as e:
-        log(f"⚠️ Error generando imagen PIL para pending: {e}", 'advertencia')
-        # Último fallback: imagen simple
-        return crear_imagen_titulo(titulo)
-
-
 def procesar_pending_videos():
     """Detecta y publica videos manuales desde /pending_videos/ en GitHub."""
     if not WP_APP_PASSWORD:
@@ -2182,28 +2002,6 @@ def procesar_pending_videos():
         meta_desc = meta.get('meta_descripcion', datos['descripcion'][:155])
         cuerpo    = meta.get('contenido_html', f"<p>{datos['descripcion']}</p>")
 
-        # V12.1: Generar imagen destacada para el post
-        log(f"🖼️ Generando imagen destacada para video manual...", 'info')
-        img_pending_path = crear_imagen_pending_video(
-            titulo      = titulo,
-            descripcion = datos['descripcion'],
-            categoria   = categoria,
-        )
-        # Subir imagen a WordPress
-        imagen_id_pending = None
-        if img_pending_path:
-            alt_text_pending = f"{meta.get('keyword_principal', titulo)} - Verdad Hoy"[:125]
-            imagen_id_pending = subir_imagen_wp(img_pending_path, titulo, alt_text=alt_text_pending)
-            try:
-                if os.path.exists(img_pending_path):
-                    os.remove(img_pending_path)
-            except:
-                pass
-            if imagen_id_pending:
-                log(f"✅ Imagen destacada subida — ID: {imagen_id_pending}", 'exito')
-            else:
-                log(f"⚠️ No se pudo subir imagen a WP — post sin featured_media", 'advertencia')
-
         articulos_rel = obtener_articulos_wp_recientes(2)
         html_rel      = generar_seccion_relacionados(articulos_rel)
         fecha_schema  = ahora.strftime('%Y-%m-%dT%H:%M:%S')
@@ -2235,8 +2033,6 @@ def procesar_pending_videos():
             'meta': {'_yoast_wpseo_title': titulo, '_yoast_wpseo_metadesc': meta_desc,
                      '_yoast_wpseo_focuskw': meta.get('keyword_principal', '')},
         }
-        if imagen_id_pending:
-            post_data['featured_media'] = imagen_id_pending  # V12.1: imagen destacada
         if cat_id:
             post_data['categories'] = [cat_id]
         if tag_ids:
@@ -2251,40 +2047,29 @@ def procesar_pending_videos():
                 registrar_cuota(categoria)
                 estado['procesados'][nombre] = {
                     'publicado_en': ahora.isoformat(), 'sha': sha,
-                    'wp_url': url_wp, 'wp_id': r['id'],
-                    'imagen_id': imagen_id_pending,
+                    'wp_url': url_wp, 'wp_id': r['id']
                 }
                 guardar_json(ESTADO_PENDING_PATH, estado)
 
-                # V12.1: Pinterest con imagen real del post (si se subió)
+                # Pinterest para video manual
                 if PINTEREST_TOKEN:
                     tableros   = obtener_tableros_pinterest()
                     nombre_tab = TABLEROS_PINTEREST.get(categoria, 'Noticias del Mundo')
                     board_id   = tableros.get(nombre_tab) or (list(tableros.values())[0] if tableros else None)
                     if board_id:
                         url_utm = f"{url_wp}?utm_source=pinterest&utm_medium=social&utm_campaign=video_manual"
-                        # Usar URL de imagen real si fue subida, sino el OG default
-                        if imagen_id_pending:
-                            img_url_pin = obtener_url_imagen_wp(imagen_id_pending) or f"{WP_URL}/wp-content/uploads/favicon_512.png"
-                        else:
-                            img_url_pin = f"{WP_URL}/wp-content/uploads/favicon_512.png"
                         payload = {
-                            'board_id':    board_id,
-                            'title':       titulo[:100],
-                            'description': f"{meta_desc[:400]}\n\n📹 Ver video en: {url_utm}",
-                            'link':        url_utm,
-                            'media_source': {'source_type': 'image_url', 'url': img_url_pin}
+                            'board_id': board_id, 'title': titulo[:100],
+                            'description': meta_desc[:490], 'link': url_utm,
+                            'media_source': {'source_type': 'image_url',
+                                             'url': f"{WP_URL}/wp-content/uploads/favicon_512.png"}
                         }
-                        resp_pt = requests.post(
+                        requests.post(
                             'https://api.pinterest.com/v5/pins',
                             headers={'Authorization': f'Bearer {PINTEREST_TOKEN}',
                                      'Content-Type': 'application/json'},
                             json=payload, timeout=20
                         )
-                        if resp_pt.status_code in (200, 201):
-                            log(f"✅ Pinterest video manual OK: pin en '{nombre_tab}'", 'exito')
-                        else:
-                            log(f"⚠️ Pinterest video manual: {resp_pt.status_code}", 'advertencia')
             else:
                 log(f"❌ Error publicando video manual: {r.get('message','?')}", 'error')
         except Exception as e:

@@ -1,9 +1,6 @@
 {
-  "fecha": "2026-05-27",
+  "fecha": "2026-05-28",
   "conteo": {
-    "guerra": 2,
-    "politica": 2,
-    "general": 1,
-    "economia": 5
+    "guerra": 1
   }
 }

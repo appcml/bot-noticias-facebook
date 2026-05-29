@@ -1,6 +1,5 @@
 {
   "urls": [
-    "https://elcomercio.pe/mundo/asia/xi-jinping-advierte-a-donald-trump-que-la-cuestion-de-taiwan-puede-derivar-en-un-conflicto-china-estados-unidos-noticia/",
     "https://www.eldiario.es/economia/choque-recetas-crisis-vivienda-aceleron-privado-superfondo-publico-120-000-millones_1_13220312.html",
     "https://www.infobae.com/estados-unidos/2026/05/14/crisis-politica-en-israel-donald-trump-apoyara-la-campana-de-benjamin-netanyahu-para-continuar-como-primer-ministro/",
     "https://www.cope.es/programas/la-linterna/el-tema-del-dia/audios/alguien-abre-caja-pandora-taiwan-china-dicho-dar-lugar-enfrentamientos-conflictos-militares-negociacion-supeditada-no-toca-20260514_3364867.html",
@@ -152,10 +151,10 @@
     "https://www.abc.es/espana/comunidad-valenciana/alicante/investigadores-reducen-tiempo-resonancias-magneticas-ia-20260528004914-nt.html",
     "http://www.cubadebate.cu/noticias/2026/05/27/estados-unidos-repite-ataque-contra-iran-segun-despacho-de-reuters/",
     "https://www.abc.es/economia/pequenas-empresas-invierten-ia-nueve-diez-utilizan-20260528102434-nt.html",
-    "https://www.diariolibre.com/mundo/canada/2026/05/28/hispanos-canada-buscan-transformar-redes-en-oportunidad/3548795"
+    "https://www.diariolibre.com/mundo/canada/2026/05/28/hispanos-canada-buscan-transformar-redes-en-oportunidad/3548795",
+    "https://www.abc.es/espana/cataluna/sil-exhibira-barcelona-logistica-anticipa-ia-falta-20260528140259-nt.html"
   ],
   "hashes": [
-    "71b4530bfef3863140bdb0a9b31e7391",
     "26187decd5bcc0e3927278c9cf370301",
     "5194ae415349205bdba4f06935e6c7d5",
     "fadc62770f4f8d97768fcb7a25807054",
@@ -307,10 +306,10 @@
     "90416d55cc90d47c58afb3e16a8f4d0e",
     "ca3ca9a322ab221fd9e44ff11e7348b1",
     "5e209ab4eb5c39e658a355126705e6ba",
-    "ae91620894cd6fcc69cc063cbc958547"
+    "ae91620894cd6fcc69cc063cbc958547",
+    "e3fbefde1387fb21fb30912fd9d101bb"
   ],
   "timestamps": [
-    "2026-05-14T23:55:38.282535",
     "2026-05-15T02:52:48.765593",
     "2026-05-15T06:35:15.405160",
     "2026-05-15T09:46:01.624919",
@@ -462,10 +461,10 @@
     "2026-05-28T10:53:59.398770",
     "2026-05-28T14:36:41.407980",
     "2026-05-28T20:42:43.440604",
-    "2026-05-28T22:40:51.452497"
+    "2026-05-28T22:40:51.452497",
+    "2026-05-29T00:09:17.880708"
   ],
   "titulos": [
-    "Xi Jinping advierte a Donald Trump que la cuestión de Taiwán puede derivar en un “conflicto”.",
     "Choque de recetas ante la crisis de vivienda: ¿acelerón privado o un superfondo público de 120.000 millones?",
     "Crisis política en Israel: Donald Trump apoyará la campaña de Benjamin Netanyahu para continuar como primer ministro.",
     "\"Si alguien abre la caja de Pandora de Taiwán, China ya ha dicho que podría dar lugar a enfrentamientos y conflictos militares, cualquier negociación está supeditada a que no se toca\".",
@@ -617,10 +616,10 @@
     "Investigadores reducen un 90% el tiempo para las resonancias magnéticas con IA.",
     "Estados Unidos repite ataque contra Irán, según despacho de.",
     "El 37% de las pequeñas empresas ya invierten en IA y nueve de cada diez la utilizan.",
-    "Hispanos Canadá buscan transformar redes en oportunidad."
+    "Hispanos Canadá buscan transformar redes en oportunidad.",
+    "El SIL exhibirá en Barcelona la logística que se anticipa a la IA, la falta de camioneros y la incertidumbre global."
   ],
   "descripciones": [
-    "La cuestión de Taiwán ha sido uno de los asuntos más delicados durante años. Aunque Estados Unidos solo reconoce a China, existe una ley que le obliga a suministrar armas a Taiwán para que pueda defenderse. La cuestión de Taiwán ha sido uno de los asuntos más delicados durante años. Aunque Estados Unidos solo reconoce a China, existe una ley que le obliga a suministrar armas a Taiwán para que pueda defenderse.",
     "Los sociólogos Javier Gil, del CSIC, y Jorge Galindo, de Esadeecpol, contraponen en el Círculo de Bellas Artes sus visiones sobre la crisis de vivienda, el primero más intervencionista y defensor de un superfondo público y el segundo de acelerar la construcción tanto pública como privada para acabar coon la escasez La nueva España inmobiliaria tras la burbuja de 2008: los grandes tenedores cuadruplican su cartera mientras menguan los propietarios de una vivienda Por los pasillos del Círculo de Bellas Artes que frecuentaron Ramón del Valle Inclán o Pablo Picasso a principios del siglo",
     "La coalición gobernante colapsó por un proyecto de ley que evitaba que los estudiantes religiosos se incorporaran a las fuerzas armadas. Netanyahu enfrentará una fuerte oposición en los comicios que serían en septiembre, mientras continúa la incertidumbre respecto a la guerra contra Irán. (Desde Washington, Estados Unidos) Donald Trump considera a Benjamín Netanyahu su principal aliado en Medio Oriente y respalda su continuidad como primer ministro de Israel, ante una fuerte crisis institucional que puede terminar con su carrera política. Netanyahu disuelve su gobierno de coalición y convoca a",
     "El encuentro entre Trump y Xi Jinping evidencia los puntos de acuerdo, como Irán, y las líneas rojas infranqueables, con la isla como principal foco... Ángel Expósito analiza el viaje oficial del presidente de Estados Unidos con el profesor de Historia Contemporánea en la Universidad Rey Juan Carlos, Felipe Debasa. El programa 'La Linterna' de COPE, dirigido por Ángel Expósito, ha analizado el reciente viaje oficial del presidente de Estados Unidos a China y su reunión con Xi Jinping. Para ello, ha contado con el profesor de Historia Contemporáne",
@@ -772,10 +771,10 @@
     "Dos investigadores del Instituto de Neurociencias, centro mixto de la Universidad Miguel Hernández de Elche (UMH) y del Consejo Superior de Investigaciones Científicas (CSIC), han desarrollado una nueva estrategia basada en Inteligencia Artificial y simulaciones computacionales con el que se reduce un 90% el tiempo necesario para las resonancias magnéticas. El método, publicado en la revista Communications Medicine, permite obtener información detallada del cerebro de forma mucho más rápida con menos datos de los habituales y manteniendo un alto nivel de precisión, lo que abre la puert",
     "Fuerzas de Estados Unidos atacaron una instalación militar iraní en la zona del estrecho de Ormuz, en medio de la frágil tregua entre Washington y Teherán y las conversaciones para alcanzar la paz. Así lo afirmó un funcionario estadounidense a la agencia británica The post Estados Unidos repite ataque contra Irán, según despacho de first appeared on Cubadebate . Fuerzas de Estados Unidos atacaron una instalación militar iraní en la zona del estrecho de Ormuz, en medio de la frágil tregua entre Washington y Teherán y las conversaciones para alcanzar la paz. Así lo afirmó un funci",
     "Cuando entero está reflexionando sobre la necesidad de poner coto a la Inteligencia Artificial para que esta reme a favor y no en contra de la dignidad humana, un debate que hace años que está en el ágora pública pero que desde hace unos días ha ganado protagonismo gracias a la primera encíclica de León XIV ('Magnifica Humanitas'), que ha tenido la virtud de deshacer lo que para algunos magnates tecnológicos era un dogma y recordar que la tecnología no es neutra en términos morales, el 'think tank' The Adecco Group Institute ha publicado un estudio que evidencia que el grado de impl",
-    "Ingenieros , especialistas en tecnología, abogados, consultores financieros y emprendedores hispanos se reunirán este sábado en Toronto en IMPULSA 2026 , un evento que refleja cómo la comunidad en Canadá intenta convertir sus redes sociales en plataformas de integración profesional y económica. La iniciativa, organizada por la Red de Hispanos , surge en un momento en el que muchos inmigrantes cualificados enfrentan dificultades para acceder al mercado laboral canadiense pese a contar con experiencia internacional y formación universitaria. RELACIONADAS Actualidad Canadá amenaza con de"
+    "Ingenieros , especialistas en tecnología, abogados, consultores financieros y emprendedores hispanos se reunirán este sábado en Toronto en IMPULSA 2026 , un evento que refleja cómo la comunidad en Canadá intenta convertir sus redes sociales en plataformas de integración profesional y económica. La iniciativa, organizada por la Red de Hispanos , surge en un momento en el que muchos inmigrantes cualificados enfrentan dificultades para acceder al mercado laboral canadiense pese a contar con experiencia internacional y formación universitaria. RELACIONADAS Actualidad Canadá amenaza con de",
+    "Barcelona volverá a convertirse la próxima semana en capital internacional de la logística con la celebración de la vigesimoctava edición del Salón Internacional de la Logística, SIL Barcelona 2026, que tendrá lugar del 3 al 5 de junio en el recinto de Montjuïc de Fira de Barcelona. Bajo el lema «Soluciones inteligentes que mueven », el certamen reunirá a más de 600 empresas y cerca de 80 startups en una edición marcada por la inteligencia artificial, la automatización, la sostenibilidad, la falta de profesionales en el transporte y la capacidad del sector para adaptarse a un cont"
   ],
   "hashes_contenido": [
-    "0dd7e8aa6b85f1d4c09f58a7af3cef21",
     "f97fdfa9fc99806a9397ee6251141d00",
     "f252d2351d4979b31610ba4956d987a7",
     "e6ba3d0cfa9cffd7ff8749f90915c311",
@@ -927,7 +926,8 @@
     "63cadd2b1f52d52e2068a39e93258446",
     "4d240e7ea62cdf694438edf05dc26707",
     "a5ff5f8ef741a91a1ad1b24bfea66acd",
-    "18d172153fcee9d94d32b6d0204c046d"
+    "18d172153fcee9d94d32b6d0204c046d",
+    "d302b3440dbf9ca67b5f9aeaaba75b6c"
   ],
   "hashes_permanentes": [
     "52fa1afaf2d29f5dc6d21b6620cbd32b",
@@ -1326,15 +1326,15 @@
     "90416d55cc90d47c58afb3e16a8f4d0e",
     "ca3ca9a322ab221fd9e44ff11e7348b1",
     "5e209ab4eb5c39e658a355126705e6ba",
-    "ae91620894cd6fcc69cc063cbc958547"
+    "ae91620894cd6fcc69cc063cbc958547",
+    "e3fbefde1387fb21fb30912fd9d101bb"
   ],
   "estadisticas": {
-    "total_publicadas": 397,
-    "total_fb": 104,
-    "total_wp": 291
+    "total_publicadas": 398,
+    "total_fb": 105,
+    "total_wp": 292
   },
   "urls_normalizadas": [
-    "elcomercio.pe/mundo/asia/xi-jinping-advierte-a-donald-trump-que-la-cuestion-de-taiwan-puede-derivar-en-un-conflicto-china-estados-unidos-noticia",
     "eldiario.es/economia/choque-recetas-crisis-vivienda-aceleron-privado-superfondo-publico-120-000-millones_1_13220312",
     "infobae.com/estados-unidos/2026/05/14/crisis-politica-en-israel-donald-trump-apoyara-la-campana-de-benjamin-netanyahu-para-continuar-como-primer-ministro",
     "cope.es/programas/la-linterna/el-tema-del-dia/audios/alguien-abre-caja-pandora-taiwan-china-dicho-dar-lugar-enfrentamientos-conflictos-militares-negociacion-supeditada-no-toca-20260514_3364867",
@@ -1486,7 +1486,8 @@
     "abc.es/espana/comunidad-valenciana/alicante/investigadores-reducen-tiempo-resonancias-magneticas-ia-20260528004914-nt",
     "cubadebate.cu/noticias/2026/05/27/estados-unidos-repite-ataque-contra-iran-segun-despacho-de-reuters",
     "abc.es/economia/pequenas-empresas-invierten-ia-nueve-diez-utilizan-20260528102434-nt",
-    "diariolibre.com/mundo/canada/2026/05/28/hispanos-canada-buscan-transformar-redes-en-oportunidad/3548795"
+    "diariolibre.com/mundo/canada/2026/05/28/hispanos-canada-buscan-transformar-redes-en-oportunidad/3548795",
+    "abc.es/espana/cataluna/sil-exhibira-barcelona-logistica-anticipa-ia-falta-20260528140259-nt"
   ],
   "urls_fb_publicadas": [
     "776",
@@ -1496,6 +1497,8 @@
     "789",
     "https://verdadhoy.com/reducen-un-90-el-tiempo-de-resonancias-magneticas-con-ia/",
     "794",
-    "https://verdadhoy.com/el-37-de-pequenas-empresas-invierten-en-ia/"
+    "https://verdadhoy.com/el-37-de-pequenas-empresas-invierten-en-ia/",
+    "798",
+    "https://verdadhoy.com/logistica-en-barcelona-futuro-y-desafios-globales/"
   ]
 }

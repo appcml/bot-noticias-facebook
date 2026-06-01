@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V14.0
+Bot de Noticias Internacionales - V14.1
+CAMBIOS EN V14.1:
+  - SCHEMA: Agregado campo "image" con URL real de imagen subida a WP (fix Rich Results)
+  - SCHEMA: Agregado campo "author" como Organization con URL (fix Rich Results)
+  - SCHEMA: Fecha con zona horaria "+00:00" en datePublished y dateModified
+  - SCHEMA: Agregado campo "isAccessibleForFree: True" (requerido por Google News)
+  - SCHEMA: Logo publisher con dimensiones explícitas (512x512)
+  - RICH RESULTS: Resuelve 3 problemas no críticos detectados por Google
+
 CAMBIOS EN V14:
   - GOOGLE DISCOVER: Imágenes garantizadas ≥1200px ancho (requisito oficial Google)
   - GOOGLE DISCOVER: Imagen fallback ampliada a 1600x900 (16:9 óptimo para Discover)
@@ -1395,21 +1403,24 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         meta_desc   = ""
         frase_clave = ""
 
-    # Schema JSON-LD
-    fecha_schema = datetime.now().isoformat()
+    # Schema JSON-LD — V14.1: campos completos para Rich Results y Google Discover
+    fecha_schema = datetime.now().strftime('%Y-%m-%dT%H:%M:%S+00:00')
     if fecha_fuente:
         try:
-            fecha_schema = str(fecha_fuente).replace('Z', '+00:00')
-            datetime.fromisoformat(fecha_schema)
+            fecha_str = str(fecha_fuente).replace('Z', '+00:00')
+            datetime.fromisoformat(fecha_str)
+            fecha_schema = fecha_str if '+' in fecha_str or fecha_str.endswith('Z') else fecha_str + '+00:00'
         except:
-            fecha_schema = datetime.now().isoformat()
+            fecha_schema = datetime.now().strftime('%Y-%m-%dT%H:%M:%S+00:00')
 
-    titulo_schema = titulo_final.replace('"', "'").replace('\\', '')
-    meta_schema   = (meta_desc or contenido[:155]).replace('"', "'").replace('\\', '')
+    fecha_modified = datetime.now().strftime('%Y-%m-%dT%H:%M:%S+00:00')
+    titulo_schema  = titulo_final.replace('"', "'").replace('\\', '')
+    meta_schema    = (meta_desc or contenido[:155]).replace('"', "'").replace('\\\\', '')
 
-    # V14: URL de imagen para schema — usa la imagen subida a WP
-    # Google Discover requiere image ≥1200px en el schema
-    imagen_schema_url = f"{WP_URL}/wp-content/uploads/favicon_512.png"  # fallback
+    # V14.1: URL de imagen — se actualiza con URL real tras subir a WP
+    imagen_schema_url  = f"{WP_URL}/wp-content/uploads/favicon_512.png"  # placeholder
+    imagen_schema_w    = 1200
+    imagen_schema_h    = 630
 
     schema_markup = f"""
 <script type="application/ld+json">
@@ -1418,23 +1429,36 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
   "@type": "NewsArticle",
   "headline": "{titulo_schema}",
   "datePublished": "{fecha_schema}",
-  "dateModified": "{datetime.now().isoformat()}",
+  "dateModified": "{fecha_modified}",
   "description": "{meta_schema}",
   "inLanguage": "es",
+  "isAccessibleForFree": "True",
   "image": {{
     "@type": "ImageObject",
     "url": "{imagen_schema_url}",
-    "width": 1200,
-    "height": 630
+    "width": {imagen_schema_w},
+    "height": {imagen_schema_h}
+  }},
+  "author": {{
+    "@type": "Organization",
+    "name": "Verdad Hoy",
+    "url": "{WP_URL}"
   }},
   "publisher": {{
     "@type": "Organization",
     "name": "Verdad Hoy",
     "url": "{WP_URL}",
-    "logo": {{"@type": "ImageObject", "url": "{WP_URL}/wp-content/uploads/favicon_512.png", "width": 512, "height": 512}}
+    "logo": {{
+      "@type": "ImageObject",
+      "url": "{WP_URL}/wp-content/uploads/favicon_512.png",
+      "width": 512,
+      "height": 512
+    }}
   }},
-  "author": {{"@type": "Organization", "name": "Verdad Hoy", "url": "{WP_URL}"}},
-  "mainEntityOfPage": {{"@type": "WebPage", "@id": "{WP_URL}/"}}
+  "mainEntityOfPage": {{
+    "@type": "WebPage",
+    "@id": "{WP_URL}/"
+  }}
 }}
 </script>"""
 
@@ -1486,26 +1510,30 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         log("❌ No se pudo subir imagen — cancelando WP", 'error')
         return None
 
-    # V14: Obtener URL real de la imagen subida para el schema de Discover
+    # V14.1: Obtener URL real de imagen subida — actualiza schema con datos reales
     try:
         r_media = requests.get(
             f"{WP_URL}/wp-json/wp/v2/media/{imagen_id}",
-            params={'_fields': 'source_url,media_details'},
+            params={"_fields": "source_url,media_details"},
             auth=(WP_USER, WP_APP_PASSWORD), timeout=10
         ).json()
-        sizes = r_media.get('media_details', {}).get('sizes', {})
-        url_img_real = (sizes.get('large', {}).get('source_url') or
-                        sizes.get('full', {}).get('source_url') or
-                        r_media.get('source_url', imagen_schema_url))
-        img_w = sizes.get('large', {}).get('width', 1200)
-        img_h = sizes.get('large', {}).get('height', 630)
-        # Reemplazar la URL placeholder en el schema con la real
+        sizes = r_media.get("media_details", {}).get("sizes", {})
+        url_img_real = (sizes.get("large", {}).get("source_url") or
+                        sizes.get("full", {}).get("source_url") or
+                        r_media.get("source_url", imagen_schema_url))
+        img_w_real = sizes.get("large", {}).get("width", imagen_schema_w)
+        img_h_real = sizes.get("large", {}).get("height", imagen_schema_h)
+        # Reemplazar placeholder con URL e dimensiones reales
         schema_markup = schema_markup.replace(
-            f'"url": "{imagen_schema_url}",\n    "width": 1200,\n    "height": 630',
-            f'"url": "{url_img_real}",\n    "width": {img_w},\n    "height": {img_h}'
+            imagen_schema_url, url_img_real
+        ).replace(
+            f'"width": {imagen_schema_w},', f'"width": {img_w_real},'
+        ).replace(
+            f'"height": {imagen_schema_h}', f'"height": {img_h_real}'
         )
+        log(f"Schema imagen actualizada: {img_w_real}x{img_h_real}", "debug")
     except Exception as e:
-        log(f"⚠️ No se pudo obtener URL real de imagen para schema: {e}", 'debug')
+        log(f"No se pudo obtener URL real de imagen: {e}", "debug")
 
     # Reconstruir contenido_html con schema actualizado
     contenido_html = f"""
@@ -2323,7 +2351,7 @@ def procesar_pending_videos():
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V14.0")
+    print("🌍 BOT DE NOTICIAS - V14.1")
     print("   WP: imágenes ≥1200px (Google Discover optimizado)")
     print("   FB: imagen+texto desde verdadhoy.com")
     print("   Pinterest: activo en paralelo con WP")
@@ -2528,7 +2556,7 @@ def main():
     h = cargar_historial()
     stats = h.get('estadisticas', {})
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V14:", 'exito')
+    log(f"✅ RESUMEN V14.1:", 'exito')
     log(f"   Total publicadas: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')
     log(f"   Facebook:  {stats.get('total_fb', 0)}", 'info')

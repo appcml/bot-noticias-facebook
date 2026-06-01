@@ -32,9 +32,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Instalar dependencias del sistema
-        run: sudo apt-get install -y espeak espeak-data ffmpeg
-
       - name: Instalar dependencias Python
         run: pip install -r requirements.txt
 
@@ -64,7 +61,7 @@ jobs:
           # ── YouTube ───────────────────────────────────────
           YOUTUBE_API_KEY:      ${{ secrets.YOUTUBE_API_KEY }}
 
-          # ── V11: GitHub (para pending_videos) ─────────────
+          # ── GitHub (para pending_videos) ──────────────────
           GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY:    ${{ github.repository }}
 
@@ -85,7 +82,6 @@ jobs:
           git config user.name  "bot-noticias[bot]"
           git config user.email "bot-noticias@users.noreply.github.com"
 
-          # Lista de archivos de estado que el bot puede modificar
           ARCHIVOS=(
             historial_publicaciones.json
             estado_bot.json
@@ -104,7 +100,6 @@ jobs:
             fi
           done
 
-          # También agregar cualquier eliminación en pending_videos/
           git add -A pending_videos/ 2>/dev/null || true
 
           if git diff --cached --quiet; then

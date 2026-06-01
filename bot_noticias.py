@@ -1,7 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V12.0
+Bot de Noticias Internacionales - V13.0
+CAMBIOS EN V13:
+  - CATEGORÍAS: Cuotas rebalanceadas — Deportes +6%, Ciencia/Salud +4% cada una
+  - CATEGORÍAS: CATEGORIA_WP corregido — guerra/crimen/desastre/religion/educacion → 'internacional'
+  - CATEGORÍAS: Keywords de Deportes ampliados (partido, fichaje, Mundial 2026, etc.)
+  - CATEGORÍAS: Keywords de Salud ampliados (síntoma, clínica, ensayo clínico, etc.)
+  - CATEGORÍAS: Keywords de Ciencia ampliados (astronomía, investigadores, ADN, etc.)
+  - CATEGORÍAS: Keywords de Política ampliados con presidentes LATAM y términos locales
+  - CATEGORÍAS: Latinoamérica ya no captura noticias que primero deben ir a Política
+  - PINTEREST: Tableros actualizados con nuevas categorías geográficas
+
 CAMBIOS EN V12:
   - FACEBOOK: Ya NO genera videos. Publica imagen + texto tomando artículos
     ya publicados en verdadhoy.com (via WP REST API). Formato limpio:
@@ -42,23 +52,25 @@ from urllib.parse import urlparse
 # CUOTAS EDITORIALES POR CATEGORÍA (monetización AdSense)
 # ──────────────────────────────────────────────────────────
 CUOTAS_CATEGORIA = {
-    'tecnologia':      {'cuota': 0.15, 'cpm_relativo': 1.45, 'brand_safe': True},
-    'economia':        {'cuota': 0.15, 'cpm_relativo': 1.55, 'brand_safe': True},
-    'ciencia':         {'cuota': 0.08, 'cpm_relativo': 1.40, 'brand_safe': True},
-    'salud':           {'cuota': 0.08, 'cpm_relativo': 1.40, 'brand_safe': True},
-    'general':         {'cuota': 0.08, 'cpm_relativo': 1.35, 'brand_safe': True},
-    'deportes':        {'cuota': 0.06, 'cpm_relativo': 1.20, 'brand_safe': True},
+    # Brand-safe / alto CPM — priorizados
+    'economia':        {'cuota': 0.13, 'cpm_relativo': 1.55, 'brand_safe': True},
+    'tecnologia':      {'cuota': 0.13, 'cpm_relativo': 1.45, 'brand_safe': True},
+    'ciencia':         {'cuota': 0.10, 'cpm_relativo': 1.40, 'brand_safe': True},
+    'salud':           {'cuota': 0.10, 'cpm_relativo': 1.40, 'brand_safe': True},
+    'deportes':        {'cuota': 0.12, 'cpm_relativo': 1.20, 'brand_safe': True},
+    'mundo':           {'cuota': 0.08, 'cpm_relativo': 1.00, 'brand_safe': True},
+    'latinoamerica':   {'cuota': 0.06, 'cpm_relativo': 1.10, 'brand_safe': True},
+    'politica':        {'cuota': 0.07, 'cpm_relativo': 1.05, 'brand_safe': False},
     'entretenimiento': {'cuota': 0.05, 'cpm_relativo': 1.15, 'brand_safe': True},
-    'clima':           {'cuota': 0.05, 'cpm_relativo': 1.30, 'brand_safe': True},
-    'medio_ambiente':  {'cuota': 0.04, 'cpm_relativo': 1.28, 'brand_safe': True},
     'educacion':       {'cuota': 0.04, 'cpm_relativo': 1.35, 'brand_safe': True},
-    'latinoamerica':   {'cuota': 0.08, 'cpm_relativo': 1.10, 'brand_safe': True},
-    'politica':        {'cuota': 0.05, 'cpm_relativo': 1.05, 'brand_safe': False},
-    'guerra':          {'cuota': 0.05, 'cpm_relativo': 0.90, 'brand_safe': False},
-    'desastre':        {'cuota': 0.04, 'cpm_relativo': 0.95, 'brand_safe': False},
-    'crimen':          {'cuota': 0.03, 'cpm_relativo': 0.85, 'brand_safe': False},
-    'religion':        {'cuota': 0.03, 'cpm_relativo': 1.00, 'brand_safe': True},
-    'mundo':           {'cuota': 0.10, 'cpm_relativo': 1.00, 'brand_safe': True},
+    'medio_ambiente':  {'cuota': 0.04, 'cpm_relativo': 1.28, 'brand_safe': True},
+    'clima':           {'cuota': 0.03, 'cpm_relativo': 1.30, 'brand_safe': True},
+    'religion':        {'cuota': 0.02, 'cpm_relativo': 1.00, 'brand_safe': True},
+    'general':         {'cuota': 0.04, 'cpm_relativo': 1.35, 'brand_safe': True},
+    # Bajo CPM / brand-unsafe — cuotas reducidas
+    'guerra':          {'cuota': 0.04, 'cpm_relativo': 0.90, 'brand_safe': False},
+    'desastre':        {'cuota': 0.03, 'cpm_relativo': 0.95, 'brand_safe': False},
+    'crimen':          {'cuota': 0.02, 'cpm_relativo': 0.85, 'brand_safe': False},
 }
 CUOTAS_CONTROL_PATH = 'estado_cuotas.json'
 
@@ -112,23 +124,25 @@ HORARIOS_PICO_UTC = [
 
 # ── MAPEO CATEGORÍAS → SLUGS WORDPRESS ─────────────────────
 CATEGORIA_WP = {
+    # Conflicto y seguridad → Internacional (es el paraguas correcto)
     'guerra':          'internacional',
+    'desastre':        'internacional',
+    'crimen':          'internacional',
+    'religion':        'internacional',
+    'educacion':       'internacional',
+    'general':         'internacional',
+    # Temáticas propias
     'politica':        'politica',
     'economia':        'economia',
     'tecnologia':      'tecnologia',
-    'desastre':        'mundo',
-    'deportes':        'deportes',
     'ciencia':         'ciencia-y-salud',
     'salud':           'ciencia-y-salud',
+    'deportes':        'deportes',
     'entretenimiento': 'entretenimiento',
     'latinoamerica':   'latinoamerica',
     'clima':           'medio-ambiente',
     'medio_ambiente':  'medio-ambiente',
-    'educacion':       'internacional',
-    'religion':        'mundo',
-    'crimen':          'mundo',
     'mundo':           'mundo',
-    'general':         'internacional',
 }
 
 # ── TABLEROS PINTEREST ──────────────────────────────────────
@@ -280,9 +294,11 @@ BLACKLIST_TITULOS = [
 def detectar_tema(titulo, descripcion=""):
     """
     Detecta el tema principal de una noticia.
-    V12: Orden de prioridad estricto para evitar clasificaciones erróneas.
-    La categoría 'entretenimiento' solo se asigna si hay coincidencias
-    EXPLÍCITAS de entretenimiento y NINGUNA de categorías de mayor prioridad.
+    V13: Orden de prioridad estricto para evitar clasificaciones erróneas.
+    - Deportes sube a prioridad 4 (antes de política) para capturar Mundial 2026
+    - Política incluye presidentes LATAM para evitar que vayan a latinoamerica
+    - Latinoamérica solo captura si no hay tema más específico
+    - Entretenimiento solo si hay coincidencias EXPLÍCITAS y ninguna categoría anterior
     """
     txt = f"{titulo} {descripcion}".lower()
 
@@ -294,6 +310,8 @@ def detectar_tema(titulo, descripcion=""):
         "siria", "yemen", "sudan", "taliban", "isis", "ataque aereo",
         "escalada", "combate", "ofensiva", "contraofensiva", "drones militares",
         "muertos en combate", "bombardeado", "atacado", "fuego cruzado",
+        "ejercito", "militares", "fuerza aerea", "marina de guerra",
+        "corea del norte", "iran nuclear", "misil balistico",
     ]):
         return 'guerra'
 
@@ -302,96 +320,139 @@ def detectar_tema(titulo, descripcion=""):
         "terremoto", "huracan", "inundacion", "desastre natural",
         "evacuacion", "tsunami", "explosion industrial", "incendio masivo",
         "derrumbe", "erupcion volcanica", "tormenta tropical",
-        "alerta roja", "emergencia nacional",
+        "alerta roja", "emergencia nacional", "sismo", "alerta de tsunami",
+        "victimas del desastre", "catastrofe natural",
     ]):
         return 'desastre'
 
-    # ── Prioridad 3: Crimen / Seguridad (evitar que vaya a entretenimiento)
+    # ── Prioridad 3: Crimen / Seguridad
     if any(p in txt for p in [
         "asesinato", "homicidio", "secuestro", "narcotrafico", "cartel",
         "crimen organizado", "mafia", "robo masivo", "fraude millonario",
         "detenido", "arrestado", "capturado", "condenado a prison",
-        "banda criminal", "sicario",
+        "banda criminal", "sicario", "feminicidio", "masacre",
+        "traficante", "narcotraficante", "policia abate",
     ]):
         return 'crimen'
 
-    # ── Prioridad 4: Política
-    if any(p in txt for p in [
-        "trump", "biden", "presidente", "gobierno", "eleccion",
-        "golpe de estado", "coup", "diplomaci", "congreso", "senado",
-        "sancion", "otan", "g7", "g20", "cumbre", "tratado",
-        "referendum", "parlamento", "primer ministro", "canciller",
-        "politica exterior", "relaciones diplomaticas",
-    ]):
-        return 'politica'
-
-    # ── Prioridad 5: Economía
-    if any(p in txt for p in [
-        "economia", "inflacion", "recesion", "bolsa", "mercado financiero",
-        "petroleo", "dolar", "euro", "fmi", "banco central",
-        "crisis economica", "aranceles", "comercio", "exportaciones",
-        "pib", "desempleo", "banco mundial", "reserva federal", "deuda",
-    ]):
-        return 'economia'
-
-    # ── Prioridad 6: Tecnología
-    if any(p in txt for p in [
-        "inteligencia artificial", "ia ", " ia,", "robot", "automatizacion",
-        "ciberataque", "hackeo", "elon musk", "openai", "chatgpt",
-        "software", "startup", "samsung", "apple", "google", "microsoft",
-        "amazon", "tesla", "chip", "semiconductor", "quantum",
-        "metaverso", "blockchain", "criptomoneda", "bitcoin",
-    ]):
-        return 'tecnologia'
-
-    # ── Prioridad 7: Salud / Medicina
-    if any(p in txt for p in [
-        "cancer", "enfermedad", "hospital", "medico", "tratamiento",
-        "pandemia", "vacuna", "virus", "salud publica", "oms",
-        "epidemia", "brote", "medicamento", "cirugia", "diagnostico",
-    ]):
-        return 'salud'
-
-    # ── Prioridad 8: Ciencia / Espacio
-    if any(p in txt for p in [
-        "ciencia", "investigacion cientifica", "descubrimiento cientifico",
-        "espacio", "nasa", "planeta", "universo", "agujero negro",
-        "fisica", "quimica", "biologia molecular", "genetica",
-        "experimento", "laboratorio", "cohete", "satelite",
-    ]):
-        return 'ciencia'
-
-    # ── Prioridad 9: Medio ambiente / Clima
-    if any(p in txt for p in [
-        "cambio climatico", "calentamiento global", "temperatura record",
-        "sequia", "incendio forestal", "contaminacion", "co2",
-        "medio ambiente", "cop", "emision de carbono", "biodiversidad",
-        "extincion", "deforestacion", "plastico en el oceano",
-    ]):
-        return 'medio_ambiente'
-
-    if any(p in txt for p in [
-        "clima", "lluvia intensa", "nieve record", "ola de calor",
-        "helada", "tormenta", "ciclon", "tornado",
-    ]):
-        return 'clima'
-
-    # ── Prioridad 10: Deportes
+    # ── Prioridad 4: Deportes — subido para capturar Mundial 2026
     if any(p in txt for p in [
         "futbol", "olimpiadas", "mundial", "copa del mundo",
         "atletismo", "tenis", "baloncesto", "nba", "fifa",
         "formula 1", "f1", "champions league", "liga", "gol",
         "campeonato", "torneo", "medalla", "seleccion nacional",
         "boxeo", "ufc", "rugby", "ciclismo", "natacion",
+        "partido", "jugador", "entrenador", "estadio", "marcador",
+        "derrota deportiva", "victoria deportiva", "mundial 2026",
+        "premier league", "laliga", "serie a", "bundesliga", "mls",
+        "beisbol", "golf", "voleibol", "handball", "triathlon",
+        "juegos olimpicos", "paris 2024", "los angeles 2028",
+        "transfer futbolistico", "fichaje", "traspaso deportivo",
+        "clasificacion mundial", "eliminatoria", "semifinal", "final deportiva",
+        "arbitro", "penalti", "penalto", "corner", "fuera de juego",
     ]):
         return 'deportes'
 
-    # ── Prioridad 11: Latinoamérica (geografía)
+    # ── Prioridad 5: Política — incluye presidentes LATAM para evitar desvíos
+    if any(p in txt for p in [
+        "trump", "biden", "harris", "presidente", "gobierno", "eleccion",
+        "golpe de estado", "coup", "diplomaci", "congreso", "senado",
+        "sancion", "otan", "g7", "g20", "cumbre", "tratado",
+        "referendum", "parlamento", "primer ministro", "canciller",
+        "politica exterior", "relaciones diplomaticas",
+        "candidato presidencial", "campana electoral", "partido politico",
+        "ministro", "gabinete", "decreto", "legislacion",
+        # Presidentes y líderes LATAM — evita que vayan a 'latinoamerica'
+        "petro", "milei", "lula", "maduro", "bukele", "boric",
+        "sheinbaum", "claudia sheinbaum", "noboa", "arce", "lacalle",
+        "congresista", "diputado", "senador", "alcalde", "gobernador",
+        "oposicion politica", "coalicion", "elecciones presidenciales",
+        "segunda vuelta", "balotaje", "voto", "urna", "comicios",
+        "macron", "scholz", "sunak", "meloni", "modi", "xi jinping",
+        "putin", "zelensky", "erdogan", "netanyahu",
+    ]):
+        return 'politica'
+
+    # ── Prioridad 6: Economía
+    if any(p in txt for p in [
+        "economia", "inflacion", "recesion", "bolsa", "mercado financiero",
+        "petroleo", "dolar", "euro", "fmi", "banco central",
+        "crisis economica", "aranceles", "comercio", "exportaciones",
+        "pib", "desempleo", "banco mundial", "reserva federal", "deuda",
+        "crecimiento economico", "contraccion economica", "tasa de interes",
+        "wall street", "nasdaq", "dow jones", "ibex", "merval",
+        "criptomoneda", "bitcoin", "ethereum", "fintech",
+        "inversion extranjera", "deficit fiscal", "superavit",
+        "renta variable", "bonos", "acciones", "dividendo",
+    ]):
+        return 'economia'
+
+    # ── Prioridad 7: Tecnología
+    if any(p in txt for p in [
+        "inteligencia artificial", "ia ", " ia,", "robot", "automatizacion",
+        "ciberataque", "hackeo", "elon musk", "openai", "chatgpt",
+        "software", "startup", "samsung", "apple", "google", "microsoft",
+        "amazon", "tesla", "chip", "semiconductor", "quantum",
+        "metaverso", "blockchain", "deepseek", "gemini", "llm",
+        "red neuronal", "machine learning", "big data", "cloud computing",
+        "5g", "6g", "internet de las cosas", "iot", "ciberseguridad",
+        "huawei", "nvidia", "spacex", "starlink",
+    ]):
+        return 'tecnologia'
+
+    # ── Prioridad 8: Salud / Medicina
+    if any(p in txt for p in [
+        "cancer", "enfermedad", "hospital", "medico", "tratamiento",
+        "pandemia", "vacuna", "virus", "salud publica", "oms",
+        "epidemia", "brote", "medicamento", "cirugia", "diagnostico",
+        "sintoma", "dosis", "clinica", "ensayo clinico", "paciente",
+        "investigadores hallaron", "estudio revela", "nuevo tratamiento",
+        "farmaco", "terapia", "cura", "prevencion", "mortalidad",
+        "obesidad", "diabetes", "hipertension", "salud mental",
+        "antibiotico", "cepa", "mutacion viral", "variante",
+        "oncologia", "cardiologia", "neurologia", "pediatria",
+    ]):
+        return 'salud'
+
+    # ── Prioridad 9: Ciencia / Espacio
+    if any(p in txt for p in [
+        "ciencia", "investigacion cientifica", "descubrimiento cientifico",
+        "espacio", "nasa", "planeta", "universo", "agujero negro",
+        "fisica", "quimica", "biologia molecular", "genetica",
+        "experimento", "laboratorio", "cohete", "satelite",
+        "estudio cientifico", "hallazgo", "investigadores",
+        "astronomia", "telescopio", "marte", "luna", "iss",
+        "particula", "adn", "celula", "evolucion",
+        "esa ", "agencia espacial", "exoplaneta", "supernova",
+        "nobel de", "premio nobel", "paleontologia", "arqueologia",
+    ]):
+        return 'ciencia'
+
+    # ── Prioridad 10: Medio ambiente / Clima
+    if any(p in txt for p in [
+        "cambio climatico", "calentamiento global", "temperatura record",
+        "sequia", "incendio forestal", "contaminacion", "co2",
+        "medio ambiente", "cop", "emision de carbono", "biodiversidad",
+        "extincion", "deforestacion", "plastico en el oceano",
+        "energia renovable", "solar", "eolica", "hidrogeno verde",
+        "huella de carbono", "acuerdo de paris", "ipcc",
+    ]):
+        return 'medio_ambiente'
+
+    if any(p in txt for p in [
+        "clima", "lluvia intensa", "nieve record", "ola de calor",
+        "helada", "tormenta", "ciclon", "tornado", "granizo",
+        "pronostico meteorologico", "frente frio",
+    ]):
+        return 'clima'
+
+    # ── Prioridad 11: Latinoamérica (geografía — solo si no hay tema específico)
     if any(p in txt for p in [
         "mexico", "colombia", "argentina", "chile", "peru", "venezuela",
         "brasil", "cuba", "bolivia", "ecuador", "america latina",
         "latinoamerica", "centroamerica", "caribe", "uruguay",
         "paraguay", "costa rica", "panama", "guatemala", "haiti",
+        "nicaragua", "honduras", "el salvador", "republica dominicana",
     ]):
         return 'latinoamerica'
 
@@ -399,7 +460,7 @@ def detectar_tema(titulo, descripcion=""):
     if any(p in txt for p in [
         "educacion", "escuela", "universidad", "estudiantes",
         "maestros", "profesores", "reforma educativa", "becas",
-        "escolaridad", "matricula", "campus",
+        "escolaridad", "matricula", "campus", "pedagogia",
     ]):
         return 'educacion'
 
@@ -407,26 +468,28 @@ def detectar_tema(titulo, descripcion=""):
     if any(p in txt for p in [
         "papa francisco", "vaticano", "iglesia", "islam", "judaismo",
         "budismo", "hinduismo", "mezquita", "sinagoga", "catedral",
-        "fe religiosa", "clerigo", "obispo",
+        "fe religiosa", "clerigo", "obispo", "encíclica", "enciclica",
+        "pontífice", "pontifice", "cardenal", "pastor evangelico",
     ]):
         return 'religion'
 
-    # ── Prioridad 14: Entretenimiento — SOLO si no coincide con nada anterior
-    # Lista intencionalmente restrictiva para evitar falsos positivos
+    # ── Prioridad 14: Entretenimiento — SOLO coincidencias EXPLÍCITAS
     if any(p in txt for p in [
         "pelicula estreno", "serie de television", "musica pop",
         "artista musical", "actor de cine", "actriz premiada",
         "hollywood", "netflix serie", "oscar", "grammy",
         "album musical", "concierto mundial", "banda de musica",
         "celebridad", "influencer", "reality show",
+        "festival de cine", "cannes", "sundance", "emmy",
+        "spotify", "youtube music", "gira musical",
     ]):
         return 'entretenimiento'
 
-    # ── Prioridad 15: Mundo (geografía sin categoría específica)
+    # ── Prioridad 15: Mundo (geografía internacional sin categoría específica)
     if any(p in txt for p in [
-        "africa", "asia", "europa", "pacifico",
+        "africa", "asia", "europa", "pacifico", "oriente medio",
         "naciones unidas", "onu", "cumbre mundial",
-        "embajada", "cancilleria",
+        "embajada", "cancilleria", "union europea",
     ]):
         return 'mundo'
 
@@ -2081,7 +2144,7 @@ def procesar_pending_videos():
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V12.0")
+    print("🌍 BOT DE NOTICIAS - V13.0")
     print("   WP: noticias con imagen obligatoria")
     print("   FB: imagen+texto desde verdadhoy.com (sin videos)")
     print("   Pinterest: activo en paralelo con WP")
@@ -2285,7 +2348,7 @@ def main():
     h = cargar_historial()
     stats = h.get('estadisticas', {})
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V12:", 'exito')
+    log(f"✅ RESUMEN V13:", 'exito')
     log(f"   Total publicadas: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')
     log(f"   Facebook:  {stats.get('total_fb', 0)}", 'info')

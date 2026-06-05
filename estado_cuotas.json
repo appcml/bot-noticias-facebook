@@ -1,8 +1,6 @@
 {
-  "fecha": "2026-06-04",
+  "fecha": "2026-06-05",
   "conteo": {
-    "guerra": 1,
-    "tecnologia": 2,
-    "economia": 6
+    "guerra": 1
   }
 }

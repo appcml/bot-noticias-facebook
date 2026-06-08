@@ -1,7 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V14.1
+Bot de Noticias Internacionales - V16.0
+CAMBIOS EN V16.0:
+  - CLASIFICACIÓN IA: La IA ahora lee y comprende el contenido completo para clasificar.
+    Ya no depende de keywords estáticas. La función reescribir_noticia_v9() devuelve
+    también la categoría definitiva (campo "categoria" en el JSON de respuesta).
+  - CLASIFICACIÓN IA: detectar_tema() ahora es solo fallback de emergencia (si la IA falla).
+  - CLASIFICACIÓN IA: El prompt incluye definición clara de cada categoría con ejemplos
+    para que la IA tome decisiones editoriales correctas.
+  - CLASIFICACIÓN IA: La categoría IA tiene prioridad sobre detectar_tema() en TODO el flujo.
+  - FLUJO: publicar_en_wordpress() ya no recibe 'tema' como parámetro fijo — lo determina
+    la IA al reescribir, garantizando coherencia entre contenido y categoría.
+  - FALLBACK: Si la IA falla, detectar_tema() actúa como respaldo (V15 keywords).
+
+CAMBIOS EN V15.0:
+  - CLASIFICACIÓN: Keywords de guerra/conflicto ampliados — cubre "alto el fuego", "heridos",
+    "muertos", "fuerzas armadas", "avión militar", "tanquero", "intercambio de fuego",
+    "ataque terrorista", "víctimas", "bombardeo", "portaviones", "fragata", etc.
+  - CLASIFICACIÓN: Keywords de política ampliados — "acuerdo de paz", "negociaciones",
+    "espionaje", "sanciones", "bloqueo", "acuerdo nuclear", líderes mundiales adicionales
+  - CLASIFICACIÓN: Bug crítico corregido — categorías brand-unsafe (guerra, crimen,
+    desastre) ya NO se reclasifican a tecnologia/economia cuando la cuota se llena.
+    Ahora publican igual porque la noticia importa más que la cuota de CPM.
+  - CLASIFICACIÓN: Nueva función 'es_categoria_critica()' — protege la integridad editorial
+  - CUOTAS: guerra sube a 8% (era 4%), desastre a 5% (era 3%), crimen a 4% (era 2%)
+    para reflejar el volumen real de noticias internacionales
+
 CAMBIOS EN V14.1:
   - SCHEMA: Agregado campo "image" con URL real de imagen subida a WP (fix Rich Results)
   - SCHEMA: Agregado campo "author" como Organization con URL (fix Rich Results)
@@ -88,10 +113,10 @@ CUOTAS_CATEGORIA = {
     'clima':           {'cuota': 0.03, 'cpm_relativo': 1.30, 'brand_safe': True},
     'religion':        {'cuota': 0.02, 'cpm_relativo': 1.00, 'brand_safe': True},
     'general':         {'cuota': 0.04, 'cpm_relativo': 1.35, 'brand_safe': True},
-    # Bajo CPM / brand-unsafe — cuotas reducidas
-    'guerra':          {'cuota': 0.04, 'cpm_relativo': 0.90, 'brand_safe': False},
-    'desastre':        {'cuota': 0.03, 'cpm_relativo': 0.95, 'brand_safe': False},
-    'crimen':          {'cuota': 0.02, 'cpm_relativo': 0.85, 'brand_safe': False},
+    # Bajo CPM / brand-unsafe — cuotas ajustadas al volumen real de noticias internacionales
+    'guerra':          {'cuota': 0.08, 'cpm_relativo': 0.90, 'brand_safe': False},
+    'desastre':        {'cuota': 0.05, 'cpm_relativo': 0.95, 'brand_safe': False},
+    'crimen':          {'cuota': 0.04, 'cpm_relativo': 0.85, 'brand_safe': False},
 }
 CUOTAS_CONTROL_PATH = 'estado_cuotas.json'
 
@@ -325,6 +350,7 @@ def detectar_tema(titulo, descripcion=""):
 
     # ── Prioridad 1: Conflicto / Guerra (nunca debe ir a entretenimiento)
     if any(p in txt for p in [
+        # Términos de combate directo
         "guerra", "bombardeo", "misil", "ataque", "conflicto armado",
         "invasion", "tropas", "nuclear", "terroris", "hamas",
         "hezbollah", "ucrania", "gaza", "israel", "rusia", "otan", "nato",
@@ -333,6 +359,29 @@ def detectar_tema(titulo, descripcion=""):
         "muertos en combate", "bombardeado", "atacado", "fuego cruzado",
         "ejercito", "militares", "fuerza aerea", "marina de guerra",
         "corea del norte", "iran nuclear", "misil balistico",
+        # Términos nuevos — los que estaban causando errores
+        "alto el fuego", "alto al fuego", "cese del fuego", "cese al fuego",
+        "heridos", "muertos", "victimas", "bajas militares",
+        "intercambio de fuego", "tiroteo", "fusilamiento",
+        "ataque terrorista", "atentado", "explosion",
+        "fuerzas armadas", "fuerzas militares", "tropa",
+        "avion militar", "avion de guerra", "avion tanquero", "tanquero militar",
+        "portaviones", "fragata", "submarino", "destructor naval",
+        "iran", "irán", "persia", "golfo persico", "golfo pérsico",
+        "ejercito libanes", "libano", "líbano", "hezbola",
+        "pakist", "afganistan", "irak", "siria",
+        "negociacion de paz", "acuerdo de paz", "mediacion militar",
+        "rehenes", "rehen", "secuestrado por",
+        "dron de ataque", "drones de combate",
+        "misil interceptado", "defensa aerea", "iron dome",
+        "muerto", "fallecido en conflicto", "civiles muertos",
+        "palestin", "cisjordania", "huti", "houthis",
+        "airbus mrtt", "reabastecimiento aereo", "aeronave militar",
+        "policia israelí", "ejercito israelí", "idf",
+        "guerra civil", "milicias", "paramilitares",
+        "zona de guerra", "frente de batalla", "linea de combate",
+        "convoy militar", "base militar", "cuartel",
+        "capturado por tropas", "prisionero de guerra",
     ]):
         return 'guerra'
 
@@ -374,7 +423,7 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'deportes'
 
-    # ── Prioridad 5: Política — incluye presidentes LATAM para evitar desvíos
+    # ── Prioridad 5: Política — incluye presidentes LATAM y diplomacia internacional
     if any(p in txt for p in [
         "trump", "biden", "harris", "presidente", "gobierno", "eleccion",
         "golpe de estado", "coup", "diplomaci", "congreso", "senado",
@@ -391,6 +440,15 @@ def detectar_tema(titulo, descripcion=""):
         "segunda vuelta", "balotaje", "voto", "urna", "comicios",
         "macron", "scholz", "sunak", "meloni", "modi", "xi jinping",
         "putin", "zelensky", "erdogan", "netanyahu",
+        # Términos diplomáticos y de seguridad internacional
+        "acuerdo nuclear", "acuerdo diplomatico", "bloqueo economico",
+        "espionaje", "inteligencia militar", "cia", "mossad", "kgb",
+        "embajador", "cancilleria", "nota diplomatica",
+        "sanciones internacionales", "embargo", "negociaciones diplomaticas",
+        "retiro de tropas", "retirar tropas", "despliegue militar",
+        "alianza militar", "pacto de defensa", "acuerdo bilateral",
+        "cumbre de paz", "mediador internacional",
+        "promesa de paz", "promesa de cese",
     ]):
         return 'politica'
 
@@ -538,13 +596,26 @@ def categoria_disponible(categoria, total_dia=48):
     maximo = max(1, int(total_dia * CUOTAS_CATEGORIA.get(categoria, {}).get('cuota', 0.10)))
     return conteo < maximo
 
+def es_categoria_critica(categoria):
+    """
+    Categorías que NO deben reclasificarse por cuota.
+    Una noticia de guerra NO puede convertirse en 'tecnologia' para mejorar CPM.
+    La integridad editorial es prioritaria.
+    """
+    return categoria in ('guerra', 'crimen', 'desastre')
+
 def ajustar_categoria_por_cuota(categoria):
+    # V15: Las categorías críticas (guerra, crimen, desastre) nunca se reclasifican.
+    # Publicar una noticia de guerra como 'tecnologia' daña la credibilidad del sitio.
+    if es_categoria_critica(categoria):
+        return categoria
     if categoria_disponible(categoria):
         return categoria
     log(f"📊 Cuota llena para '{categoria}' — buscando alternativa brand-safe", 'advertencia')
     alternativas = sorted(
         [(c, v) for c, v in CUOTAS_CATEGORIA.items()
-         if v.get('brand_safe') and categoria_disponible(c)],
+         if v.get('brand_safe') and categoria_disponible(c)
+         and not es_categoria_critica(c)],
         key=lambda x: -x[1]['cpm_relativo']
     )
     if alternativas:
@@ -560,44 +631,94 @@ def es_brand_safe(categoria):
 # ──────────────────────────────────────────────────────────
 # REESCRITURA CON IA (SEO avanzado)
 # ──────────────────────────────────────────────────────────
-def reescribir_noticia_v9(titulo, contenido, categoria):
+def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
+    """
+    V16: La IA lee el contenido completo y decide la categoría correcta.
+    La categoria_sugerida es solo una pista inicial — la IA puede y debe corregirla.
+    Devuelve dict con: titulo_seo, meta_descripcion, contenido_html,
+                       keyword_principal, keywords_secundarias, categoria
+    """
     api_key = OPENROUTER_API_KEY or OPENAI_API_KEY
     if not api_key:
         return None
 
-    brand_safe = es_brand_safe(categoria)
-    instruccion_brand_safe = ""
-    if not brand_safe:
-        instruccion_brand_safe = """
-BRAND SAFETY (OBLIGATORIO): Reencuadra el contenido enfocándote EN:
-- Implicaciones económicas y geopolíticas a largo plazo
-- Impacto en energía, comercio o tecnología
-- Respuesta humanitaria e institucional
-EVITA: lenguaje violento o gráfico, conteo de bajas, detalles tácticos militares."""
+    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias internacionales en español.
+Tu tarea: leer esta noticia completa, clasificarla correctamente y reescribirla para SEO y Google Discover.
 
-    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com. Tu objetivo es maximizar SEO, Google Discover y seguridad de marca para AdSense.
+═══════════════════════════════════════
+NOTICIA A PROCESAR:
+Título original: {titulo}
+Contenido: {contenido[:3000]}
+Categoría sugerida por sistema: {categoria_sugerida}
+═══════════════════════════════════════
 
-NOTICIA ORIGINAL:
-Título: {titulo}
-Categoría: {categoria}
-Contenido: {contenido[:2500]}
-{instruccion_brand_safe}
+PASO 1 — CLASIFICACIÓN (lee y comprende antes de clasificar):
+Elige UNA categoría según el tema PRINCIPAL de la noticia:
 
-REGLAS (OBLIGATORIAS):
-- TÍTULO H1: Máximo 60 caracteres. Keyword principal en primeras 3 palabras.
-  IMPORTANTE para Google Discover: El título debe generar curiosidad o urgencia.
-  Usa números, preguntas o palabras de acción cuando sea posible.
-  Ejemplos de estructura: "X países ya hacen Y", "Por qué Z cambia todo",
-  "El plan que podría X", "Así funciona el nuevo Y"
-- META DESCRIPCIÓN: Entre 140 y 155 caracteres exactos. Completa la historia del título.
-- CUERPO: Primer párrafo responde Qué/Quién/Cuándo/Dónde en máx 50 palabras.
+• "guerra"        → Conflictos armados, ataques militares, terrorismo, alto el fuego,
+                    tropas, misiles, bombardeos, víctimas de guerra, tensiones bélicas.
+                    Ejemplos: ataque de Irán a Israel, intercambio de fuego, drones militares.
+
+• "politica"      → Decisiones gubernamentales, elecciones, diplomacia, sanciones,
+                    acuerdos entre países, líderes mundiales, política exterior.
+                    Ejemplos: Trump impone sanciones, cumbre del G20, elecciones en Francia.
+
+• "economia"      → Mercados, inflación, aranceles, comercio, petróleo, criptomonedas,
+                    bancos centrales, bolsa, empresas, inversión.
+                    Ejemplos: FMI sube tasas, Bitcoin rompe récord, caída del peso.
+
+• "tecnologia"    → IA, software, hardware, startups, ciberseguridad, redes sociales,
+                    smartphones, videojuegos, innovación tecnológica.
+                    Ejemplos: OpenAI lanza GPT-5, Apple presenta iPhone, hackeo masivo.
+
+• "deportes"      → Fútbol, olimpiadas, tenis, NBA, F1, Copa del Mundo, atletas.
+                    Ejemplos: Argentina gana el Mundial, Nadal se retira, el Barça ficha a X.
+
+• "ciencia"       → Descubrimientos científicos, espacio, NASA, física, biología,
+                    astronomía, investigaciones académicas, arqueología.
+                    Ejemplos: NASA encuentra agua en Marte, nuevo dinosaurio descubierto.
+
+• "salud"         → Enfermedades, tratamientos, vacunas, pandemia, OMS, medicamentos,
+                    salud mental, investigaciones médicas, hospitales.
+                    Ejemplos: nueva vacuna contra cáncer, brote de gripe, OMS alerta.
+
+• "entretenimiento" → Cine, música, series, celebrities, festivales, premios,
+                    cultura pop, influencers.
+                    Ejemplos: Oscar 2025, Taylor Swift de gira, Netflix estrena serie.
+
+• "latinoamerica" → Noticias de países latinoamericanos SIN conflicto bélico activo,
+                    sin líder político principal como protagonista.
+                    Ejemplos: terremoto en Chile, carnaval en Brasil, economía de México.
+
+• "medio_ambiente" → Cambio climático, energías renovables, contaminación, biodiversidad,
+                    acuerdos ambientales, desastres ecológicos.
+
+• "desastre"      → Terremotos, huracanes, inundaciones, tsunamis, erupciones,
+                    emergencias naturales con víctimas.
+
+• "mundo"         → Internacional sin categoría más específica, relaciones entre países,
+                    ONU, organismos internacionales.
+
+• "general"       → Solo si no encaja en ninguna categoría anterior.
+
+REGLA CRÍTICA: Si la noticia tiene violencia, muertos, ataques o conflicto armado → "guerra".
+Si es sobre un político tomando una decisión (sin combate) → "politica".
+Si mezcla guerra y economía → el tema PRINCIPAL decide. Una noticia sobre "implicaciones económicas de la guerra" sigue siendo "guerra".
+
+PASO 2 — REESCRITURA SEO:
+- TÍTULO: Máx 60 chars. Keyword principal en primeras 3 palabras. Genera curiosidad/urgencia.
+  Estructuras Discover: "X países ya hacen Y", "Por qué Z cambia todo", "Así funciona el nuevo Y"
+- META DESCRIPCIÓN: Entre 140 y 155 caracteres exactos.
+- CUERPO HTML: Primer párrafo: Qué/Quién/Cuándo/Dónde en ≤50 palabras.
   Subtítulos <h2> cada 150-200 palabras. Párrafos de máx 3 líneas.
-  1 lista <ul><li> si hay causas/consecuencias/datos. 3-4 términos en <strong>.
-  Mínimo 350 palabras, máximo 600. Al final exactamente: [ENLACES_INTERNOS]
+  1 lista <ul><li> si aplica. 3-4 términos en <strong>. Mínimo 350 palabras, máximo 600.
+  Al final exactamente: [ENLACES_INTERNOS]
 - TONO: Profesional, español neutro internacional. Sin opinión política.
+- BRAND SAFETY: Si es guerra/crimen/desastre → enfoca en implicaciones geopolíticas,
+  impacto humanitario e institucional. Evita lenguaje gráfico o conteo de bajas.
 
-RESPONDE ÚNICAMENTE con este JSON sin markdown:
-{{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<p>...</p>...[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["...", "..."]}}"""
+RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
+{{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<p>...</p>[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3"], "categoria": "guerra|politica|economia|tecnologia|deportes|ciencia|salud|entretenimiento|latinoamerica|medio_ambiente|desastre|mundo|general"}}"""
 
     try:
         if OPENROUTER_API_KEY:
@@ -610,12 +731,23 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown:
             modelo  = "gpt-4o-mini"
 
         payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}],
-                   "temperature": 0.7, "max_tokens": 1400}
-        resp = requests.post(url_api, headers=headers, json=payload, timeout=30)
+                   "temperature": 0.4, "max_tokens": 1600}
+        resp = requests.post(url_api, headers=headers, json=payload, timeout=35)
         texto = resp.json()["choices"][0]["message"]["content"].strip()
         texto = re.sub(r'^```json\s*|```$', '', texto, flags=re.MULTILINE).strip()
         resultado = json.loads(texto)
-        log(f"✅ IA SEO — Título: {resultado.get('titulo_seo','')[:55]}", 'info')
+
+        # Validar que la categoría devuelta sea válida
+        categorias_validas = set(CATEGORIA_WP.keys())
+        cat_ia = resultado.get('categoria', '').strip().lower()
+        if cat_ia not in categorias_validas:
+            log(f"⚠️ IA devolvió categoría inválida '{cat_ia}' — usando sugerida '{categoria_sugerida}'", 'advertencia')
+            resultado['categoria'] = categoria_sugerida if categoria_sugerida in categorias_validas else 'general'
+        else:
+            if cat_ia != categoria_sugerida:
+                log(f"🧠 IA corrigió categoría: '{categoria_sugerida}' → '{cat_ia}'", 'info')
+
+        log(f"✅ IA SEO — Título: {resultado.get('titulo_seo','')[:55]} | Cat: {resultado.get('categoria')}", 'info')
         return resultado
     except Exception as e:
         log(f"⚠️ reescribir_noticia error: {e}", 'advertencia')
@@ -1545,7 +1677,14 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
 {schema_markup}
 """
 
-    slug_cat   = CATEGORIA_WP.get(tema, 'internacional')
+    # V16: Usar categoría determinada por IA — tiene prioridad sobre el tema sugerido
+    categoria_final = resultado_ia.get('categoria', tema) if resultado_ia else tema
+    # Validar que sea una categoría conocida
+    if categoria_final not in CATEGORIA_WP:
+        log(f"⚠️ Categoría '{categoria_final}' inválida — usando '{tema}'", 'advertencia')
+        categoria_final = tema if tema in CATEGORIA_WP else 'general'
+
+    slug_cat   = CATEGORIA_WP.get(categoria_final, 'internacional')
     cat_id     = obtener_id_categoria_wp(slug_cat)
     categorias = [cat_id] if cat_id else []
 
@@ -2461,14 +2600,16 @@ def main():
                 log("ERROR: No se encontró noticia válida con imagen", 'error')
             else:
                 log(f"\n📝 SELECCIONADA: {seleccionada['titulo'][:70]}")
-                tema = detectar_tema(seleccionada['titulo'], seleccionada.get('descripcion', ''))
-                tema = ajustar_categoria_por_cuota(tema)
-                log(f"   Categoría: {tema} | brand_safe={es_brand_safe(tema)}", 'info')
+                # V16: detectar_tema() es solo la pista inicial para la IA.
+                # La categoría definitiva la decide la IA al leer el contenido completo.
+                tema_sugerido = detectar_tema(seleccionada['titulo'], seleccionada.get('descripcion', ''))
+                tema_sugerido = ajustar_categoria_por_cuota(tema_sugerido)
+                log(f"   Categoría sugerida (keywords): {tema_sugerido} — la IA decidirá la final", 'info')
 
                 url_articulo_wp = publicar_en_wordpress(
                     titulo       = seleccionada['titulo'],
                     contenido    = contenido,
-                    tema         = tema,
+                    tema         = tema_sugerido,
                     imagen_path  = img_path,
                     fuente_url   = seleccionada['url'],
                     fecha_fuente = seleccionada.get('fecha'),
@@ -2478,7 +2619,8 @@ def main():
                 if url_articulo_wp:
                     exito_wp = True
                     guardar_estado_wp()
-                    registrar_cuota(tema)
+                    # Registrar cuota con tema_sugerido (la cat IA se usa internamente en WP)
+                    registrar_cuota(tema_sugerido)
                     h['estadisticas']['total_wp'] = h['estadisticas'].get('total_wp', 0) + 1
 
                     # ── Pinterest en paralelo con WP ───────────────
@@ -2489,7 +2631,7 @@ def main():
                             descripcion  = contenido[:490],
                             url_articulo = url_articulo_wp,
                             img_path     = img_path,
-                            categoria    = tema,
+                            categoria    = tema_sugerido,
                         )
                         if ok_pt:
                             h['estadisticas']['total_pinterest'] = h['estadisticas'].get('total_pinterest', 0) + 1

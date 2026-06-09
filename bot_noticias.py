@@ -1,7 +1,40 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V16.0
+Bot de Noticias Internacionales - V17.1
+CAMBIOS EN V17.1:
+  - CUOTAS: Rebalanceo completo para público hispanoamericano (LATAM-first)
+  - Deportes: 16% (Mundial 2026 en USA/México/Canadá — audiencia masiva)
+  - Economía: 13% (dólar, inflación, crisis = tema diario del latino)
+  - Latinoamérica: 10% (identidad regional — diferenciador vs BBC/CNN)
+  - Entretenimiento: 10% (farándula latina, música urbana, reggaeton)
+  - Política: 9% (Milei, Boric, Sheinbaum, Maduro = virales garantizados)
+  - Guerra: 4% → bajada desde 8% (brand-unsafe + destruye RPM AdSense)
+  - Crimen: 1% → casi eliminado (riesgo desmonetización AdSense)
+  - Religión/General: 0% (no generan tráfico ni CPM)
+
+CAMBIOS EN V17.0:
+  - FUENTES: NewsAPI — queries duplicadas para Deportes, Entretenimiento y Mundo.
+    Se agregaron 10 nuevas queries cubriendo fútbol, NBA, F1, cine, música,
+    streaming, premios, farándula y noticias generales internacionales.
+  - FUENTES: NewsData — se agregaron categorías 'entertainment' y 'sports'
+    que estaban ausentes, cubriendo el 100% de categorías disponibles de la API.
+  - FUENTES: GNews — se agregaron queries de respaldo por categoría para
+    deportes y entretenimiento en caso de que los tópicos no devuelvan resultados.
+  - FUENTES: RSS — se triplicaron los feeds:
+    * Deportes: ESPN Deportes, Marca, AS, Mundo Deportivo
+    * Entretenimiento: Espinof, Fotogramas, Los40
+    * Mundo/Internacional: La Vanguardia, Clarín Internacional, DW Español
+    * LATAM: Infobae América, El Universal, La Nación Argentina
+  - CUOTAS: entretenimiento sube de 5% a 8% (era demasiado bajo para
+    cubrir cine + música + series + celebrities)
+  - CUOTAS: deportes sube de 12% a 14% durante el Mundial 2026
+  - PRIORIDAD: deportes y entretenimiento agregados a PALABRAS_ALTA_PRIORIDAD
+    para que el sistema de puntaje los compita con noticias de guerra
+  - DETECCIÓN: keywords de entretenimiento ampliadas para capturar:
+    "estreno", "tráiler", "película", "álbum", "gira", "concierto",
+    "Billboard", "Spotify chart", "temporada", "secuela", "remake"
+
 CAMBIOS EN V16.0:
   - CLASIFICACIÓN IA: La IA ahora lee y comprende el contenido completo para clasificar.
     Ya no depende de keywords estáticas. La función reescribir_noticia_v9() devuelve
@@ -98,25 +131,29 @@ from urllib.parse import urlparse
 # CUOTAS EDITORIALES POR CATEGORÍA (monetización AdSense)
 # ──────────────────────────────────────────────────────────
 CUOTAS_CATEGORIA = {
-    # Brand-safe / alto CPM — priorizados
-    'economia':        {'cuota': 0.13, 'cpm_relativo': 1.55, 'brand_safe': True},
-    'tecnologia':      {'cuota': 0.13, 'cpm_relativo': 1.45, 'brand_safe': True},
-    'ciencia':         {'cuota': 0.10, 'cpm_relativo': 1.40, 'brand_safe': True},
-    'salud':           {'cuota': 0.10, 'cpm_relativo': 1.40, 'brand_safe': True},
-    'deportes':        {'cuota': 0.12, 'cpm_relativo': 1.20, 'brand_safe': True},
-    'mundo':           {'cuota': 0.08, 'cpm_relativo': 1.00, 'brand_safe': True},
-    'latinoamerica':   {'cuota': 0.06, 'cpm_relativo': 1.10, 'brand_safe': True},
-    'politica':        {'cuota': 0.07, 'cpm_relativo': 1.05, 'brand_safe': False},
-    'entretenimiento': {'cuota': 0.05, 'cpm_relativo': 1.15, 'brand_safe': True},
-    'educacion':       {'cuota': 0.04, 'cpm_relativo': 1.35, 'brand_safe': True},
-    'medio_ambiente':  {'cuota': 0.04, 'cpm_relativo': 1.28, 'brand_safe': True},
-    'clima':           {'cuota': 0.03, 'cpm_relativo': 1.30, 'brand_safe': True},
-    'religion':        {'cuota': 0.02, 'cpm_relativo': 1.00, 'brand_safe': True},
-    'general':         {'cuota': 0.04, 'cpm_relativo': 1.35, 'brand_safe': True},
-    # Bajo CPM / brand-unsafe — cuotas ajustadas al volumen real de noticias internacionales
-    'guerra':          {'cuota': 0.08, 'cpm_relativo': 0.90, 'brand_safe': False},
-    'desastre':        {'cuota': 0.05, 'cpm_relativo': 0.95, 'brand_safe': False},
-    'crimen':          {'cuota': 0.04, 'cpm_relativo': 0.85, 'brand_safe': False},
+    # ── V17.1 LATAM: rebalanceo para público hispanoamericano ─────────
+    # Alto engagement LATAM + buen CPM AdSense
+    'deportes':        {'cuota': 0.16, 'cpm_relativo': 1.25, 'brand_safe': True},   # Mundial 2026
+    'economia':        {'cuota': 0.13, 'cpm_relativo': 1.55, 'brand_safe': True},   # Dólar/inflación
+    'tecnologia':      {'cuota': 0.11, 'cpm_relativo': 1.45, 'brand_safe': True},
+    'latinoamerica':   {'cuota': 0.10, 'cpm_relativo': 1.15, 'brand_safe': True},   # Identidad regional
+    'entretenimiento': {'cuota': 0.10, 'cpm_relativo': 1.20, 'brand_safe': True},   # Farándula + música
+    'politica':        {'cuota': 0.09, 'cpm_relativo': 1.10, 'brand_safe': False},  # Milei/Boric/Sheinbaum
+    # CPM alto, engagement moderado
+    'ciencia':         {'cuota': 0.07, 'cpm_relativo': 1.40, 'brand_safe': True},
+    'salud':           {'cuota': 0.07, 'cpm_relativo': 1.40, 'brand_safe': True},
+    'medio_ambiente':  {'cuota': 0.03, 'cpm_relativo': 1.28, 'brand_safe': True},
+    # Internacional general
+    'mundo':           {'cuota': 0.05, 'cpm_relativo': 1.00, 'brand_safe': True},
+    # Brand-unsafe / bajo CPM — mínimos editoriales
+    'guerra':          {'cuota': 0.04, 'cpm_relativo': 0.90, 'brand_safe': False},
+    'desastre':        {'cuota': 0.02, 'cpm_relativo': 0.95, 'brand_safe': False},
+    'clima':           {'cuota': 0.01, 'cpm_relativo': 1.30, 'brand_safe': True},
+    'crimen':          {'cuota': 0.01, 'cpm_relativo': 0.85, 'brand_safe': False},
+    'educacion':       {'cuota': 0.01, 'cpm_relativo': 1.35, 'brand_safe': True},
+    # Cuota mínima de emergencia — no se buscan activamente
+    'religion':        {'cuota': 0.00, 'cpm_relativo': 1.00, 'brand_safe': True},
+    'general':         {'cuota': 0.00, 'cpm_relativo': 1.00, 'brand_safe': True},
 }
 CUOTAS_CONTROL_PATH = 'estado_cuotas.json'
 
@@ -318,6 +355,19 @@ PALABRAS_ALTA_PRIORIDAD = [
     "xi jinping", "kim jong un", "macron",
     "hamas", "hezbollah", "isis", "taliban", "houthis",
     "elon musk",
+    # V17: Deportes — Mundial 2026 y grandes eventos
+    "mundial 2026", "copa del mundo", "champions league", "champions",
+    "nba finals", "super bowl", "formula 1", "grand prix",
+    "olimpiadas", "juegos olimpicos",
+    "fichaje", "transfer", "gol", "campeón", "campeona",
+    "messi", "mbappe", "neymar", "cristiano ronaldo",
+    "lebron james", "verstappen", "djokovic", "alcaraz",
+    # V17: Entretenimiento — estrenos y eventos masivos
+    "oscar 2025", "oscar 2026", "grammy", "emmy",
+    "taylor swift", "bad bunny", "shakira", "beyonce",
+    "netflix estreno", "disney plus", "marvel", "star wars",
+    "billie eilish", "the weeknd", "drake",
+    "cannes 2025", "cannes 2026",
 ]
 
 PALABRAS_MEDIA_PRIORIDAD = [
@@ -552,15 +602,29 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'religion'
 
-    # ── Prioridad 14: Entretenimiento — SOLO coincidencias EXPLÍCITAS
+    # ── Prioridad 14: Entretenimiento — V17: keywords ampliadas
     if any(p in txt for p in [
-        "pelicula estreno", "serie de television", "musica pop",
-        "artista musical", "actor de cine", "actriz premiada",
-        "hollywood", "netflix serie", "oscar", "grammy",
-        "album musical", "concierto mundial", "banda de musica",
-        "celebridad", "influencer", "reality show",
-        "festival de cine", "cannes", "sundance", "emmy",
-        "spotify", "youtube music", "gira musical",
+        # Cine y series
+        "pelicula estreno", "serie de television", "estreno de", "trailer oficial",
+        "estreno mundial", "taquilla", "recaudacion", "box office",
+        "hollywood", "netflix serie", "netflix estrena", "disney plus",
+        "oscar", "grammy", "emmy", "golden globe", "bafta",
+        "festival de cine", "cannes", "sundance", "venecia film",
+        "actor de cine", "actriz premiada", "director de cine",
+        # Música
+        "musica pop", "artista musical", "album musical", "nuevo album",
+        "concierto mundial", "banda de musica", "gira musical",
+        "spotify", "youtube music", "billboard", "numero uno",
+        "lanzamiento musical", "videoclip", "videoclip oficial",
+        "taylor swift", "bad bunny", "shakira", "beyonce", "rihanna",
+        "billie eilish", "the weeknd", "drake", "reggaeton",
+        # Cultura y farándula
+        "celebridad", "influencer", "reality show", "tiktoker",
+        "youtube", "youtuber", "streamer",
+        "nominado a", "premio a la mejor",
+        "temporada de", "segunda temporada", "tercera temporada",
+        "secuela de", "remake de", "spin-off",
+        "marvel", "star wars", "dc comics", "anime",
     ]):
         return 'entretenimiento'
 
@@ -1815,17 +1879,41 @@ def publicar_pinterest(titulo, descripcion, url_articulo, img_path, categoria):
 def obtener_newsapi():
     if not NEWS_API_KEY:
         return []
+    # V17: Queries ampliadas para cubrir TODAS las categorías del sitio
     queries = [
-        'Ukraine war Russia Putin Zelensky',
-        'Israel Gaza Hamas Iran conflict',
+        # Internacional / Guerra
+        'Ukraine Russia war conflict',
+        'Israel Gaza Hamas Middle East',
         'China Taiwan US tensions',
-        'Trump Biden US politics',
-        'economy inflation recession',
-        'NATO EU Europe summit',
-        'cyberattack hacking security',
-        'climate change disaster',
-        'Latin America news',
-        'technology artificial intelligence',
+        # Política
+        'Trump Biden US politics White House',
+        'NATO EU Europe summit diplomacy',
+        # Economía
+        'economy inflation recession markets',
+        # Tecnología
+        'technology artificial intelligence OpenAI',
+        # Deportes — V17 NUEVO
+        'football soccer Champions League goals',
+        'NBA basketball playoffs finals',
+        'Formula 1 F1 Grand Prix race',
+        'Copa del Mundo 2026 World Cup',
+        'Messi Ronaldo Mbappe transfer fichaje',
+        'tennis ATP WTA Wimbledon Roland Garros',
+        'boxing UFC MMA fight champion',
+        # Entretenimiento — V17 NUEVO
+        'movies cinema Hollywood box office',
+        'Netflix series premiere streaming',
+        'music pop album Grammy Billboard',
+        'Oscar awards celebrities Hollywood',
+        'Taylor Swift Bad Bunny concert tour',
+        'Marvel Disney Star Wars premiere',
+        # Mundo / Internacional General
+        'world news international latest',
+        'Africa Asia Europe Pacific news',
+        'climate change environment disaster',
+        'science space NASA discovery',
+        # Latinoamérica
+        'Latin America news Mexico Brazil Argentina',
     ]
     noticias = []
     for q in queries:
@@ -1861,7 +1949,9 @@ def obtener_newsapi():
 def obtener_newsdata():
     if not NEWSDATA_API_KEY:
         return []
-    categorias = ['world', 'politics', 'business', 'technology', 'science', 'health']
+    # V17: Se agregan 'entertainment' y 'sports' que estaban ausentes
+    categorias = ['world', 'politics', 'business', 'technology', 'science',
+                  'health', 'entertainment', 'sports']
     noticias = []
     for cat in categorias:
         try:
@@ -1925,12 +2015,38 @@ def obtener_gnews():
     return noticias
 
 def obtener_rss():
+    # V17: Feeds triplicados — cobertura completa por categoría
     fuentes = [
-        ('http://feeds.bbci.co.uk/mundo/rss.xml',             'BBC Mundo'),
-        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada', 'El País'),
-        ('https://www.infobae.com/arc/outboundfeeds/rss/mundo/', 'Infobae'),
-        ('https://feeds.france24.com/es/',                    'France 24'),
-        ('https://www.efe.com/efe/espana/1/rss',              'EFE'),
+        # ── Internacional / Noticias generales ─────────────────────────
+        ('http://feeds.bbci.co.uk/mundo/rss.xml',                                   'BBC Mundo'),
+        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada', 'El País Internacional'),
+        ('https://www.infobae.com/arc/outboundfeeds/rss/mundo/',                    'Infobae Mundo'),
+        ('https://feeds.france24.com/es/',                                           'France 24'),
+        ('https://www.efe.com/efe/espana/1/rss',                                    'EFE'),
+        ('https://www.dw.com/es/ultimas-noticias/s-30689792/rss',                   'Deutsche Welle ES'),
+        ('https://www.lavanguardia.com/rss/internacional.xml',                      'La Vanguardia Internacional'),
+        ('https://www.20minutos.es/rss/internacional/',                             '20 Minutos Internacional'),
+        # ── Deportes — V17 NUEVO ────────────────────────────────────────
+        ('https://www.espn.com.mx/rss/deportes.xml',                                'ESPN Deportes'),
+        ('https://e00-marca.uecdn.es/rss/portada.xml',                              'Marca'),
+        ('https://feeds.as.com/mrss-s/pages/as/site/as.com/portada/',              'AS Deportes'),
+        ('https://www.mundodeportivo.com/rss/home.xml',                             'Mundo Deportivo'),
+        ('https://www.goal.com/es/rss',                                             'Goal ES'),
+        ('https://www.record.com.mx/rss/portada.xml',                               'Record Mx'),
+        # ── Entretenimiento — V17 NUEVO ─────────────────────────────────
+        ('https://www.espinof.com/feed',                                            'Espinof Cine'),
+        ('https://www.fotogramas.es/rss/noticias/',                                 'Fotogramas'),
+        ('https://los40.com/los40/rss/portada/',                                    'Los 40'),
+        ('https://www.sensacine.com/rss/',                                          'SensaCine'),
+        ('https://www.elconfidencial.com/rss/cultura/',                             'El Confidencial Cultura'),
+        # ── Latinoamérica — V17 NUEVO ───────────────────────────────────
+        ('https://www.infobae.com/arc/outboundfeeds/rss/america/',                  'Infobae América'),
+        ('https://www.eluniversal.com.mx/rss.xml',                                  'El Universal MX'),
+        ('https://www.lanacion.com.ar/arc/outboundfeeds/rss/',                      'La Nación Argentina'),
+        ('https://www.clarin.com/rss/elmundo/',                                     'Clarín Mundo'),
+        # ── Tecnología adicional ────────────────────────────────────────
+        ('https://feeds.xataka.com/xataka',                                         'Xataka'),
+        ('https://hipertextual.com/feed',                                           'Hipertextual'),
     ]
     noticias = []
     for url_feed, nombre in fuentes:
@@ -1953,6 +2069,12 @@ def obtener_rss():
                 img = None
                 if hasattr(e, 'media_content') and e.media_content:
                     img = e.media_content[0].get('url')
+                if not img:
+                    # Intentar enclosure
+                    for enc in getattr(e, 'enclosures', []):
+                        if enc.get('type', '').startswith('image'):
+                            img = enc.get('href') or enc.get('url')
+                            break
                 # RSS: aceptar sin imagen (se intenta obtener después)
                 noticias.append({
                     'titulo':      limpiar_texto(t),
@@ -2698,7 +2820,7 @@ def main():
     h = cargar_historial()
     stats = h.get('estadisticas', {})
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V14.1:", 'exito')
+    log(f"✅ RESUMEN V17.1:", 'exito')
     log(f"   Total publicadas: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')
     log(f"   Facebook:  {stats.get('total_fb', 0)}", 'info')

@@ -1,7 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.1
+Bot de Noticias Internacionales - V17.2
+CAMBIOS EN V17.2:
+  - PROMPT IA: Reescritura completamente rediseñada para cumplir estándares AdSense
+    "contenido de valor original". Google dejó de aprobar sitios con reescrituras simples.
+  - PROMPT IA: Estructura editorial obligatoria de 7 secciones:
+    1) Apertura con datos duros (Qué/Quién/Cuándo/Dónde)
+    2) Contexto y antecedentes (por qué importa ahora)
+    3) Subtítulo + desarrollo con datos del original
+    4) Lista de puntos clave
+    5) Sección "Qué significa para América Latina" — OBLIGATORIA en cada artículo
+    6) Cierre con reflexión
+  - PROMPT IA: Perspectiva LATAM obligatoria en TODOS los artículos — diferenciador
+    editorial clave vs BBC/CNN/DW que no tienen enfoque regional latinoamericano
+  - PROMPT IA: Mínimo 420 palabras (era 350) — artículos más sustanciales
+  - PROMPT IA: temperature 0.35 (era 0.4) — más coherencia, menos divagación
+  - PROMPT IA: max_tokens 2000 (era 1600) — espacio para artículo completo sin truncar
 CAMBIOS EN V17.1:
   - CUOTAS: Rebalanceo completo para público hispanoamericano (LATAM-first)
   - Deportes: 16% (Mundial 2026 en USA/México/Canadá — audiencia masiva)
@@ -706,8 +721,9 @@ def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
     if not api_key:
         return None
 
-    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias internacionales en español.
-Tu tarea: leer esta noticia completa, clasificarla correctamente y reescribirla para SEO y Google Discover.
+    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias internacionales en español para América Latina.
+Tu tarea: clasificar esta noticia y transformarla en un artículo periodístico ORIGINAL con valor editorial real.
+Google evalúa si el contenido aporta valor único — no se aceptan simples reescrituras.
 
 ═══════════════════════════════════════
 NOTICIA A PROCESAR:
@@ -717,69 +733,73 @@ Categoría sugerida por sistema: {categoria_sugerida}
 ═══════════════════════════════════════
 
 PASO 1 — CLASIFICACIÓN (lee y comprende antes de clasificar):
-Elige UNA categoría según el tema PRINCIPAL de la noticia:
+Elige UNA categoría según el tema PRINCIPAL:
 
-• "guerra"        → Conflictos armados, ataques militares, terrorismo, alto el fuego,
-                    tropas, misiles, bombardeos, víctimas de guerra, tensiones bélicas.
-                    Ejemplos: ataque de Irán a Israel, intercambio de fuego, drones militares.
+• "guerra"          → Conflictos armados, ataques militares, terrorismo, alto el fuego,
+                      tropas, misiles, bombardeos, víctimas de guerra, tensiones bélicas.
+• "politica"        → Decisiones gubernamentales, elecciones, diplomacia, sanciones,
+                      acuerdos entre países, líderes mundiales, política exterior.
+• "economia"        → Mercados, inflación, aranceles, comercio, petróleo, criptomonedas,
+                      bancos centrales, bolsa, empresas, inversión.
+• "tecnologia"      → IA, software, hardware, startups, ciberseguridad, redes sociales,
+                      smartphones, videojuegos, innovación tecnológica.
+• "deportes"        → Fútbol, olimpiadas, tenis, NBA, F1, Copa del Mundo, atletas.
+• "ciencia"         → Descubrimientos científicos, espacio, NASA, física, biología,
+                      astronomía, investigaciones académicas, arqueología.
+• "salud"           → Enfermedades, tratamientos, vacunas, pandemia, OMS, medicamentos,
+                      salud mental, investigaciones médicas, hospitales.
+• "entretenimiento" → Cine, música, series, celebrities, festivales, premios, cultura pop.
+• "latinoamerica"   → Noticias de LATAM SIN conflicto bélico activo ni líder político principal.
+• "medio_ambiente"  → Cambio climático, energías renovables, contaminación, biodiversidad.
+• "desastre"        → Terremotos, huracanes, inundaciones, tsunamis, erupciones con víctimas.
+• "mundo"           → Internacional sin categoría más específica, ONU, organismos internacionales.
+• "general"         → Solo si no encaja en ninguna anterior.
 
-• "politica"      → Decisiones gubernamentales, elecciones, diplomacia, sanciones,
-                    acuerdos entre países, líderes mundiales, política exterior.
-                    Ejemplos: Trump impone sanciones, cumbre del G20, elecciones en Francia.
+REGLA CRÍTICA: Si hay violencia/muertos/ataques/combate → "guerra".
+Si político toma decisión sin combate → "politica".
+Tema PRINCIPAL decide cuando hay mezcla de categorías.
 
-• "economia"      → Mercados, inflación, aranceles, comercio, petróleo, criptomonedas,
-                    bancos centrales, bolsa, empresas, inversión.
-                    Ejemplos: FMI sube tasas, Bitcoin rompe récord, caída del peso.
+PASO 2 — ARTÍCULO PERIODÍSTICO CON VALOR EDITORIAL ORIGINAL:
 
-• "tecnologia"    → IA, software, hardware, startups, ciberseguridad, redes sociales,
-                    smartphones, videojuegos, innovación tecnológica.
-                    Ejemplos: OpenAI lanza GPT-5, Apple presenta iPhone, hackeo masivo.
+Estructura OBLIGATORIA del contenido_html:
 
-• "deportes"      → Fútbol, olimpiadas, tenis, NBA, F1, Copa del Mundo, atletas.
-                    Ejemplos: Argentina gana el Mundial, Nadal se retira, el Barça ficha a X.
+1. <p> PÁRRAFO DE APERTURA (≤50 palabras): Qué/Quién/Cuándo/Dónde — datos duros concretos.
 
-• "ciencia"       → Descubrimientos científicos, espacio, NASA, física, biología,
-                    astronomía, investigaciones académicas, arqueología.
-                    Ejemplos: NASA encuentra agua en Marte, nuevo dinosaurio descubierto.
+2. <p> CONTEXTO Y ANTECEDENTES: Por qué esta noticia importa AHORA. Qué situación previa
+   la hace relevante. Mínimo 2-3 oraciones con contexto real del contenido original.
 
-• "salud"         → Enfermedades, tratamientos, vacunas, pandemia, OMS, medicamentos,
-                    salud mental, investigaciones médicas, hospitales.
-                    Ejemplos: nueva vacuna contra cáncer, brote de gripe, OMS alerta.
+3. <h2> Subtítulo descriptivo del desarrollo principal
 
-• "entretenimiento" → Cine, música, series, celebrities, festivales, premios,
-                    cultura pop, influencers.
-                    Ejemplos: Oscar 2025, Taylor Swift de gira, Netflix estrena serie.
+4. <p><p> DESARROLLO: 2 párrafos con los datos, cifras o hechos más importantes del texto
+   original. Usa <strong> en 3-4 términos clave. Incluye declaraciones o datos específicos.
 
-• "latinoamerica" → Noticias de países latinoamericanos SIN conflicto bélico activo,
-                    sin líder político principal como protagonista.
-                    Ejemplos: terremoto en Chile, carnaval en Brasil, economía de México.
+5. <ul><li> PUNTOS CLAVE: Lista de 3-4 aspectos esenciales de la noticia (si aplica).
 
-• "medio_ambiente" → Cambio climático, energías renovables, contaminación, biodiversidad,
-                    acuerdos ambientales, desastres ecológicos.
+6. <h2>Qué significa esto para América Latina</h2>
+   <p> PERSPECTIVA LATAM OBLIGATORIA: Cómo impacta o se relaciona esta noticia con
+   México, Argentina, Chile, Colombia, Brasil u otro país latinoamericano relevante.
+   Menciona AL MENOS un país específico con contexto real. Si es noticia de LATAM,
+   amplía el impacto regional. Si es noticia global, explica la conexión con la región.
 
-• "desastre"      → Terremotos, huracanes, inundaciones, tsunamis, erupciones,
-                    emergencias naturales con víctimas.
+7. <p> CIERRE: Reflexión final o dato de perspectiva que agregue valor al lector.
+   Puede terminar con una pregunta que invite a pensar (NO pedir comentarios).
 
-• "mundo"         → Internacional sin categoría más específica, relaciones entre países,
-                    ONU, organismos internacionales.
+REGLAS DE CALIDAD:
+- Mínimo 420 palabras, máximo 680 palabras en el cuerpo
+- Párrafos de máx 4 líneas
+- Tono: periodismo serio, español neutro latinoamericano, sin opinión política partidista
+- BRAND SAFETY: En guerra/crimen → enfoca en implicaciones geopolíticas e impacto
+  humanitario. Sin lenguaje gráfico ni conteo detallado de bajas.
+- PROHIBIDO: Inventar datos, citas o cifras que no estén en el contenido original.
+- Al final del contenido_html exactamente: [ENLACES_INTERNOS]
 
-• "general"       → Solo si no encaja en ninguna categoría anterior.
+TÍTULO SEO (máx 60 chars):
+- Keyword principal en primeras 3 palabras
+- Genera curiosidad o urgencia genuina
+- Estructuras efectivas: "Por qué X cambia todo", "Así afecta Y a América Latina",
+  "X países ya...", "Lo que nadie dice sobre Z"
 
-REGLA CRÍTICA: Si la noticia tiene violencia, muertos, ataques o conflicto armado → "guerra".
-Si es sobre un político tomando una decisión (sin combate) → "politica".
-Si mezcla guerra y economía → el tema PRINCIPAL decide. Una noticia sobre "implicaciones económicas de la guerra" sigue siendo "guerra".
-
-PASO 2 — REESCRITURA SEO:
-- TÍTULO: Máx 60 chars. Keyword principal en primeras 3 palabras. Genera curiosidad/urgencia.
-  Estructuras Discover: "X países ya hacen Y", "Por qué Z cambia todo", "Así funciona el nuevo Y"
-- META DESCRIPCIÓN: Entre 140 y 155 caracteres exactos.
-- CUERPO HTML: Primer párrafo: Qué/Quién/Cuándo/Dónde en ≤50 palabras.
-  Subtítulos <h2> cada 150-200 palabras. Párrafos de máx 3 líneas.
-  1 lista <ul><li> si aplica. 3-4 términos en <strong>. Mínimo 350 palabras, máximo 600.
-  Al final exactamente: [ENLACES_INTERNOS]
-- TONO: Profesional, español neutro internacional. Sin opinión política.
-- BRAND SAFETY: Si es guerra/crimen/desastre → enfoca en implicaciones geopolíticas,
-  impacto humanitario e institucional. Evita lenguaje gráfico o conteo de bajas.
+META DESCRIPCIÓN: Entre 140 y 155 caracteres exactos. Resume el valor informativo real.
 
 RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
 {{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<p>...</p>[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3"], "categoria": "guerra|politica|economia|tecnologia|deportes|ciencia|salud|entretenimiento|latinoamerica|medio_ambiente|desastre|mundo|general"}}"""
@@ -795,7 +815,7 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
             modelo  = "gpt-4o-mini"
 
         payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}],
-                   "temperature": 0.4, "max_tokens": 1600}
+                   "temperature": 0.35, "max_tokens": 2000}
         resp = requests.post(url_api, headers=headers, json=payload, timeout=35)
         texto = resp.json()["choices"][0]["message"]["content"].strip()
         texto = re.sub(r'^```json\s*|```$', '', texto, flags=re.MULTILINE).strip()

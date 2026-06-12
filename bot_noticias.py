@@ -1,7 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.2
+Bot de Noticias Internacionales - V17.3
+CAMBIOS EN V17.3:
+  - LATAM+CHILE: Nuevo bloque de publicación dedicado exclusivamente a noticias
+    de América Latina y Chile — separado del flujo general de noticias.
+  - LATAM+CHILE: 15 artículos adicionales por día distribuidos así:
+      * 4 artículos de Chile específicamente
+      * 11 artículos del resto de LATAM (sin Chile)
+  - LATAM+CHILE: Nuevas fuentes dedicadas RSS para Chile:
+      * La Tercera, El Mercurio, Emol, BioBioChile, Cooperativa, CNN Chile
+  - LATAM+CHILE: Nuevas fuentes RSS LATAM región por región:
+      * México: El Universal, Reforma, Milenio
+      * Argentina: Infobae AR, La Nación, Página 12
+      * Colombia: El Tiempo, Semana
+      * Perú: El Comercio, RPP
+      * Venezuela/Bolivia/Ecuador/Uruguay: medios regionales
+  - LATAM+CHILE: Nuevas queries NewsAPI específicas para Chile y LATAM
+  - LATAM+CHILE: Función obtener_noticias_chile() — solo retorna noticias
+    cuyo origen/contenido sea claramente de Chile
+  - LATAM+CHILE: Función obtener_noticias_latam() — retorna noticias de LATAM
+    excluyendo Chile (para no duplicar)
+  - LATAM+CHILE: Función es_noticia_chile() — detecta si una noticia es de Chile
+    usando keywords geográficas específicas (Santiago, Boric, CONAF, Carabineros,
+    peso chileno, etc.)
+  - LATAM+CHILE: Control de cuotas independiente para Chile y LATAM en
+    estado_cuotas_latam.json — no interfiere con cuotas generales
+  - LATAM+CHILE: MAX_POSTS_WP_DIA actualizado a 63 (48 general + 15 LATAM/Chile)
+  - LATAM+CHILE: GitHub Actions — se agrega una ejecución paralela del bloque
+    LATAM cada 96 minutos para distribuir los 15 artículos durante el día
+
 CAMBIOS EN V17.2:
   - PROMPT IA: Reescritura completamente rediseñada para cumplir estándares AdSense
     "contenido de valor original". Google dejó de aprobar sitios con reescrituras simples.
@@ -198,6 +226,12 @@ ESTADO_WP_PATH      = 'estado_wp.json'
 ESTADO_FB_PATH      = 'estado_fb.json'
 PENDING_VIDEOS_DIR  = 'pending_videos'
 ESTADO_PENDING_PATH = 'estado_pending_videos.json'
+ESTADO_LATAM_PATH   = 'estado_cuotas_latam.json'   # V17.3: cuotas Chile+LATAM independientes
+
+# ── V17.3: Modo de ejecución ──────────────────────────────
+# MODO_LATAM=true  → solo ejecuta bloque Chile+LATAM
+# MODO_LATAM=false → ejecuta flujo general (default)
+MODO_LATAM = os.getenv('MODO_LATAM', 'false').lower() == 'true'
 
 # Tiempos
 TIEMPO_ENTRE_WP_MIN = 30
@@ -205,7 +239,10 @@ TIEMPO_ENTRE_FB_MIN = 60   # 1 hora mínima entre posts de Facebook
 
 # Límites diarios
 MAX_POSTS_FB_DIA  = 6    # Máximo 6 posts/día en Facebook (calidad > cantidad)
-MAX_POSTS_WP_DIA  = 48
+MAX_POSTS_WP_DIA        = 48   # Flujo general
+MAX_POSTS_WP_DIA_CHILE  = 4    # Chile: 4 artículos/día
+MAX_POSTS_WP_DIA_LATAM  = 11   # LATAM sin Chile: 11 artículos/día
+MAX_POSTS_WP_DIA_TOTAL  = 63   # Total máximo global (48 + 4 + 11)
 
 # Anti-duplicados
 UMBRAL_SIMILITUD_TITULO    = 0.72
@@ -1893,6 +1930,538 @@ def publicar_pinterest(titulo, descripcion, url_articulo, img_path, categoria):
         return False
 
 
+# ══════════════════════════════════════════════════════════
+# V17.3 — FUENTES LATAM + CHILE
+# ══════════════════════════════════════════════════════════
+
+# ── Keywords para detectar noticias de Chile ──────────────
+KEYWORDS_CHILE = [
+    # Geografía
+    "chile", "chilena", "chileno", "chilenas", "chilenos",
+    "santiago", "valparaíso", "valparaiso", "concepción", "concepcion",
+    "antofagasta", "temuco", "viña del mar", "vina del mar",
+    "la serena", "rancagua", "talca", "arica", "iquique", "puerto montt",
+    # Instituciones/Política chile
+    "gabriel boric", "boric", "gobierno de chile", "congreso chileno",
+    "senado chileno", "cámara de diputados chile", "camara de diputados chile",
+    "carabineros", "pdi chile", "ministerio de chile",
+    "banco central de chile", "peso chileno", "peso cl",
+    "conaf", "codelco", "enap chile", "transantiago", "metro de santiago",
+    "sernac", "sernapesca", "sii chile", "servicio de impuestos internos",
+    "comisión para el mercado financiero", "cmf chile",
+    # Economía/Empresas chile
+    "bolsa de santiago", "ipsa", "uf chilena", "utm chile",
+    "falabella", "cencosud", "lider cl", "jumbo chile",
+    "latam airlines chile", "sky airline",
+    # Cultura/Sociedad chile
+    "festival de viña", "festival de viña del mar",
+    "selección chilena", "la roja", "la roja chilena",
+    "colo colo", "universidad de chile", "universidad católica",
+    "huaso", "mapuche", "araucanía", "la araucania",
+]
+
+# ── Keywords para detectar noticias de LATAM (sin Chile) ──
+KEYWORDS_LATAM_PAISES = {
+    'mexico':     ["méxico", "mexico", "mexicano", "mexicana", "cdmx", "ciudad de mexico",
+                   "sheinbaum", "pemex", "guadalajara", "monterrey", "puebla"],
+    'argentina':  ["argentina", "argentino", "argentina", "buenos aires", "milei",
+                   "merval", "peso argentino", "rosario ar", "córdoba ar"],
+    'colombia':   ["colombia", "colombiano", "bogotá", "bogota", "petro", "medellín",
+                   "medellin", "cali colombia", "cartagena colombia"],
+    'brasil':     ["brasil", "brazil", "brasileño", "lula", "sao paulo", "río de janeiro",
+                   "rio de janeiro", "brasilia", "real brasileiro"],
+    'venezuela':  ["venezuela", "venezolano", "maduro", "caracas", "bolívar venezolano"],
+    'peru':       ["perú", "peru", "peruano", "lima perú", "lima peru", "boluarte"],
+    'ecuador':    ["ecuador", "ecuatoriano", "quito", "noboa", "guayaquil"],
+    'bolivia':    ["bolivia", "boliviano", "la paz bolivia", "arce bolivia"],
+    'uruguay':    ["uruguay", "uruguayo", "montevideo", "orsi"],
+    'paraguay':   ["paraguay", "paraguayo", "asunción", "asuncion"],
+    'cuba':       ["cuba", "cubano", "la habana", "havana cuba"],
+    'nicaragua':  ["nicaragua", "nicaragüense", "ortega nicaragua", "managua"],
+    'guatemala':  ["guatemala", "guatemalteco", "ciudad de guatemala", "giammattei"],
+    'honduras':   ["honduras", "hondureño", "tegucigalpa", "castro honduras"],
+    'el_salvador':["el salvador", "salvadoreño", "bukele", "san salvador"],
+    'panama':     ["panamá", "panama", "panameño", "ciudad de panamá"],
+    'costa_rica': ["costa rica", "costarricense", "san josé cr", "chaves costa rica"],
+    'rep_dom':    ["república dominicana", "dominicano", "santo domingo"],
+    'haiti':      ["haití", "haiti", "haitiano", "puerto príncipe"],
+}
+
+
+def es_noticia_chile(titulo, descripcion=""):
+    """
+    Detecta si una noticia es específicamente de Chile.
+    Retorna True si encuentra keywords de Chile en título o descripción.
+    """
+    txt = f"{titulo} {descripcion}".lower()
+    return any(kw in txt for kw in KEYWORDS_CHILE)
+
+
+def es_noticia_latam_sin_chile(titulo, descripcion=""):
+    """
+    Detecta si una noticia es de LATAM pero NO de Chile.
+    Retorna (True, pais) si es de LATAM, (False, None) si no.
+    """
+    txt = f"{titulo} {descripcion}".lower()
+    # Primero verificar que no sea Chile
+    if any(kw in txt for kw in KEYWORDS_CHILE):
+        return False, None
+    for pais, keywords in KEYWORDS_LATAM_PAISES.items():
+        if any(kw in txt for kw in keywords):
+            return True, pais
+    # Keywords genéricas LATAM
+    if any(kw in txt for kw in [
+        "latinoamérica", "latinoamerica", "america latina",
+        "centroamerica", "centroamérica", "caribe",
+        "sudamerica", "sudamérica", "cono sur",
+    ]):
+        return True, 'latam_general'
+    return False, None
+
+
+def cargar_estado_latam():
+    """Carga contadores diarios para Chile y LATAM."""
+    datos = cargar_json(ESTADO_LATAM_PATH, {})
+    hoy   = datetime.now().strftime('%Y-%m-%d')
+    if datos.get('fecha') != hoy:
+        return {'fecha': hoy, 'chile': 0, 'latam': 0}
+    return datos
+
+
+def guardar_estado_latam(datos):
+    guardar_json(ESTADO_LATAM_PATH, datos)
+
+
+def puede_publicar_latam_chile():
+    """Verifica si todavía hay cupo en la cuota de Chile (máx 4/día)."""
+    datos = cargar_estado_latam()
+    return datos.get('chile', 0) < MAX_POSTS_WP_DIA_CHILE
+
+
+def puede_publicar_latam_region():
+    """Verifica si todavía hay cupo en la cuota LATAM sin Chile (máx 11/día)."""
+    datos = cargar_estado_latam()
+    return datos.get('latam', 0) < MAX_POSTS_WP_DIA_LATAM
+
+
+def registrar_publicacion_latam(tipo):
+    """Incrementa contador Chile o LATAM."""
+    datos = cargar_estado_latam()
+    datos[tipo] = datos.get(tipo, 0) + 1
+    guardar_estado_latam(datos)
+
+
+def obtener_rss_chile():
+    """
+    V17.3: Feeds RSS específicos de medios chilenos.
+    Solo retorna noticias confirmadas de Chile.
+    """
+    fuentes_chile = [
+        ('https://www.latercera.com/feed/',                          'La Tercera'),
+        ('https://www.emol.com/rss/',                               'Emol'),
+        ('https://www.biobiochile.cl/rss/',                         'BioBioChile'),
+        ('https://www.cooperativa.cl/noticias/rss.xml',             'Cooperativa'),
+        ('https://www.t13.cl/feeds/rss',                            'T13 Chile'),
+        ('https://www.cnnchile.com/feed/',                          'CNN Chile'),
+        ('https://www.df.cl/rss.xml',                               'Diario Financiero'),
+        ('https://www.elmostrador.cl/feed/',                        'El Mostrador'),
+        ('https://www.24horas.cl/rss.xml',                         '24 Horas Chile'),
+    ]
+    noticias = []
+    for url_feed, nombre in fuentes_chile:
+        try:
+            r = requests.get(url_feed, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            if r.status_code != 200:
+                continue
+            feed = feedparser.parse(r.content)
+            if not feed or not feed.entries:
+                continue
+            for e in feed.entries[:10]:
+                t = e.get('title', '')
+                if not t:
+                    continue
+                t = re.sub(r'\s*-\s*[^-]*$', '', t)
+                l = e.get('link', '')
+                if not l:
+                    continue
+                d = re.sub(r'<[^>]+>', '', e.get('summary', '') or e.get('description', ''))
+                img = None
+                if hasattr(e, 'media_content') and e.media_content:
+                    img = e.media_content[0].get('url')
+                if not img:
+                    for enc in getattr(e, 'enclosures', []):
+                        if enc.get('type', '').startswith('image'):
+                            img = enc.get('href') or enc.get('url')
+                            break
+                noticias.append({
+                    'titulo':      limpiar_texto(t),
+                    'descripcion': limpiar_texto(d),
+                    'url':         l,
+                    'imagen':      img,
+                    'fuente':      f"RSS_CL:{nombre}",
+                    'fecha':       e.get('published'),
+                    'puntaje':     calcular_puntaje(t, d) + 5,  # Bonus por fuente directa Chile
+                    'pais':        'chile',
+                })
+        except Exception as ex:
+            log(f"RSS Chile error ({nombre}): {ex}", 'advertencia')
+    # Todas las noticias de RSS chilenos se consideran Chile
+    log(f"RSS Chile: {len(noticias)} noticias", 'info')
+    return noticias
+
+
+def obtener_rss_latam():
+    """
+    V17.3: Feeds RSS de medios LATAM (excluyendo Chile).
+    """
+    fuentes_latam = [
+        # México
+        ('https://www.eluniversal.com.mx/rss.xml',                  'El Universal MX',   'mexico'),
+        ('https://www.milenio.com/rss',                             'Milenio MX',         'mexico'),
+        # Argentina
+        ('https://www.infobae.com/arc/outboundfeeds/rss/america/',  'Infobae América',    'argentina'),
+        ('https://www.lanacion.com.ar/arc/outboundfeeds/rss/',      'La Nación AR',       'argentina'),
+        ('https://www.pagina12.com.ar/rss/portada',                 'Página 12 AR',       'argentina'),
+        # Colombia
+        ('https://www.eltiempo.com/rss/portada.xml',                'El Tiempo CO',       'colombia'),
+        ('https://www.semana.com/rss.xml',                          'Semana CO',          'colombia'),
+        # Perú
+        ('https://elcomercio.pe/arcio/rss/',                        'El Comercio PE',     'peru'),
+        ('https://rpp.pe/rss/',                                     'RPP Perú',           'peru'),
+        # Venezuela
+        ('https://efectococuyo.com/feed/',                          'Efecto Cocuyo VE',   'venezuela'),
+        # Bolivia
+        ('https://www.paginasiete.bo/rss.xml',                     'Página Siete BO',    'bolivia'),
+        # Ecuador
+        ('https://www.eluniverso.com/rss.xml',                     'El Universo EC',     'ecuador'),
+        # Uruguay
+        ('https://www.elpais.com.uy/rss.xml',                      'El País UY',         'uruguay'),
+        # LATAM General
+        ('https://www.infobae.com/arc/outboundfeeds/rss/america/',  'Infobae Latinoamérica', 'latam'),
+        ('https://www.clarin.com/rss/elmundo/',                     'Clarín Mundo',       'latam'),
+    ]
+    noticias = []
+    for url_feed, nombre, pais in fuentes_latam:
+        try:
+            r = requests.get(url_feed, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            if r.status_code != 200:
+                continue
+            feed = feedparser.parse(r.content)
+            if not feed or not feed.entries:
+                continue
+            for e in feed.entries[:8]:
+                t = e.get('title', '')
+                if not t:
+                    continue
+                t = re.sub(r'\s*-\s*[^-]*$', '', t)
+                l = e.get('link', '')
+                if not l:
+                    continue
+                # Excluir si es Chile
+                d = re.sub(r'<[^>]+>', '', e.get('summary', '') or e.get('description', ''))
+                if es_noticia_chile(t, d):
+                    continue
+                img = None
+                if hasattr(e, 'media_content') and e.media_content:
+                    img = e.media_content[0].get('url')
+                if not img:
+                    for enc in getattr(e, 'enclosures', []):
+                        if enc.get('type', '').startswith('image'):
+                            img = enc.get('href') or enc.get('url')
+                            break
+                noticias.append({
+                    'titulo':      limpiar_texto(t),
+                    'descripcion': limpiar_texto(d),
+                    'url':         l,
+                    'imagen':      img,
+                    'fuente':      f"RSS_LATAM:{nombre}",
+                    'fecha':       e.get('published'),
+                    'puntaje':     calcular_puntaje(t, d) + 3,  # Bonus fuente directa LATAM
+                    'pais':        pais,
+                })
+        except Exception as ex:
+            log(f"RSS LATAM error ({nombre}): {ex}", 'advertencia')
+    log(f"RSS LATAM: {len(noticias)} noticias", 'info')
+    return noticias
+
+
+def obtener_newsapi_chile():
+    """
+    V17.3: Queries NewsAPI específicas para noticias de Chile.
+    """
+    if not NEWS_API_KEY:
+        return []
+    queries_chile = [
+        'Chile noticias hoy Santiago',
+        'Chile economía dólar peso chileno',
+        'Chile Boric gobierno política',
+        'Chile Carabineros seguridad',
+        'Chile fútbol Colo-Colo Universidad Chile',
+        'Chile terremoto sismo alerta',
+        'Atacama Patagonia Chile naturaleza',
+        'Chile litio cobre minería Codelco',
+    ]
+    noticias = []
+    for q in queries_chile:
+        try:
+            r = requests.get(
+                'https://newsapi.org/v2/everything',
+                params={'apiKey': NEWS_API_KEY, 'q': q, 'language': 'es',
+                        'sortBy': 'publishedAt', 'pageSize': 5},
+                timeout=15
+            ).json()
+            if r.get('status') == 'ok':
+                for a in r.get('articles', []):
+                    t   = a.get('title', '')
+                    img = a.get('urlToImage')
+                    if not t or '[Removed]' in t or not img:
+                        continue
+                    d = a.get('description', '')
+                    if not es_noticia_chile(t, d):
+                        continue
+                    noticias.append({
+                        'titulo':      limpiar_texto(t),
+                        'descripcion': limpiar_texto(d),
+                        'url':         a.get('url', ''),
+                        'imagen':      img,
+                        'fuente':      f"NewsAPI_CL:{a.get('source', {}).get('name', '')}",
+                        'fecha':       a.get('publishedAt'),
+                        'puntaje':     calcular_puntaje(t, d),
+                        'pais':        'chile',
+                    })
+        except Exception as ex:
+            log(f"NewsAPI Chile error ({q[:25]}): {ex}", 'advertencia')
+    log(f"NewsAPI Chile: {len(noticias)} noticias", 'info')
+    return noticias
+
+
+def obtener_newsapi_latam():
+    """
+    V17.3: Queries NewsAPI específicas para LATAM (sin Chile).
+    """
+    if not NEWS_API_KEY:
+        return []
+    queries_latam = [
+        'México noticias CDMX Sheinbaum',
+        'Argentina Milei economía inflación',
+        'Colombia Petro Bogotá noticias',
+        'Brasil Lula sao paulo',
+        'Venezuela Maduro Caracas crisis',
+        'Perú Lima noticias gobierno',
+        'Ecuador Quito Noboa noticias',
+        'Bolivia La Paz Arce gobierno',
+        'Uruguay Montevideo Orsi noticias',
+        'El Salvador Bukele noticias',
+        'América Latina economía política',
+        'Centroamérica migración crisis',
+    ]
+    noticias = []
+    for q in queries_latam:
+        try:
+            r = requests.get(
+                'https://newsapi.org/v2/everything',
+                params={'apiKey': NEWS_API_KEY, 'q': q, 'language': 'es',
+                        'sortBy': 'publishedAt', 'pageSize': 5},
+                timeout=15
+            ).json()
+            if r.get('status') == 'ok':
+                for a in r.get('articles', []):
+                    t   = a.get('title', '')
+                    img = a.get('urlToImage')
+                    if not t or '[Removed]' in t or not img:
+                        continue
+                    d = a.get('description', '')
+                    # Excluir si es Chile
+                    if es_noticia_chile(t, d):
+                        continue
+                    noticias.append({
+                        'titulo':      limpiar_texto(t),
+                        'descripcion': limpiar_texto(d),
+                        'url':         a.get('url', ''),
+                        'imagen':      img,
+                        'fuente':      f"NewsAPI_LATAM:{a.get('source', {}).get('name', '')}",
+                        'fecha':       a.get('publishedAt'),
+                        'puntaje':     calcular_puntaje(t, d),
+                        'pais':        'latam',
+                    })
+        except Exception as ex:
+            log(f"NewsAPI LATAM error ({q[:25]}): {ex}", 'advertencia')
+    log(f"NewsAPI LATAM: {len(noticias)} noticias", 'info')
+    return noticias
+
+
+def publicar_bloque_latam_chile():
+    """
+    V17.3: Bloque de publicación exclusivo para noticias de Chile y LATAM.
+    Publica hasta 1 artículo de Chile y/o 1 de LATAM por ejecución,
+    respetando los límites diarios de 4 (Chile) y 11 (LATAM).
+    Retorna (exito_chile, exito_latam).
+    """
+    log("\n" + "=" * 60, 'info')
+    log("🌎 BLOQUE V17.3 — LATAM + CHILE", 'info')
+    estado_latam = cargar_estado_latam()
+    log(f"   Publicados hoy → Chile: {estado_latam.get('chile',0)}/{MAX_POSTS_WP_DIA_CHILE} | "
+        f"LATAM: {estado_latam.get('latam',0)}/{MAX_POSTS_WP_DIA_LATAM}", 'info')
+
+    h             = cargar_historial()
+    exito_chile   = False
+    exito_latam   = False
+
+    # ── 1) Intentar publicar 1 artículo de CHILE ─────────────
+    if puede_publicar_latam_chile():
+        log("\n🇨🇱 Buscando noticia de Chile...", 'info')
+        noticias_cl = []
+        noticias_cl.extend(obtener_rss_chile())
+        noticias_cl.extend(obtener_newsapi_chile())
+        # Filtrar estricto: solo Chile
+        noticias_cl = [n for n in noticias_cl if es_noticia_chile(n.get('titulo',''), n.get('descripcion',''))]
+        noticias_cl = deduplicar_batch(noticias_cl)
+        noticias_cl.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
+        log(f"   Candidatas Chile: {len(noticias_cl)}", 'info')
+
+        for nt in noticias_cl[:40]:
+            url    = nt.get('url', '')
+            titulo = nt.get('titulo', '')
+            desc   = nt.get('descripcion', '')
+            if not url or not titulo:
+                continue
+            dup, razon = noticia_ya_publicada(h, url, titulo, desc)
+            if dup:
+                continue
+            if nt.get('puntaje', 0) < 2:
+                continue
+
+            cont_web, _ = extraer_contenido(url)
+            contenido_ok = cont_web if (cont_web and len(cont_web) >= 200) else (desc if len(desc) >= 150 else None)
+            if not contenido_ok:
+                continue
+
+            imagen_encontrada = None
+            if nt.get('imagen'):
+                imagen_encontrada = descargar_imagen(nt['imagen'])
+            if not imagen_encontrada:
+                img_url = extraer_imagen_web(url)
+                if img_url:
+                    imagen_encontrada = descargar_imagen(img_url)
+            if not imagen_encontrada:
+                imagen_encontrada = crear_imagen_titulo(titulo, 'latinoamerica')
+            if not imagen_encontrada:
+                continue
+
+            url_wp = publicar_en_wordpress(
+                titulo         = titulo,
+                contenido      = contenido_ok,
+                tema           = 'latinoamerica',
+                imagen_path    = imagen_encontrada,
+                fuente_url     = url,
+                fecha_fuente   = nt.get('fecha'),
+                fuente_noticia = nt.get('fuente', ''),
+            )
+            try:
+                if imagen_encontrada and os.path.exists(imagen_encontrada):
+                    os.remove(imagen_encontrada)
+            except:
+                pass
+
+            if url_wp:
+                exito_chile = True
+                registrar_publicacion_latam('chile')
+                guardar_estado_wp()
+                desc_full = (desc + ' ' + contenido_ok[:400]).strip()
+                h = guardar_en_historial(h, url, titulo, desc_full)
+                h['estadisticas']['total_wp'] = h['estadisticas'].get('total_wp', 0) + 1
+                guardar_json(HISTORIAL_PATH, h)
+                log(f"✅ Chile publicado: {titulo[:60]}", 'exito')
+                # Pinterest
+                if PINTEREST_TOKEN:
+                    publicar_pinterest(titulo, contenido_ok[:490], url_wp, None, 'latinoamerica')
+                break
+    else:
+        log("🇨🇱 Chile: cuota diaria alcanzada (4/4)", 'info')
+
+    # ── 2) Intentar publicar 1 artículo de LATAM (sin Chile) ─
+    if puede_publicar_latam_region():
+        log("\n🌎 Buscando noticia LATAM (sin Chile)...", 'info')
+        noticias_la = []
+        noticias_la.extend(obtener_rss_latam())
+        noticias_la.extend(obtener_newsapi_latam())
+        # Filtrar: solo LATAM sin Chile
+        filtradas = []
+        for n in noticias_la:
+            es_la, pais = es_noticia_latam_sin_chile(n.get('titulo',''), n.get('descripcion',''))
+            if es_la:
+                n['pais'] = pais
+                filtradas.append(n)
+        noticias_la = deduplicar_batch(filtradas)
+        noticias_la.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
+        log(f"   Candidatas LATAM: {len(noticias_la)}", 'info')
+
+        for nt in noticias_la[:40]:
+            url    = nt.get('url', '')
+            titulo = nt.get('titulo', '')
+            desc   = nt.get('descripcion', '')
+            if not url or not titulo:
+                continue
+            dup, razon = noticia_ya_publicada(h, url, titulo, desc)
+            if dup:
+                continue
+            if nt.get('puntaje', 0) < 2:
+                continue
+
+            cont_web, _ = extraer_contenido(url)
+            contenido_ok = cont_web if (cont_web and len(cont_web) >= 200) else (desc if len(desc) >= 150 else None)
+            if not contenido_ok:
+                continue
+
+            imagen_encontrada = None
+            if nt.get('imagen'):
+                imagen_encontrada = descargar_imagen(nt['imagen'])
+            if not imagen_encontrada:
+                img_url = extraer_imagen_web(url)
+                if img_url:
+                    imagen_encontrada = descargar_imagen(img_url)
+            if not imagen_encontrada:
+                imagen_encontrada = crear_imagen_titulo(titulo, 'latinoamerica')
+            if not imagen_encontrada:
+                continue
+
+            url_wp = publicar_en_wordpress(
+                titulo         = titulo,
+                contenido      = contenido_ok,
+                tema           = 'latinoamerica',
+                imagen_path    = imagen_encontrada,
+                fuente_url     = url,
+                fecha_fuente   = nt.get('fecha'),
+                fuente_noticia = nt.get('fuente', ''),
+            )
+            try:
+                if imagen_encontrada and os.path.exists(imagen_encontrada):
+                    os.remove(imagen_encontrada)
+            except:
+                pass
+
+            if url_wp:
+                exito_latam = True
+                registrar_publicacion_latam('latam')
+                guardar_estado_wp()
+                desc_full = (desc + ' ' + contenido_ok[:400]).strip()
+                h = guardar_en_historial(h, url, titulo, desc_full)
+                h['estadisticas']['total_wp'] = h['estadisticas'].get('total_wp', 0) + 1
+                guardar_json(HISTORIAL_PATH, h)
+                log(f"✅ LATAM publicado [{nt.get('pais','?')}]: {titulo[:55]}", 'exito')
+                # Pinterest
+                if PINTEREST_TOKEN:
+                    publicar_pinterest(titulo, contenido_ok[:490], url_wp, None, 'latinoamerica')
+                break
+    else:
+        log("🌎 LATAM: cuota diaria alcanzada (11/11)", 'info')
+
+    estado_latam = cargar_estado_latam()
+    log(f"\n📊 LATAM hoy → Chile: {estado_latam.get('chile',0)}/{MAX_POSTS_WP_DIA_CHILE} | "
+        f"LATAM: {estado_latam.get('latam',0)}/{MAX_POSTS_WP_DIA_LATAM}", 'info')
+    return exito_chile, exito_latam
+
+
 # ──────────────────────────────────────────────────────────
 # FUENTES DE NOTICIAS
 # ──────────────────────────────────────────────────────────
@@ -2632,13 +3201,20 @@ def procesar_pending_videos():
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V14.1")
+    print("🌍 BOT DE NOTICIAS - V17.3")
     print("   WP: imágenes ≥1200px (Google Discover optimizado)")
     print("   FB: imagen+texto desde verdadhoy.com")
     print("   Pinterest: activo en paralelo con WP")
+    print(f"   MODO: {'🌎 LATAM+CHILE' if MODO_LATAM else '🌐 GENERAL'}")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
 
+    # ── MODO LATAM: solo ejecuta bloque Chile+LATAM ──────────
+    if MODO_LATAM:
+        exito_cl, exito_la = publicar_bloque_latam_chile()
+        return exito_cl or exito_la
+
+    # ── MODO GENERAL (default) ───────────────────────────────
     # Procesar videos manuales (Función 3)
     procesar_pending_videos()
 
@@ -2839,12 +3415,15 @@ def main():
     # Resumen final
     h = cargar_historial()
     stats = h.get('estadisticas', {})
+    estado_latam = cargar_estado_latam()
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V17.1:", 'exito')
+    log(f"✅ RESUMEN V17.3:", 'exito')
     log(f"   Total publicadas: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')
     log(f"   Facebook:  {stats.get('total_fb', 0)}", 'info')
     log(f"   Pinterest: {stats.get('total_pinterest', 0)}", 'info')
+    log(f"   Chile hoy: {estado_latam.get('chile',0)}/{MAX_POSTS_WP_DIA_CHILE}", 'info')
+    log(f"   LATAM hoy: {estado_latam.get('latam',0)}/{MAX_POSTS_WP_DIA_LATAM}", 'info')
     log(f"   Esta ejecución → WP={'✅' if exito_wp else '❌'} | FB={'✅' if exito_fb else '❌'}", 'info')
 
     if exito_wp or exito_fb:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.3
+Bot de Noticias Internacionales - V17.4
 CAMBIOS EN V17.3:
   - LATAM+CHILE: Nuevo bloque de publicación dedicado exclusivamente a noticias
     de América Latina y Chile — separado del flujo general de noticias.
@@ -851,11 +851,38 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
             headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
             modelo  = "gpt-4o-mini"
 
+        # V17.4 FIX: max_tokens subido a 3500 para evitar JSON cortado
+        # El prompt ocupa ~1500-1800 tokens; necesitamos al menos 1500 para el artículo completo
         payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}],
-                   "temperature": 0.35, "max_tokens": 2000}
-        resp = requests.post(url_api, headers=headers, json=payload, timeout=35)
-        texto = resp.json()["choices"][0]["message"]["content"].strip()
+                   "temperature": 0.35, "max_tokens": 3500}
+        resp     = requests.post(url_api, headers=headers, json=payload, timeout=55)
+        resp_json = resp.json()
+
+        # V17.4 FIX: Verificar finish_reason — si es 'length', el JSON está cortado
+        choice       = resp_json["choices"][0]
+        finish_reason = choice.get("finish_reason", "stop")
+        if finish_reason == "length":
+            log("⚠️ IA cortó respuesta por longitud (finish_reason=length) — reintentando con contenido más corto", 'advertencia')
+            # Reintentar con contenido más corto para que quepa en tokens
+            prompt_corto = prompt.replace(contenido[:3000], contenido[:1500])
+            payload["messages"] = [{"role": "user", "content": prompt_corto}]
+            payload["max_tokens"] = 3500
+            resp = requests.post(url_api, headers=headers, json=payload, timeout=55)
+            resp_json = resp.json()
+            choice = resp_json["choices"][0]
+            finish_reason = choice.get("finish_reason", "stop")
+            if finish_reason == "length":
+                log("⚠️ Segunda respuesta también cortada — usando fallback", 'advertencia')
+                return None
+
+        texto = choice["message"]["content"].strip()
         texto = re.sub(r'^```json\s*|```$', '', texto, flags=re.MULTILINE).strip()
+
+        # V17.4 FIX: Verificar que el JSON esté completo antes de parsear
+        if not texto.endswith('}'):
+            log(f"⚠️ JSON incompleto (no termina en '}}') — respuesta cortada", 'advertencia')
+            return None
+
         resultado = json.loads(texto)
 
         # Validar que la categoría devuelta sea válida
@@ -1638,20 +1665,32 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
                 tags_ids.append(tag_id)
     else:
         titulo_final = titulo
-        oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido) if len(o.strip()) > 20]
+        # V17.4 FIX: Fallback mejorado — estructura mínima legible con al menos 3 párrafos
+        # Si no hay IA, al menos publicar contenido limpio y completo, no texto crudo cortado
+        texto_limpio = contenido[:4000].strip()
+        oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', texto_limpio) if len(o.strip()) > 30]
+
+        if len(oraciones) < 3:
+            # Contenido demasiado escaso — no publicar
+            log("⚠️ Fallback: contenido insuficiente para artículo digno (<3 oraciones)", 'advertencia')
+            return None
+
+        # Agrupar en párrafos de ~60-80 palabras
         parrafos_html = []
         parrafo_actual = []
         palabras = 0
         for oracion in oraciones:
             parrafo_actual.append(oracion)
             palabras += len(oracion.split())
-            if palabras >= 60:
+            if palabras >= 65:
                 parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
                 parrafo_actual = []
                 palabras = 0
         if parrafo_actual:
             parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
-        contenido_formateado = '\n'.join(parrafos_html[:15])
+
+        # Máximo 12 párrafos en fallback para no publicar paredes de texto
+        contenido_formateado = '\n'.join(parrafos_html[:12])
         contenido_formateado += insertar_enlaces_internos("")
         meta_desc   = ""
         frase_clave = ""
@@ -2332,7 +2371,9 @@ def publicar_bloque_latam_chile():
                 continue
 
             cont_web, _ = extraer_contenido(url)
-            contenido_ok = cont_web if (cont_web and len(cont_web) >= 200) else (desc if len(desc) >= 150 else None)
+            contenido_ok = cont_web if (cont_web and len(cont_web) >= 300) else (desc if len(desc) >= 200 else None)
+            if not contenido_ok and cont_web and len(cont_web) >= 150:
+                contenido_ok = cont_web + ' ' + desc if desc else cont_web
             if not contenido_ok:
                 continue
 
@@ -2409,7 +2450,9 @@ def publicar_bloque_latam_chile():
                 continue
 
             cont_web, _ = extraer_contenido(url)
-            contenido_ok = cont_web if (cont_web and len(cont_web) >= 200) else (desc if len(desc) >= 150 else None)
+            contenido_ok = cont_web if (cont_web and len(cont_web) >= 300) else (desc if len(desc) >= 200 else None)
+            if not contenido_ok and cont_web and len(cont_web) >= 150:
+                contenido_ok = cont_web + ' ' + desc if desc else cont_web
             if not contenido_ok:
                 continue
 
@@ -3201,7 +3244,7 @@ def procesar_pending_videos():
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V17.3")
+    print("🌍 BOT DE NOTICIAS - V17.4")
     print("   WP: imágenes ≥1200px (Google Discover optimizado)")
     print("   FB: imagen+texto desde verdadhoy.com")
     print("   Pinterest: activo en paralelo con WP")
@@ -3284,12 +3327,15 @@ def main():
 
                 # Contenido
                 cont_web, _ = extraer_contenido(url)
-                if cont_web and len(cont_web) >= 200:
+                if cont_web and len(cont_web) >= 300:
                     contenido_ok = cont_web
-                elif desc and len(desc) >= 150:
+                elif desc and len(desc) >= 200:
                     contenido_ok = desc
+                elif cont_web and len(cont_web) >= 150:
+                    # V17.4: Combinar web + desc para llegar a mínimo aceptable
+                    contenido_ok = cont_web + ' ' + desc if desc else cont_web
                 else:
-                    log("   ❌ Contenido insuficiente", 'advertencia')
+                    log("   ❌ Contenido insuficiente (<150 chars)", 'advertencia')
                     continue
 
                 # Imagen — OBLIGATORIA
@@ -3417,7 +3463,7 @@ def main():
     stats = h.get('estadisticas', {})
     estado_latam = cargar_estado_latam()
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V17.3:", 'exito')
+    log(f"✅ RESUMEN V17.4:", 'exito')
     log(f"   Total publicadas: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')
     log(f"   Facebook:  {stats.get('total_fb', 0)}", 'info')

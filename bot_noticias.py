@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.4
+Bot de Noticias Internacionales - V17.5
+CAMBIOS EN V17.5:
+  - CUOTAS LATAM: MAX_POSTS_WP_DIA_CHILE aumentado de 4 → 7 artículos/día
+  - CUOTAS LATAM: MAX_POSTS_WP_DIA_LATAM aumentado de 11 → 16 artículos/día
+  - CUOTAS LATAM: MAX_POSTS_WP_DIA_TOTAL actualizado de 63 → 71 (48 + 7 + 16)
+
 CAMBIOS EN V17.3:
   - LATAM+CHILE: Nuevo bloque de publicación dedicado exclusivamente a noticias
     de América Latina y Chile — separado del flujo general de noticias.
@@ -26,7 +31,7 @@ CAMBIOS EN V17.3:
     peso chileno, etc.)
   - LATAM+CHILE: Control de cuotas independiente para Chile y LATAM en
     estado_cuotas_latam.json — no interfiere con cuotas generales
-  - LATAM+CHILE: MAX_POSTS_WP_DIA actualizado a 63 (48 general + 15 LATAM/Chile)
+  - LATAM+CHILE: MAX_POSTS_WP_DIA actualizado a 71 (48 general + 23 LATAM/Chile)
   - LATAM+CHILE: GitHub Actions — se agrega una ejecución paralela del bloque
     LATAM cada 96 minutos para distribuir los 15 artículos durante el día
 
@@ -240,9 +245,9 @@ TIEMPO_ENTRE_FB_MIN = 60   # 1 hora mínima entre posts de Facebook
 # Límites diarios
 MAX_POSTS_FB_DIA  = 6    # Máximo 6 posts/día en Facebook (calidad > cantidad)
 MAX_POSTS_WP_DIA        = 48   # Flujo general
-MAX_POSTS_WP_DIA_CHILE  = 4    # Chile: 4 artículos/día
-MAX_POSTS_WP_DIA_LATAM  = 11   # LATAM sin Chile: 11 artículos/día
-MAX_POSTS_WP_DIA_TOTAL  = 63   # Total máximo global (48 + 4 + 11)
+MAX_POSTS_WP_DIA_CHILE  = 7    # Chile: 7 artículos/día (era 4)
+MAX_POSTS_WP_DIA_LATAM  = 16   # LATAM sin Chile: 16 artículos/día (era 11)
+MAX_POSTS_WP_DIA_TOTAL  = 71   # Total máximo global (48 + 7 + 16)
 
 # Anti-duplicados
 UMBRAL_SIMILITUD_TITULO    = 0.72

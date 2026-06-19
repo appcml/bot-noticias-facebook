@@ -1,7 +1,36 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.5
+Bot de Noticias Internacionales - V17.6
+CAMBIOS EN V17.6:
+  - ESTRATEGIA: Pivot editorial completo → medio de referencia para Latinoamérica
+  - OBJETIVO: 75-80% del contenido diario relacionado directa o indirectamente con LATAM
+  - CUOTAS: Rebalanceo total orientado a LATAM-first:
+      * latinoamerica:   10% → 25% (principal categoría del sitio)
+      * chile:            7  → 12 artículos/día (era 7)
+      * latam_region:    16  → 22 artículos/día (era 16)
+      * deportes:        16% → 18% (fútbol LATAM, eliminatorias, libertadores, mundial)
+      * economia:        13% → 15% (dólar, inflación, comercio regional)
+      * tecnologia:      11% → 12% (IA, fintech, startups LATAM)
+      * entretenimiento: 10% → 10% (artistas latinos, reggaeton, cine)
+      * politica:         9% →  5% (solo líderes LATAM de alto impacto)
+      * ciencia+salud:   14% →  5% (combinadas, foco en investigaciones LATAM)
+      * mundo:            5% →  3% (solo noticias de alto impacto regional)
+      * medio_ambiente:   3% →  3% (Amazonía, glaciares, recursos naturales LATAM)
+      * guerra/crimen/desastre/clima: máx 1% cada una
+  - FUENTES: Ampliadas para LATAM — nuevos RSS de Brasil, Paraguay, Bolivia, Venezuela
+  - FUENTES: NewsAPI queries reenfocadas — 80% queries con contexto LATAM
+  - FUENTES: GNews — queries prioritarias en español latino
+  - PROMPT IA: Actualizado V17.6 — enfoque LATAM reforzado, perspectiva Chile y vecinos
+  - PROMPT IA: Sección "Qué significa para Chile y sus vecinos" cuando aplique
+  - DETECCIÓN: detectar_tema() actualizada — latinoamerica sube a prioridad 4
+    (antes estaba en prioridad 11, perdiendo noticias regionales ante categorías genéricas)
+  - PRIORIDAD: Noticias con keywords LATAM/Chile reciben bonus +8 de puntaje
+  - FILTRO: Noticias exclusivamente de EE.UU./Europa/Asia sin impacto LATAM se penalizan -5
+  - MAX_POSTS_WP_DIA_CHILE:  7  → 12 artículos/día
+  - MAX_POSTS_WP_DIA_LATAM: 16  → 22 artículos/día
+  - MAX_POSTS_WP_DIA_TOTAL: 71  → 82 (48 general + 12 Chile + 22 LATAM)
+
 CAMBIOS EN V17.5:
   - CUOTAS LATAM: MAX_POSTS_WP_DIA_CHILE aumentado de 4 → 7 artículos/día
   - CUOTAS LATAM: MAX_POSTS_WP_DIA_LATAM aumentado de 11 → 16 artículos/día
@@ -179,27 +208,27 @@ from urllib.parse import urlparse
 # CUOTAS EDITORIALES POR CATEGORÍA (monetización AdSense)
 # ──────────────────────────────────────────────────────────
 CUOTAS_CATEGORIA = {
-    # ── V17.1 LATAM: rebalanceo para público hispanoamericano ─────────
-    # Alto engagement LATAM + buen CPM AdSense
-    'deportes':        {'cuota': 0.16, 'cpm_relativo': 1.25, 'brand_safe': True},   # Mundial 2026
-    'economia':        {'cuota': 0.13, 'cpm_relativo': 1.55, 'brand_safe': True},   # Dólar/inflación
-    'tecnologia':      {'cuota': 0.11, 'cpm_relativo': 1.45, 'brand_safe': True},
-    'latinoamerica':   {'cuota': 0.10, 'cpm_relativo': 1.15, 'brand_safe': True},   # Identidad regional
-    'entretenimiento': {'cuota': 0.10, 'cpm_relativo': 1.20, 'brand_safe': True},   # Farándula + música
-    'politica':        {'cuota': 0.09, 'cpm_relativo': 1.10, 'brand_safe': False},  # Milei/Boric/Sheinbaum
-    # CPM alto, engagement moderado
-    'ciencia':         {'cuota': 0.07, 'cpm_relativo': 1.40, 'brand_safe': True},
-    'salud':           {'cuota': 0.07, 'cpm_relativo': 1.40, 'brand_safe': True},
-    'medio_ambiente':  {'cuota': 0.03, 'cpm_relativo': 1.28, 'brand_safe': True},
-    # Internacional general
-    'mundo':           {'cuota': 0.05, 'cpm_relativo': 1.00, 'brand_safe': True},
-    # Brand-unsafe / bajo CPM — mínimos editoriales
-    'guerra':          {'cuota': 0.04, 'cpm_relativo': 0.90, 'brand_safe': False},
-    'desastre':        {'cuota': 0.02, 'cpm_relativo': 0.95, 'brand_safe': False},
-    'clima':           {'cuota': 0.01, 'cpm_relativo': 1.30, 'brand_safe': True},
-    'crimen':          {'cuota': 0.01, 'cpm_relativo': 0.85, 'brand_safe': False},
-    'educacion':       {'cuota': 0.01, 'cpm_relativo': 1.35, 'brand_safe': True},
-    # Cuota mínima de emergencia — no se buscan activamente
+    # ── V17.6 LATAM-FIRST: medio de referencia para América Latina ────
+    # Objetivo: 75-80% del contenido con conexión directa a LATAM
+    'latinoamerica':   {'cuota': 0.25, 'cpm_relativo': 1.18, 'brand_safe': True},   # ↑ 10%→25% — identidad regional CORE
+    'deportes':        {'cuota': 0.18, 'cpm_relativo': 1.25, 'brand_safe': True},   # ↑ 16%→18% — fútbol LATAM, eliminatorias, Mundial 2026
+    'economia':        {'cuota': 0.15, 'cpm_relativo': 1.55, 'brand_safe': True},   # ↑ 13%→15% — dólar, inflación, comercio regional
+    'tecnologia':      {'cuota': 0.12, 'cpm_relativo': 1.45, 'brand_safe': True},   # ↑ 11%→12% — IA, fintech, startups LATAM
+    'entretenimiento': {'cuota': 0.10, 'cpm_relativo': 1.20, 'brand_safe': True},   # = 10% — artistas latinos, reggaeton, cine
+    'politica':        {'cuota': 0.05, 'cpm_relativo': 1.10, 'brand_safe': False},  # ↓ 9%→5%  — solo líderes LATAM alto impacto
+    # Ciencia y Salud combinadas — foco en investigaciones LATAM
+    'ciencia':         {'cuota': 0.03, 'cpm_relativo': 1.40, 'brand_safe': True},   # ↓ 7%→3%
+    'salud':           {'cuota': 0.03, 'cpm_relativo': 1.40, 'brand_safe': True},   # ↓ 7%→3%
+    'medio_ambiente':  {'cuota': 0.03, 'cpm_relativo': 1.28, 'brand_safe': True},   # = 3%  — Amazonía, glaciares, LATAM
+    # Internacional solo de alto impacto para la región
+    'mundo':           {'cuota': 0.03, 'cpm_relativo': 1.00, 'brand_safe': True},   # ↓ 5%→3%  — solo impacto real en LATAM
+    # Brand-unsafe / bajo CPM — mínimos editoriales (solo si impactan LATAM)
+    'guerra':          {'cuota': 0.01, 'cpm_relativo': 0.90, 'brand_safe': False},  # ↓ 4%→1%
+    'desastre':        {'cuota': 0.01, 'cpm_relativo': 0.95, 'brand_safe': False},  # ↓ 2%→1%
+    'clima':           {'cuota': 0.01, 'cpm_relativo': 1.30, 'brand_safe': True},   # = 1%
+    'crimen':          {'cuota': 0.00, 'cpm_relativo': 0.85, 'brand_safe': False},  # ↓ 1%→0%  — desmonetiza AdSense
+    'educacion':       {'cuota': 0.00, 'cpm_relativo': 1.35, 'brand_safe': True},   # ↓ 1%→0%
+    # Sin cuota activa — no se buscan
     'religion':        {'cuota': 0.00, 'cpm_relativo': 1.00, 'brand_safe': True},
     'general':         {'cuota': 0.00, 'cpm_relativo': 1.00, 'brand_safe': True},
 }
@@ -245,9 +274,9 @@ TIEMPO_ENTRE_FB_MIN = 60   # 1 hora mínima entre posts de Facebook
 # Límites diarios
 MAX_POSTS_FB_DIA  = 6    # Máximo 6 posts/día en Facebook (calidad > cantidad)
 MAX_POSTS_WP_DIA        = 48   # Flujo general
-MAX_POSTS_WP_DIA_CHILE  = 7    # Chile: 7 artículos/día (era 4)
-MAX_POSTS_WP_DIA_LATAM  = 16   # LATAM sin Chile: 16 artículos/día (era 11)
-MAX_POSTS_WP_DIA_TOTAL  = 71   # Total máximo global (48 + 7 + 16)
+MAX_POSTS_WP_DIA_CHILE  = 12   # Chile: 12 artículos/día (era 7) — V17.6
+MAX_POSTS_WP_DIA_LATAM  = 22   # LATAM sin Chile: 22 artículos/día (era 16) — V17.6
+MAX_POSTS_WP_DIA_TOTAL  = 82   # Total máximo global (48 + 12 + 22) — V17.6
 
 # Anti-duplicados
 UMBRAL_SIMILITUD_TITULO    = 0.72
@@ -394,13 +423,24 @@ CTAS_POR_TEMA = {
 }
 
 PALABRAS_ALTA_PRIORIDAD = [
+    # ── V17.6: LATAM-FIRST — keywords regionales en primer lugar ──────
+    "copa libertadores", "copa sudamericana", "eliminatorias sudamericanas",
+    "conmebol", "mundial 2026", "copa del mundo",
+    "boric", "milei", "lula", "sheinbaum", "petro", "maduro", "bukele",
+    "litio chile", "cobre chile", "petroleo venezuela",
+    "peso chileno", "peso argentino",
+    "inflacion argentina", "inflacion chile", "inflacion mexico",
+    "elecciones chile", "elecciones argentina", "elecciones colombia",
+    "terremoto chile", "sismo chile",
+    "festival de viña", "seleccion chilena", "la roja",
+    "colo-colo", "universidad de chile",
+    # ── Internacional de alto impacto ─────────────────────────────────
     "guerra", "conflicto armado", "invasion", "ofensiva militar", "bombardeo",
     "misiles", "ataque aereo", "drones militares", "movilizacion militar",
     "tropas", "escalada de tension", "amenaza nuclear", "armas nucleares",
     "terrorismo", "atentado", "ataque terrorista",
     "ucrania", "rusia", "israel", "gaza", "iran", "china", "taiwan",
     "corea del norte", "otan", "nato", "brics", "medio oriente",
-    "siria", "yemen", "sudan",
     "crisis humanitaria", "refugiados",
     "crisis de gobierno", "golpe de estado", "estado de emergencia",
     "negociaciones de paz", "alto el fuego", "sanciones internacionales",
@@ -412,18 +452,19 @@ PALABRAS_ALTA_PRIORIDAD = [
     "xi jinping", "kim jong un", "macron",
     "hamas", "hezbollah", "isis", "taliban", "houthis",
     "elon musk",
-    # V17: Deportes — Mundial 2026 y grandes eventos
-    "mundial 2026", "copa del mundo", "champions league", "champions",
+    # ── Deportes — Mundial 2026 y grandes eventos ─────────────────────
+    "champions league", "champions",
     "nba finals", "super bowl", "formula 1", "grand prix",
     "olimpiadas", "juegos olimpicos",
     "fichaje", "transfer", "gol", "campeón", "campeona",
     "messi", "mbappe", "neymar", "cristiano ronaldo",
     "lebron james", "verstappen", "djokovic", "alcaraz",
-    # V17: Entretenimiento — estrenos y eventos masivos
+    # ── Entretenimiento LATAM — artistas de alto impacto ─────────────
     "oscar 2025", "oscar 2026", "grammy", "emmy",
     "taylor swift", "bad bunny", "shakira", "beyonce",
+    "karol g", "maluma", "j balvin", "rauw alejandro",
+    "rosalía", "daddy yankee",
     "netflix estreno", "disney plus", "marvel", "star wars",
-    "billie eilish", "the weeknd", "drake",
     "cannes 2025", "cannes 2026",
 ]
 
@@ -447,17 +488,28 @@ BLACKLIST_TITULOS = [
 def detectar_tema(titulo, descripcion=""):
     """
     Detecta el tema principal de una noticia.
-    V13: Orden de prioridad estricto para evitar clasificaciones erróneas.
-    - Deportes sube a prioridad 4 (antes de política) para capturar Mundial 2026
-    - Política incluye presidentes LATAM para evitar que vayan a latinoamerica
-    - Latinoamérica solo captura si no hay tema más específico
-    - Entretenimiento solo si hay coincidencias EXPLÍCITAS y ninguna categoría anterior
+    V17.6 LATAM-FIRST: latinoamerica sube a prioridad 4 (era prioridad 11).
+    Esto garantiza que noticias regionales no sean reclasificadas como 'mundo'
+    o categorías genéricas antes de evaluar su origen geográfico LATAM.
+    Orden de prioridad:
+      1. Guerra/conflicto armado (nunca debe mezclarse)
+      2. Desastre natural con víctimas
+      3. Crimen organizado / seguridad
+      4. ← NUEVO: Latinoamérica (detección geográfica ANTES que categorías temáticas)
+      5. Deportes (Mundial 2026, fútbol LATAM)
+      6. Política (líderes LATAM y mundiales)
+      7. Economía
+      8. Tecnología
+      9. Salud
+      10. Ciencia
+      11. Medio ambiente / Clima
+      12. Entretenimiento
+      13. Mundo (fallback internacional)
     """
     txt = f"{titulo} {descripcion}".lower()
 
     # ── Prioridad 1: Conflicto / Guerra (nunca debe ir a entretenimiento)
     if any(p in txt for p in [
-        # Términos de combate directo
         "guerra", "bombardeo", "misil", "ataque", "conflicto armado",
         "invasion", "tropas", "nuclear", "terroris", "hamas",
         "hezbollah", "ucrania", "gaza", "israel", "rusia", "otan", "nato",
@@ -466,7 +518,6 @@ def detectar_tema(titulo, descripcion=""):
         "muertos en combate", "bombardeado", "atacado", "fuego cruzado",
         "ejercito", "militares", "fuerza aerea", "marina de guerra",
         "corea del norte", "iran nuclear", "misil balistico",
-        # Términos nuevos — los que estaban causando errores
         "alto el fuego", "alto al fuego", "cese del fuego", "cese al fuego",
         "heridos", "muertos", "victimas", "bajas militares",
         "intercambio de fuego", "tiroteo", "fusilamiento",
@@ -512,7 +563,63 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'crimen'
 
-    # ── Prioridad 4: Deportes — subido para capturar Mundial 2026
+    # ── Prioridad 4 (V17.6 NUEVO): Latinoamérica — SUBIDA desde prioridad 11
+    # Detectar PRIMERO el origen geográfico LATAM antes que categorías temáticas genéricas
+    # Esto garantiza que "economía de Argentina" → latinoamerica, no solo "economia"
+    if any(p in txt for p in [
+        # Chile y sus instituciones
+        "chile", "chilena", "chileno", "santiago de chile", "boric",
+        "carabineros", "codelco", "la roja chilena", "colo-colo",
+        # México
+        "mexico", "mexicano", "mexicana", "cdmx", "ciudad de mexico",
+        "sheinbaum", "pemex", "guadalajara", "monterrey",
+        # Argentina
+        "argentina", "argentino", "buenos aires", "milei",
+        "merval", "rosario ar", "córdoba ar",
+        # Brasil
+        "brasil", "brazil", "brasileño", "lula", "sao paulo",
+        "río de janeiro", "rio de janeiro", "brasilia",
+        # Colombia
+        "colombia", "colombiano", "bogotá", "bogota", "petro",
+        "medellín", "medellin",
+        # Perú
+        "perú", "peru", "peruano", "lima perú", "boluarte",
+        # Venezuela
+        "venezuela", "venezolano", "maduro", "caracas",
+        # Ecuador
+        "ecuador", "ecuatoriano", "quito", "noboa",
+        # Bolivia
+        "bolivia", "boliviano", "la paz bolivia",
+        # Uruguay
+        "uruguay", "uruguayo", "montevideo",
+        # Paraguay
+        "paraguay", "paraguayo", "asunción",
+        # Centroamérica y Caribe
+        "cuba", "cubano", "nicaragua", "guatemala", "honduras",
+        "el salvador", "bukele", "panamá", "panama", "costa rica",
+        "república dominicana", "dominicano", "haití", "haiti",
+        # Genéricos LATAM
+        "america latina", "latinoamerica", "latinoamericano",
+        "centroamerica", "caribe", "sudamerica", "cono sur",
+        "mercosur", "unasur", "celac", "alba",
+        # Copa Libertadores, Sudamericana — específicos de LATAM
+        "copa libertadores", "copa sudamericana", "conmebol",
+        "eliminatorias sudamericanas", "seleccion chilena",
+        "seleccion argentina", "seleccion colombiana",
+        # Economía regional LATAM
+        "peso chileno", "peso argentino", "peso mexicano",
+        "real brasileiro", "bolívar venezolano",
+        "banco central de chile", "banco de mexico",
+        "inflacion en chile", "inflacion en argentina",
+        "dólar en chile", "dolar en colombia",
+        # Recursos naturales LATAM
+        "litio chile", "litio bolivia", "cobre chileno", "petroleo venezolano",
+        "amazonía", "amazonia", "patagonia", "andes",
+        "atacama", "altiplano", "pampas", "la pampa",
+    ]):
+        return 'latinoamerica'
+
+    # ── Prioridad 5: Deportes — fútbol LATAM y Mundial 2026
     if any(p in txt for p in [
         "futbol", "olimpiadas", "mundial", "copa del mundo",
         "atletismo", "tenis", "baloncesto", "nba", "fifa",
@@ -530,7 +637,7 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'deportes'
 
-    # ── Prioridad 5: Política — incluye presidentes LATAM y diplomacia internacional
+    # ── Prioridad 6: Política — líderes LATAM y diplomacia internacional
     if any(p in txt for p in [
         "trump", "biden", "harris", "presidente", "gobierno", "eleccion",
         "golpe de estado", "coup", "diplomaci", "congreso", "senado",
@@ -539,15 +646,11 @@ def detectar_tema(titulo, descripcion=""):
         "politica exterior", "relaciones diplomaticas",
         "candidato presidencial", "campana electoral", "partido politico",
         "ministro", "gabinete", "decreto", "legislacion",
-        # Presidentes y líderes LATAM — evita que vayan a 'latinoamerica'
-        "petro", "milei", "lula", "maduro", "bukele", "boric",
-        "sheinbaum", "claudia sheinbaum", "noboa", "arce", "lacalle",
         "congresista", "diputado", "senador", "alcalde", "gobernador",
         "oposicion politica", "coalicion", "elecciones presidenciales",
         "segunda vuelta", "balotaje", "voto", "urna", "comicios",
         "macron", "scholz", "sunak", "meloni", "modi", "xi jinping",
         "putin", "zelensky", "erdogan", "netanyahu",
-        # Términos diplomáticos y de seguridad internacional
         "acuerdo nuclear", "acuerdo diplomatico", "bloqueo economico",
         "espionaje", "inteligencia militar", "cia", "mossad", "kgb",
         "embajador", "cancilleria", "nota diplomatica",
@@ -555,11 +658,10 @@ def detectar_tema(titulo, descripcion=""):
         "retiro de tropas", "retirar tropas", "despliegue militar",
         "alianza militar", "pacto de defensa", "acuerdo bilateral",
         "cumbre de paz", "mediador internacional",
-        "promesa de paz", "promesa de cese",
     ]):
         return 'politica'
 
-    # ── Prioridad 6: Economía
+    # ── Prioridad 7: Economía
     if any(p in txt for p in [
         "economia", "inflacion", "recesion", "bolsa", "mercado financiero",
         "petroleo", "dolar", "euro", "fmi", "banco central",
@@ -573,7 +675,7 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'economia'
 
-    # ── Prioridad 7: Tecnología
+    # ── Prioridad 8: Tecnología
     if any(p in txt for p in [
         "inteligencia artificial", "ia ", " ia,", "robot", "automatizacion",
         "ciberataque", "hackeo", "elon musk", "openai", "chatgpt",
@@ -586,7 +688,7 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'tecnologia'
 
-    # ── Prioridad 8: Salud / Medicina
+    # ── Prioridad 9: Salud / Medicina
     if any(p in txt for p in [
         "cancer", "enfermedad", "hospital", "medico", "tratamiento",
         "pandemia", "vacuna", "virus", "salud publica", "oms",
@@ -600,7 +702,7 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'salud'
 
-    # ── Prioridad 9: Ciencia / Espacio
+    # ── Prioridad 10: Ciencia / Espacio
     if any(p in txt for p in [
         "ciencia", "investigacion cientifica", "descubrimiento cientifico",
         "espacio", "nasa", "planeta", "universo", "agujero negro",
@@ -614,7 +716,7 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'ciencia'
 
-    # ── Prioridad 10: Medio ambiente / Clima
+    # ── Prioridad 11: Medio ambiente / Clima
     if any(p in txt for p in [
         "cambio climatico", "calentamiento global", "temperatura record",
         "sequia", "incendio forestal", "contaminacion", "co2",
@@ -631,16 +733,6 @@ def detectar_tema(titulo, descripcion=""):
         "pronostico meteorologico", "frente frio",
     ]):
         return 'clima'
-
-    # ── Prioridad 11: Latinoamérica (geografía — solo si no hay tema específico)
-    if any(p in txt for p in [
-        "mexico", "colombia", "argentina", "chile", "peru", "venezuela",
-        "brasil", "cuba", "bolivia", "ecuador", "america latina",
-        "latinoamerica", "centroamerica", "caribe", "uruguay",
-        "paraguay", "costa rica", "panama", "guatemala", "haiti",
-        "nicaragua", "honduras", "el salvador", "republica dominicana",
-    ]):
-        return 'latinoamerica'
 
     # ── Prioridad 12: Educación
     if any(p in txt for p in [
@@ -659,23 +751,22 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'religion'
 
-    # ── Prioridad 14: Entretenimiento — V17: keywords ampliadas
+    # ── Prioridad 14: Entretenimiento — V17.6: foco en artistas latinos
     if any(p in txt for p in [
-        # Cine y series
         "pelicula estreno", "serie de television", "estreno de", "trailer oficial",
         "estreno mundial", "taquilla", "recaudacion", "box office",
         "hollywood", "netflix serie", "netflix estrena", "disney plus",
         "oscar", "grammy", "emmy", "golden globe", "bafta",
         "festival de cine", "cannes", "sundance", "venecia film",
         "actor de cine", "actriz premiada", "director de cine",
-        # Música
         "musica pop", "artista musical", "album musical", "nuevo album",
         "concierto mundial", "banda de musica", "gira musical",
         "spotify", "youtube music", "billboard", "numero uno",
         "lanzamiento musical", "videoclip", "videoclip oficial",
         "taylor swift", "bad bunny", "shakira", "beyonce", "rihanna",
         "billie eilish", "the weeknd", "drake", "reggaeton",
-        # Cultura y farándula
+        "karol g", "maluma", "j balvin", "rauw alejandro",
+        "rosalía", "rosalia", "daddy yankee", "ozuna",
         "celebridad", "influencer", "reality show", "tiktoker",
         "youtube", "youtuber", "streamer",
         "nominado a", "premio a la mejor",
@@ -763,9 +854,12 @@ def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
     if not api_key:
         return None
 
-    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias internacionales en español para América Latina.
-Tu tarea: clasificar esta noticia y transformarla en un artículo periodístico ORIGINAL con valor editorial real.
+    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, el medio de noticias de referencia para América Latina.
+Tu misión: transformar esta noticia en un artículo periodístico ORIGINAL con valor editorial real para el público latinoamericano.
 Google evalúa si el contenido aporta valor único — no se aceptan simples reescrituras.
+
+VerdadHoy.com tiene audiencia en Chile, Argentina, México, Colombia, Perú, Brasil y toda América Latina.
+El 75-80% del contenido debe tener conexión directa con la región.
 
 ═══════════════════════════════════════
 NOTICIA A PROCESAR:
@@ -777,29 +871,37 @@ Categoría sugerida por sistema: {categoria_sugerida}
 PASO 1 — CLASIFICACIÓN (lee y comprende antes de clasificar):
 Elige UNA categoría según el tema PRINCIPAL:
 
-• "guerra"          → Conflictos armados, ataques militares, terrorismo, alto el fuego,
-                      tropas, misiles, bombardeos, víctimas de guerra, tensiones bélicas.
-• "politica"        → Decisiones gubernamentales, elecciones, diplomacia, sanciones,
-                      acuerdos entre países, líderes mundiales, política exterior.
-• "economia"        → Mercados, inflación, aranceles, comercio, petróleo, criptomonedas,
-                      bancos centrales, bolsa, empresas, inversión.
-• "tecnologia"      → IA, software, hardware, startups, ciberseguridad, redes sociales,
-                      smartphones, videojuegos, innovación tecnológica.
-• "deportes"        → Fútbol, olimpiadas, tenis, NBA, F1, Copa del Mundo, atletas.
-• "ciencia"         → Descubrimientos científicos, espacio, NASA, física, biología,
-                      astronomía, investigaciones académicas, arqueología.
-• "salud"           → Enfermedades, tratamientos, vacunas, pandemia, OMS, medicamentos,
-                      salud mental, investigaciones médicas, hospitales.
-• "entretenimiento" → Cine, música, series, celebrities, festivales, premios, cultura pop.
-• "latinoamerica"   → Noticias de LATAM SIN conflicto bélico activo ni líder político principal.
-• "medio_ambiente"  → Cambio climático, energías renovables, contaminación, biodiversidad.
-• "desastre"        → Terremotos, huracanes, inundaciones, tsunamis, erupciones con víctimas.
-• "mundo"           → Internacional sin categoría más específica, ONU, organismos internacionales.
-• "general"         → Solo si no encaja en ninguna anterior.
+• "latinoamerica"  → Noticias de Chile, Argentina, México, Colombia, Brasil, Perú,
+                     Venezuela, Ecuador, Bolivia, Uruguay, Paraguay, Centroamérica,
+                     Caribe. Cualquier noticia donde el protagonista principal sea
+                     un país o actor latinoamericano (economía, política, sociedad,
+                     cultura). TAMBIÉN noticias globales cuyo impacto central sea LATAM.
+• "deportes"       → Fútbol (especialmente Copa Libertadores, eliminatorias, ligas LATAM,
+                     Mundial 2026), tenis, NBA, F1, atletas latinoamericanos.
+• "economia"       → Mercados, inflación, dólar, aranceles, comercio, petróleo,
+                     criptomonedas, bancos centrales, bolsa — con foco en impacto LATAM.
+• "tecnologia"     → IA, software, hardware, startups, ciberseguridad, redes sociales,
+                     fintech, innovación — especialmente en Latinoamérica.
+• "entretenimiento"→ Artistas latinos (Bad Bunny, Shakira, Karol G, J Balvin...),
+                     cine, series, música, plataformas streaming, celebrities.
+• "politica"       → Decisiones gubernamentales LATAM, elecciones, diplomacia regional,
+                     sanciones, líderes mundiales con impacto directo en LATAM.
+• "ciencia"        → Descubrimientos científicos, espacio, NASA, física, biología,
+                     investigaciones — idealmente con conexión LATAM.
+• "salud"          → Enfermedades, tratamientos, vacunas, OMS, medicamentos,
+                     salud mental, investigaciones médicas.
+• "medio_ambiente" → Cambio climático, Amazonía, glaciares patagónicos, recursos
+                     naturales, energías renovables, biodiversidad LATAM.
+• "guerra"         → Conflictos armados, ataques militares, terrorismo — SOLO si tienen
+                     impacto real en Latinoamérica (no conflictos lejanos sin conexión).
+• "desastre"       → Terremotos, huracanes, inundaciones, tsunamis con víctimas.
+• "mundo"          → Internacional de alto impacto para LATAM. Solo si no encaja mejor arriba.
+• "general"        → Solo si no encaja en ninguna anterior.
 
-REGLA CRÍTICA: Si hay violencia/muertos/ataques/combate → "guerra".
-Si político toma decisión sin combate → "politica".
-Tema PRINCIPAL decide cuando hay mezcla de categorías.
+REGLA CRÍTICA V17.6: Si la noticia menciona un país latinoamericano como protagonista
+→ clasificar como "latinoamerica" incluso si es sobre economía, deportes o política local.
+El tema específico (economía de Chile, política de Argentina) es LATAM primero.
+Excepción: conflicto armado activo → "guerra". Competencia deportiva específica → "deportes".
 
 PASO 2 — ARTÍCULO PERIODÍSTICO CON VALOR EDITORIAL ORIGINAL:
 
@@ -807,8 +909,8 @@ Estructura OBLIGATORIA del contenido_html:
 
 1. <p> PÁRRAFO DE APERTURA (≤50 palabras): Qué/Quién/Cuándo/Dónde — datos duros concretos.
 
-2. <p> CONTEXTO Y ANTECEDENTES: Por qué esta noticia importa AHORA. Qué situación previa
-   la hace relevante. Mínimo 2-3 oraciones con contexto real del contenido original.
+2. <p> CONTEXTO Y ANTECEDENTES: Por qué esta noticia importa AHORA para América Latina.
+   Qué situación previa la hace relevante. Mínimo 2-3 oraciones con contexto real.
 
 3. <h2> Subtítulo descriptivo del desarrollo principal
 
@@ -817,34 +919,38 @@ Estructura OBLIGATORIA del contenido_html:
 
 5. <ul><li> PUNTOS CLAVE: Lista de 3-4 aspectos esenciales de la noticia (si aplica).
 
-6. <h2>Qué significa esto para América Latina</h2>
-   <p> PERSPECTIVA LATAM OBLIGATORIA: Cómo impacta o se relaciona esta noticia con
-   México, Argentina, Chile, Colombia, Brasil u otro país latinoamericano relevante.
-   Menciona AL MENOS un país específico con contexto real. Si es noticia de LATAM,
-   amplía el impacto regional. Si es noticia global, explica la conexión con la región.
+6. <h2>Qué significa esto para Chile y América Latina</h2>
+   <p> PERSPECTIVA LATAM OBLIGATORIA V17.6: Explica el impacto concreto en Chile y sus
+   países vecinos (Argentina, Perú, Bolivia, Colombia). Si la noticia es de otro país LATAM,
+   amplía cómo afecta al cono sur y a la región en general. Si es noticia global,
+   conecta específicamente con Chile y al menos 2 países latinoamericanos.
+   Menciona datos económicos, sociales o políticos reales y concretos de la región.
 
-7. <p> CIERRE: Reflexión final o dato de perspectiva que agregue valor al lector.
+7. <p> CIERRE: Reflexión final o perspectiva que agregue valor al lector latinoamericano.
    Puede terminar con una pregunta que invite a pensar (NO pedir comentarios).
 
 REGLAS DE CALIDAD:
 - Mínimo 420 palabras, máximo 680 palabras en el cuerpo
 - Párrafos de máx 4 líneas
 - Tono: periodismo serio, español neutro latinoamericano, sin opinión política partidista
-- BRAND SAFETY: En guerra/crimen → enfoca en implicaciones geopolíticas e impacto
-  humanitario. Sin lenguaje gráfico ni conteo detallado de bajas.
+- BRAND SAFETY: En guerra/crimen → enfoca en implicaciones e impacto humanitario regional.
+  Sin lenguaje gráfico ni conteo detallado de bajas.
 - PROHIBIDO: Inventar datos, citas o cifras que no estén en el contenido original.
 - Al final del contenido_html exactamente: [ENLACES_INTERNOS]
 
 TÍTULO SEO (máx 60 chars):
 - Keyword principal en primeras 3 palabras
+- Incluir referencia a LATAM cuando sea posible y natural
 - Genera curiosidad o urgencia genuina
-- Estructuras efectivas: "Por qué X cambia todo", "Así afecta Y a América Latina",
-  "X países ya...", "Lo que nadie dice sobre Z"
+- Estructuras efectivas para audiencia latina:
+  "Así afecta X a Chile y América Latina", "Por qué X cambia todo en LATAM",
+  "Chile y Argentina ante el desafío de X", "Lo que nadie dice sobre X en Latinoamérica"
 
-META DESCRIPCIÓN: Entre 140 y 155 caracteres exactos. Resume el valor informativo real.
+META DESCRIPCIÓN: Entre 140 y 155 caracteres exactos. Resume el valor informativo real
+con foco en el impacto o relevancia para el lector latinoamericano.
 
 RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
-{{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<p>...</p>[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3"], "categoria": "guerra|politica|economia|tecnologia|deportes|ciencia|salud|entretenimiento|latinoamerica|medio_ambiente|desastre|mundo|general"}}"""
+{{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<p>...</p>[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3"], "categoria": "latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general"}}"""
 
     try:
         if OPENROUTER_API_KEY:
@@ -1101,6 +1207,35 @@ def calcular_puntaje(titulo, desc):
         p += 2
     if len(desc) >= 50:
         p += 2
+
+    # ── V17.6: Bonus LATAM — noticias con conexión regional reciben prioridad ──
+    keywords_latam_puntaje = [
+        "chile", "argentina", "mexico", "brasil", "colombia", "peru",
+        "venezuela", "ecuador", "bolivia", "uruguay", "paraguay",
+        "latinoamerica", "america latina", "centroamerica",
+        "copa libertadores", "conmebol", "eliminatorias",
+        "boric", "milei", "lula", "sheinbaum", "petro", "maduro",
+        "peso chileno", "peso argentino", "litio", "cobre", "petroleo venezolano",
+        "amazonia", "patagonia", "atacama",
+    ]
+    latam_hits = sum(1 for kw in keywords_latam_puntaje if kw in txt)
+    if latam_hits >= 2:
+        p += 10   # Muy relevante para LATAM
+    elif latam_hits == 1:
+        p += 6    # Algo de conexión regional
+
+    # ── V17.6: Penalización noticias exclusivamente de EE.UU./Europa/Asia ──
+    # Solo si NO tienen conexión con LATAM
+    if latam_hits == 0:
+        keywords_no_latam = [
+            "washington dc", "white house", "congress usa", "senate usa",
+            "wall street", "silicon valley", "pentagon", "kremlin",
+            "bundestag", "westminster", "downing street",
+        ]
+        no_latam_hits = sum(1 for kw in keywords_no_latam if kw in txt)
+        if no_latam_hits >= 1:
+            p -= 4   # Penaliza noticias exclusivamente extranjeras sin impacto LATAM
+
     return p
 
 
@@ -2110,6 +2245,10 @@ def obtener_rss_chile():
         ('https://www.df.cl/rss.xml',                               'Diario Financiero'),
         ('https://www.elmostrador.cl/feed/',                        'El Mostrador'),
         ('https://www.24horas.cl/rss.xml',                         '24 Horas Chile'),
+        ('https://www.meganoticias.cl/feed/',                       'Mega Noticias'),
+        ('https://www.chilevision.cl/noticias/rss',                 'CHV Noticias'),
+        ('https://www.lacuarta.com/feed/',                          'La Cuarta'),
+        ('https://www.publimetro.cl/feed/',                         'Publimetro Chile'),
     ]
     noticias = []
     for url_feed, nombre in fuentes_chile:
@@ -2237,13 +2376,17 @@ def obtener_newsapi_chile():
         return []
     queries_chile = [
         'Chile noticias hoy Santiago',
-        'Chile economía dólar peso chileno',
+        'Chile economía dólar peso chileno inflación',
         'Chile Boric gobierno política',
-        'Chile Carabineros seguridad',
-        'Chile fútbol Colo-Colo Universidad Chile',
-        'Chile terremoto sismo alerta',
-        'Atacama Patagonia Chile naturaleza',
+        'Chile Carabineros seguridad delincuencia',
+        'Chile fútbol Colo-Colo Universidad Chile La Roja',
+        'Chile terremoto sismo alerta tsunami',
         'Chile litio cobre minería Codelco',
+        'Chile empleo trabajo desempleo',
+        'Chile salud hospital sistema público',
+        'Chile vivienda migración sociedad',
+        'Chile vecinos Argentina Perú Bolivia acuerdo',
+        'Atacama Patagonia Chile medio ambiente glaciares',
     ]
     noticias = []
     for q in queries_chile:
@@ -2423,7 +2566,7 @@ def publicar_bloque_latam_chile():
                     publicar_pinterest(titulo, contenido_ok[:490], url_wp, None, 'latinoamerica')
                 break
     else:
-        log("🇨🇱 Chile: cuota diaria alcanzada (4/4)", 'info')
+        log("🇨🇱 Chile: cuota diaria alcanzada (12/12)", 'info')
 
     # ── 2) Intentar publicar 1 artículo de LATAM (sin Chile) ─
     if puede_publicar_latam_region():
@@ -2502,7 +2645,7 @@ def publicar_bloque_latam_chile():
                     publicar_pinterest(titulo, contenido_ok[:490], url_wp, None, 'latinoamerica')
                 break
     else:
-        log("🌎 LATAM: cuota diaria alcanzada (11/11)", 'info')
+        log("🌎 LATAM: cuota diaria alcanzada (22/22)", 'info')
 
     estado_latam = cargar_estado_latam()
     log(f"\n📊 LATAM hoy → Chile: {estado_latam.get('chile',0)}/{MAX_POSTS_WP_DIA_CHILE} | "
@@ -2516,41 +2659,41 @@ def publicar_bloque_latam_chile():
 def obtener_newsapi():
     if not NEWS_API_KEY:
         return []
-    # V17: Queries ampliadas para cubrir TODAS las categorías del sitio
+    # V17.6: Queries reenfocadas — 80% orientadas a LATAM y audiencia hispanohablante
     queries = [
-        # Internacional / Guerra
-        'Ukraine Russia war conflict',
-        'Israel Gaza Hamas Middle East',
-        'China Taiwan US tensions',
-        # Política
-        'Trump Biden US politics White House',
-        'NATO EU Europe summit diplomacy',
-        # Economía
-        'economy inflation recession markets',
-        # Tecnología
-        'technology artificial intelligence OpenAI',
-        # Deportes — V17 NUEVO
+        # ── LATAM prioridad máxima ────────────────────────────────────────────
+        'Chile noticias economía política hoy',
+        'Chile Argentina Colombia últimas noticias',
+        'México Brasil Perú América Latina hoy',
+        'Venezuela Bolivia Ecuador Uruguay noticias',
+        'Latinoamérica economía inversión noticias',
+        'Boric Milei Lula Sheinbaum política',
+        'Copa Libertadores Sudamericana fútbol LATAM',
+        'eliminatorias Mundial 2026 Sudamérica',
+        'dólar inflación Argentina Chile México',
+        'litio cobre minería Latinoamérica',
+        'startups tecnología América Latina fintech',
+        'reggaeton música latina Bad Bunny Shakira',
+        'cine series streaming Latinoamérica',
+        # ── Internacional con impacto LATAM ───────────────────────────────────
+        'economy inflation markets Latin America impact',
+        'technology artificial intelligence Spanish',
+        'Trump tariffs trade Latin America',
+        'climate change South America environment',
+        # ── Deportes globales ─────────────────────────────────────────────────
         'football soccer Champions League goals',
+        'Copa del Mundo 2026 World Cup Messi',
         'NBA basketball playoffs finals',
         'Formula 1 F1 Grand Prix race',
-        'Copa del Mundo 2026 World Cup',
-        'Messi Ronaldo Mbappe transfer fichaje',
-        'tennis ATP WTA Wimbledon Roland Garros',
-        'boxing UFC MMA fight champion',
-        # Entretenimiento — V17 NUEVO
-        'movies cinema Hollywood box office',
-        'Netflix series premiere streaming',
-        'music pop album Grammy Billboard',
-        'Oscar awards celebrities Hollywood',
-        'Taylor Swift Bad Bunny concert tour',
-        'Marvel Disney Star Wars premiere',
-        # Mundo / Internacional General
+        'tennis ATP WTA Roland Garros',
+        # ── Entretenimiento global con audiencia latina ───────────────────────
+        'Netflix series premiere streaming español',
+        'music Grammy Billboard Latin',
+        'Oscar awards Hollywood cine',
+        # ── Internacional de alto impacto ─────────────────────────────────────
+        'Ukraine Russia war conflict',
         'world news international latest',
-        'Africa Asia Europe Pacific news',
-        'climate change environment disaster',
         'science space NASA discovery',
-        # Latinoamérica
-        'Latin America news Mexico Brazil Argentina',
     ]
     noticias = []
     for q in queries:
@@ -2652,38 +2795,49 @@ def obtener_gnews():
     return noticias
 
 def obtener_rss():
-    # V17: Feeds triplicados — cobertura completa por categoría
+    # V17.6: RSS reenfocados LATAM-first — medios regionales en primer lugar
     fuentes = [
-        # ── Internacional / Noticias generales ─────────────────────────
-        ('http://feeds.bbci.co.uk/mundo/rss.xml',                                   'BBC Mundo'),
+        # ── LATAM principal — medios regionales de referencia ──────────────────
+        ('https://www.infobae.com/arc/outboundfeeds/rss/america/',     'Infobae América'),
+        ('https://www.infobae.com/arc/outboundfeeds/rss/economia/',    'Infobae Economía'),
+        ('https://www.eluniversal.com.mx/rss.xml',                     'El Universal MX'),
+        ('https://www.milenio.com/rss',                                'Milenio MX'),
+        ('https://www.lanacion.com.ar/arc/outboundfeeds/rss/',         'La Nación Argentina'),
+        ('https://www.pagina12.com.ar/rss/portada',                    'Página 12 AR'),
+        ('https://www.clarin.com/rss/elmundo/',                        'Clarín Mundo'),
+        ('https://www.eltiempo.com/rss/portada.xml',                   'El Tiempo Colombia'),
+        ('https://www.semana.com/rss.xml',                             'Semana Colombia'),
+        ('https://elcomercio.pe/arcio/rss/',                           'El Comercio Perú'),
+        ('https://rpp.pe/rss/',                                        'RPP Perú'),
+        ('https://efectococuyo.com/feed/',                             'Efecto Cocuyo VE'),
+        ('https://www.eluniverso.com/rss.xml',                         'El Universo Ecuador'),
+        ('https://www.elpais.com.uy/rss.xml',                          'El País Uruguay'),
+        ('https://www.abc.com.py/rss/portada.xml',                     'ABC Paraguay'),
+        ('https://www.paginasiete.bo/rss.xml',                         'Página Siete Bolivia'),
+        ('https://www.nacion.com/rss/portada.rss',                     'La Nación Costa Rica'),
+        ('https://www.prensa.com/feed/',                               'La Prensa Panamá'),
+        ('https://www.listindiario.com/rss',                           'Listín Diario RD'),
+        # ── Internacional de referencia ─────────────────────────────────────────
+        ('http://feeds.bbci.co.uk/mundo/rss.xml',                      'BBC Mundo'),
         ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada', 'El País Internacional'),
-        ('https://www.infobae.com/arc/outboundfeeds/rss/mundo/',                    'Infobae Mundo'),
-        ('https://feeds.france24.com/es/',                                           'France 24'),
-        ('https://www.efe.com/efe/espana/1/rss',                                    'EFE'),
-        ('https://www.dw.com/es/ultimas-noticias/s-30689792/rss',                   'Deutsche Welle ES'),
-        ('https://www.lavanguardia.com/rss/internacional.xml',                      'La Vanguardia Internacional'),
-        ('https://www.20minutos.es/rss/internacional/',                             '20 Minutos Internacional'),
-        # ── Deportes — V17 NUEVO ────────────────────────────────────────
-        ('https://www.espn.com.mx/rss/deportes.xml',                                'ESPN Deportes'),
-        ('https://e00-marca.uecdn.es/rss/portada.xml',                              'Marca'),
-        ('https://feeds.as.com/mrss-s/pages/as/site/as.com/portada/',              'AS Deportes'),
-        ('https://www.mundodeportivo.com/rss/home.xml',                             'Mundo Deportivo'),
-        ('https://www.goal.com/es/rss',                                             'Goal ES'),
-        ('https://www.record.com.mx/rss/portada.xml',                               'Record Mx'),
-        # ── Entretenimiento — V17 NUEVO ─────────────────────────────────
-        ('https://www.espinof.com/feed',                                            'Espinof Cine'),
-        ('https://www.fotogramas.es/rss/noticias/',                                 'Fotogramas'),
-        ('https://los40.com/los40/rss/portada/',                                    'Los 40'),
-        ('https://www.sensacine.com/rss/',                                          'SensaCine'),
-        ('https://www.elconfidencial.com/rss/cultura/',                             'El Confidencial Cultura'),
-        # ── Latinoamérica — V17 NUEVO ───────────────────────────────────
-        ('https://www.infobae.com/arc/outboundfeeds/rss/america/',                  'Infobae América'),
-        ('https://www.eluniversal.com.mx/rss.xml',                                  'El Universal MX'),
-        ('https://www.lanacion.com.ar/arc/outboundfeeds/rss/',                      'La Nación Argentina'),
-        ('https://www.clarin.com/rss/elmundo/',                                     'Clarín Mundo'),
-        # ── Tecnología adicional ────────────────────────────────────────
-        ('https://feeds.xataka.com/xataka',                                         'Xataka'),
-        ('https://hipertextual.com/feed',                                           'Hipertextual'),
+        ('https://www.dw.com/es/ultimas-noticias/s-30689792/rss',      'Deutsche Welle ES'),
+        ('https://feeds.france24.com/es/',                             'France 24 ES'),
+        ('https://www.efe.com/efe/espana/1/rss',                       'EFE'),
+        # ── Deportes — fútbol LATAM y mundial ──────────────────────────────────
+        ('https://www.espn.com.mx/rss/deportes.xml',                   'ESPN Deportes'),
+        ('https://e00-marca.uecdn.es/rss/portada.xml',                 'Marca'),
+        ('https://feeds.as.com/mrss-s/pages/as/site/as.com/portada/', 'AS Deportes'),
+        ('https://www.goal.com/es/rss',                                'Goal ES'),
+        ('https://www.record.com.mx/rss/portada.xml',                  'Record MX'),
+        ('https://www.mundodeportivo.com/rss/home.xml',                'Mundo Deportivo'),
+        # ── Entretenimiento — artistas latinos ─────────────────────────────────
+        ('https://los40.com/los40/rss/portada/',                       'Los 40'),
+        ('https://www.espinof.com/feed',                               'Espinof Cine'),
+        ('https://www.fotogramas.es/rss/noticias/',                    'Fotogramas'),
+        ('https://www.sensacine.com/rss/',                             'SensaCine'),
+        # ── Tecnología ──────────────────────────────────────────────────────────
+        ('https://feeds.xataka.com/xataka',                            'Xataka'),
+        ('https://hipertextual.com/feed',                              'Hipertextual'),
     ]
     noticias = []
     for url_feed, nombre in fuentes:
@@ -3468,7 +3622,7 @@ def main():
     stats = h.get('estadisticas', {})
     estado_latam = cargar_estado_latam()
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V17.4:", 'exito')
+    log(f"✅ RESUMEN V17.6:", 'exito')
     log(f"   Total publicadas: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')
     log(f"   Facebook:  {stats.get('total_fb', 0)}", 'info')

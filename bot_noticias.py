@@ -1378,7 +1378,7 @@ def puede_publicar_wp():
 
     # Verificar cuota diaria primero — si ya publicamos MAX_POSTS_WP_DIA hoy, salir
     cuotas_hoy = cargar_cuotas_hoy()
-    total_hoy = sum(cuotas_hoy.values())
+    total_hoy = sum(int(v) for v in cuotas_hoy.get('conteo', {}).values())
     if total_hoy >= MAX_POSTS_WP_DIA:
         log(f"🚫 WP: cuota diaria alcanzada ({total_hoy}/{MAX_POSTS_WP_DIA})", 'advertencia')
         return False
@@ -3687,7 +3687,7 @@ def main():
     stats = h.get('estadisticas', {})
     estado_latam = cargar_estado_latam()
     cuotas_hoy = cargar_cuotas_hoy()
-    total_wp_hoy = sum(cuotas_hoy.values())
+    total_wp_hoy = sum(int(v) for v in cuotas_hoy.get('conteo', {}).values())
     log(f"\n{'='*50}", 'info')
     log(f"✅ RESUMEN V17.6.1:", 'exito')
     log(f"   WP hoy: {total_wp_hoy}/{MAX_POSTS_WP_DIA} artículos publicados", 'info')

@@ -1,8 +1,36 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.6
+Bot de Noticias Internacionales - V17.6.1
+CAMBIOS EN V17.6.1 (Fix publicación + SEO focus):
+  - CUOTAS DIARIAS: Reducidas a 24 artículos/día total (era 82)
+      * Flujo general:   24 artículos/día (era 48) — 1 cada 60 min
+      * Chile:            6 artículos/día (era 12) — distribuidos en el día
+      * LATAM región:     8 artículos/día (era 22) — distribuidos en el día
+      * Total global:    38 artículos/día (24 + 6 + 8) — realista y alcanzable
+  - TIMING WP: Intervalo mínimo entre publicaciones: 30 min → 60 min
+    (antes el JSON de estado no se pusheaba a tiempo y el bot leía hora vieja,
+     saltándose publicaciones; con 60 min hay margen real entre ejecuciones)
+  - FORZAR_PUBLICACION: Ahora se activa automáticamente si han pasado >55 min
+    desde la última publicación (evita que el bot salte por error de timing)
+  - FACEBOOK: Aclaración en código — FB y WP son flujos independientes.
+    WP publica en cada ejecución válida. FB solo en horario pico.
+    El horario pico NO afecta a WordPress.
+  - SEO FOCUS: Con 24 artículos/día de alta calidad, Google Discover y
+    Google News indexan mejor que con 72 artículos de calidad variable.
+    Menos artículos = más tiempo de IA por artículo = mejor contenido.
+  - CATEGORÍAS WP: Reducidas a las 8 que realmente aportan tráfico LATAM:
+    latinoamerica, deportes, economia, tecnologia, entretenimiento,
+    politica, ciencia-y-salud (combinada), mundo
+    Las demás (guerra, crimen, desastre) van a 'internacional' como antes.
+
 CAMBIOS EN V17.6:
+  - ESTRATEGIA: Pivot editorial completo → medio de referencia para Latinoamérica
+  - CUOTAS: latinoamerica 25%, deportes 18%, economia 15%, tecnologia 12%
+  - FUENTES: RSS LATAM ampliados — 19 medios regionales prioritarios
+  - PROMPT IA: Sección "Qué significa para Chile y América Latina"
+  - detectar_tema(): latinoamerica sube a prioridad 4 (era 11)
+  - calcular_puntaje(): bonus +10 para noticias con keywords LATAM
   - ESTRATEGIA: Pivot editorial completo → medio de referencia para Latinoamérica
   - OBJETIVO: 75-80% del contenido diario relacionado directa o indirectamente con LATAM
   - CUOTAS: Rebalanceo total orientado a LATAM-first:
@@ -268,15 +296,20 @@ ESTADO_LATAM_PATH   = 'estado_cuotas_latam.json'   # V17.3: cuotas Chile+LATAM i
 MODO_LATAM = os.getenv('MODO_LATAM', 'false').lower() == 'true'
 
 # Tiempos
-TIEMPO_ENTRE_WP_MIN = 30
-TIEMPO_ENTRE_FB_MIN = 60   # 1 hora mínima entre posts de Facebook
+# V17.6.1: Subido a 60 min para dar margen real entre ejecuciones.
+# Con 30 min el JSON de estado frecuentemente no estaba pusheado a tiempo
+# y el bot leía la hora antigua → saltaba la publicación sin publicar nada.
+TIEMPO_ENTRE_WP_MIN = 60
+TIEMPO_ENTRE_FB_MIN = 90   # 1.5 horas mínima entre posts de Facebook
 
-# Límites diarios
-MAX_POSTS_FB_DIA  = 6    # Máximo 6 posts/día en Facebook (calidad > cantidad)
-MAX_POSTS_WP_DIA        = 48   # Flujo general
-MAX_POSTS_WP_DIA_CHILE  = 12   # Chile: 12 artículos/día (era 7) — V17.6
-MAX_POSTS_WP_DIA_LATAM  = 22   # LATAM sin Chile: 22 artículos/día (era 16) — V17.6
-MAX_POSTS_WP_DIA_TOTAL  = 82   # Total máximo global (48 + 12 + 22) — V17.6
+# Límites diarios — V17.6.1: Reducidos a números alcanzables
+# Antes: 82/día → el bot no llegaba ni a 20. Ahora: 38/día → realista con 60min/pub
+# Beneficio SEO: 24 artículos de alta calidad > 72 artículos de calidad variable
+MAX_POSTS_FB_DIA        = 4    # Máximo 4 posts/día en Facebook (calidad > cantidad)
+MAX_POSTS_WP_DIA        = 24   # Flujo general: 1 cada 60 min → 24/día máx teórico
+MAX_POSTS_WP_DIA_CHILE  = 6    # Chile: 6 artículos/día
+MAX_POSTS_WP_DIA_LATAM  = 8    # LATAM sin Chile: 8 artículos/día
+MAX_POSTS_WP_DIA_TOTAL  = 38   # Total máximo global (24 + 6 + 8)
 
 # Anti-duplicados
 UMBRAL_SIMILITUD_TITULO    = 0.72
@@ -1327,30 +1360,62 @@ def guardar_en_historial(h, url, titulo, desc=""):
 # CONTROL DE TIEMPO — WP y FB separados
 # ──────────────────────────────────────────────────────────
 def puede_publicar_wp():
+    """
+    V17.6.1: Lógica de timing mejorada.
+    PROBLEMA ANTERIOR: El JSON estado_wp.json se guardaba localmente pero el push
+    a GitHub a veces tardaba o fallaba → la próxima ejecución leía una hora antigua
+    → creía que no habían pasado 30 min → no publicaba → ejecución de 34-49s sin output.
+
+    SOLUCIÓN: Usar TIEMPO_ENTRE_WP_MIN=60 + margen de 5 min de tolerancia.
+    Si el JSON dice que publicó hace 55-60 min → publicar igual (JSON puede estar
+    levemente desactualizado por el delay del push de GitHub Actions).
+
+    ADICIONALMENTE: Verificar cuota diaria de WP aquí para no desperdiciar
+    tiempo recolectando noticias si ya se alcanzó el límite del día.
+    """
     if os.getenv('FORZAR_PUBLICACION', '').lower() == 'true':
         return True
+
+    # Verificar cuota diaria primero — si ya publicamos MAX_POSTS_WP_DIA hoy, salir
+    cuotas_hoy = cargar_cuotas_hoy()
+    total_hoy = sum(cuotas_hoy.values())
+    if total_hoy >= MAX_POSTS_WP_DIA:
+        log(f"🚫 WP: cuota diaria alcanzada ({total_hoy}/{MAX_POSTS_WP_DIA})", 'advertencia')
+        return False
+
     e = cargar_json(ESTADO_WP_PATH, {'ultima_publicacion': None})
     u = e.get('ultima_publicacion')
     if not u:
         return True
     try:
         minutos = (datetime.now() - datetime.fromisoformat(u)).total_seconds() / 60
-        if minutos < TIEMPO_ENTRE_WP_MIN:
-            log(f"⏱️ WP: publicado hace {minutos:.0f} min — mínimo {TIEMPO_ENTRE_WP_MIN} min", 'info')
+        # Margen de 5 min de tolerancia por delay de push en GitHub Actions
+        margen = TIEMPO_ENTRE_WP_MIN - 5
+        if minutos < margen:
+            log(f"⏱️ WP: publicado hace {minutos:.0f} min — mínimo {margen} min (con margen)", 'info')
             return False
+        log(f"✅ WP: {minutos:.0f} min desde última publicación — OK para publicar", 'info')
     except:
         pass
     return True
 
 def puede_publicar_fb(h):
+    """
+    V17.6.1: ACLARACIÓN IMPORTANTE — FB y WP son flujos COMPLETAMENTE independientes.
+    - WP: publica en cada ejecución donde hayan pasado ≥55 min desde la última pub.
+           NO depende del horario pico. NO depende de si FB publicó o no.
+    - FB: solo publica en horarios pico definidos, máx 4 veces/día,
+           tomando noticias YA publicadas en verdadhoy.com (no genera contenido nuevo).
+    El horario pico de FB NUNCA bloquea la publicación en WordPress.
+    """
     if os.getenv('FORZAR_PUBLICACION', '').lower() == 'true':
         return True
 
-    # Horario pico
+    # Horario pico — SOLO aplica a Facebook, nunca a WordPress
     hora_utc = datetime.utcnow().hour
     en_pico  = any(inicio <= hora_utc < fin for inicio, fin in HORARIOS_PICO_UTC)
     if not en_pico:
-        log(f"⏰ FB: fuera de horario pico (UTC {hora_utc:02d}h)", 'info')
+        log(f"⏰ FB: fuera de horario pico (UTC {hora_utc:02d}h) — WP no se ve afectado", 'info')
         return False
 
     # Límite diario
@@ -3403,10 +3468,10 @@ def procesar_pending_videos():
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V17.4")
-    print("   WP: imágenes ≥1200px (Google Discover optimizado)")
-    print("   FB: imagen+texto desde verdadhoy.com")
-    print("   Pinterest: activo en paralelo con WP")
+    print("🌍 BOT DE NOTICIAS - V17.6.1")
+    print("   WP: 24 arts/día, 1 cada 60 min — SEO focus")
+    print("   FB: imagen+texto desde verdadhoy.com (horario pico, independiente de WP)")
+    print("   LATAM-FIRST: Chile 6/día + LATAM 8/día adicionales")
     print(f"   MODO: {'🌎 LATAM+CHILE' if MODO_LATAM else '🌐 GENERAL'}")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
@@ -3621,9 +3686,12 @@ def main():
     h = cargar_historial()
     stats = h.get('estadisticas', {})
     estado_latam = cargar_estado_latam()
+    cuotas_hoy = cargar_cuotas_hoy()
+    total_wp_hoy = sum(cuotas_hoy.values())
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V17.6:", 'exito')
-    log(f"   Total publicadas: {stats.get('total_publicadas', 0)}", 'info')
+    log(f"✅ RESUMEN V17.6.1:", 'exito')
+    log(f"   WP hoy: {total_wp_hoy}/{MAX_POSTS_WP_DIA} artículos publicados", 'info')
+    log(f"   Total acumulado: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')
     log(f"   Facebook:  {stats.get('total_fb', 0)}", 'info')
     log(f"   Pinterest: {stats.get('total_pinterest', 0)}", 'info')

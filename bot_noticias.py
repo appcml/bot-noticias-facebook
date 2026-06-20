@@ -1,8 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.6.1
-CAMBIOS EN V17.6.1 (Fix publicación + SEO focus):
+Bot de Noticias Internacionales - V17.6.2
+CAMBIOS EN V17.6.2 (Fix clasificación y titulares forzados):
+  - PROMPT IA: Reescrito completamente — clasificación con lógica clara por categoría
+  - PROMPT IA: "latinoamerica" ya NO es categoría por defecto para todo
+    Ahora solo se usa cuando el protagonista de la noticia ES un país/actor de LATAM
+  - PROMPT IA: "deportes" captura TODO lo deportivo (zapatos fútbol, lesiones, estadios)
+  - PROMPT IA: "entretenimiento" captura artistas aunque sean en español (Ana Torroja)
+  - PROMPT IA: Sección "Qué significa para Chile y LATAM" ahora es CONDICIONAL:
+    * Aparece en economia/politica/tecnologia/guerra/medio_ambiente SOLO si hay impacto real
+    * En deportes → "Análisis del partido/competencia" (conexión LATAM solo si es genuina)
+    * En entretenimiento → "Por qué importa" (sin forzar conexión latinoamericana)
+    * En latinoamerica → "Contexto regional" (ya ES de LATAM, no necesita conectar)
+  - PROMPT IA: PROHIBIDO explícito añadir "en LATAM" / "y su impacto en LATAM" al título
+    si no es genuinamente relevante para la región
+  - CUOTAS: Sin cambios respecto a V17.6.1 (24/día, 60 min entre publicaciones)
   - CUOTAS DIARIAS: Reducidas a 24 artículos/día total (era 82)
       * Flujo general:   24 artículos/día (era 48) — 1 cada 60 min
       * Chile:            6 artículos/día (era 12) — distribuidos en el día
@@ -887,12 +900,10 @@ def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
     if not api_key:
         return None
 
-    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, el medio de noticias de referencia para América Latina.
-Tu misión: transformar esta noticia en un artículo periodístico ORIGINAL con valor editorial real para el público latinoamericano.
-Google evalúa si el contenido aporta valor único — no se aceptan simples reescrituras.
+    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español para América Latina.
+Tu tarea: clasificar correctamente esta noticia y redactarla como un artículo periodístico original y creíble.
 
 VerdadHoy.com tiene audiencia en Chile, Argentina, México, Colombia, Perú, Brasil y toda América Latina.
-El 75-80% del contenido debe tener conexión directa con la región.
 
 ═══════════════════════════════════════
 NOTICIA A PROCESAR:
@@ -901,86 +912,122 @@ Contenido: {contenido[:3000]}
 Categoría sugerida por sistema: {categoria_sugerida}
 ═══════════════════════════════════════
 
-PASO 1 — CLASIFICACIÓN (lee y comprende antes de clasificar):
-Elige UNA categoría según el tema PRINCIPAL:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASO 1 — CLASIFICACIÓN: Elige la categoría MÁS ESPECÍFICA que describe el tema real de la noticia.
+No uses "latinoamerica" como categoría genérica para todo.
 
-• "latinoamerica"  → Noticias de Chile, Argentina, México, Colombia, Brasil, Perú,
-                     Venezuela, Ecuador, Bolivia, Uruguay, Paraguay, Centroamérica,
-                     Caribe. Cualquier noticia donde el protagonista principal sea
-                     un país o actor latinoamericano (economía, política, sociedad,
-                     cultura). TAMBIÉN noticias globales cuyo impacto central sea LATAM.
-• "deportes"       → Fútbol (especialmente Copa Libertadores, eliminatorias, ligas LATAM,
-                     Mundial 2026), tenis, NBA, F1, atletas latinoamericanos.
-• "economia"       → Mercados, inflación, dólar, aranceles, comercio, petróleo,
-                     criptomonedas, bancos centrales, bolsa — con foco en impacto LATAM.
-• "tecnologia"     → IA, software, hardware, startups, ciberseguridad, redes sociales,
-                     fintech, innovación — especialmente en Latinoamérica.
-• "entretenimiento"→ Artistas latinos (Bad Bunny, Shakira, Karol G, J Balvin...),
-                     cine, series, música, plataformas streaming, celebrities.
-• "politica"       → Decisiones gubernamentales LATAM, elecciones, diplomacia regional,
-                     sanciones, líderes mundiales con impacto directo en LATAM.
-• "ciencia"        → Descubrimientos científicos, espacio, NASA, física, biología,
-                     investigaciones — idealmente con conexión LATAM.
-• "salud"          → Enfermedades, tratamientos, vacunas, OMS, medicamentos,
-                     salud mental, investigaciones médicas.
-• "medio_ambiente" → Cambio climático, Amazonía, glaciares patagónicos, recursos
-                     naturales, energías renovables, biodiversidad LATAM.
-• "guerra"         → Conflictos armados, ataques militares, terrorismo — SOLO si tienen
-                     impacto real en Latinoamérica (no conflictos lejanos sin conexión).
-• "desastre"       → Terremotos, huracanes, inundaciones, tsunamis con víctimas.
-• "mundo"          → Internacional de alto impacto para LATAM. Solo si no encaja mejor arriba.
-• "general"        → Solo si no encaja en ninguna anterior.
+• "latinoamerica"  → SOLO si el protagonista principal ES un país o institución de LATAM.
+                     Ejemplos válidos: reforma en Chile, elecciones en Colombia, economía
+                     de Argentina, crisis en Venezuela, acuerdo entre Brasil y Uruguay.
+                     NO usar para: noticias de España, Israel, EE.UU., Europa donde LATAM
+                     solo aparece mencionado de refilón.
 
-REGLA CRÍTICA V17.6: Si la noticia menciona un país latinoamericano como protagonista
-→ clasificar como "latinoamerica" incluso si es sobre economía, deportes o política local.
-El tema específico (economía de Chile, política de Argentina) es LATAM primero.
-Excepción: conflicto armado activo → "guerra". Competencia deportiva específica → "deportes".
+• "deportes"       → TODO lo deportivo: fútbol (Champions, Copa Libertadores, eliminatorias,
+                     Mundial 2026, ligas), tenis, NBA, F1, boxeo, atletismo, etc.
+                     ⚠️ Una noticia sobre zapatos de fútbol, lesión de un jugador, estadios,
+                     transferencias, VAR, árbitros → es DEPORTES, no latinoamerica.
 
-PASO 2 — ARTÍCULO PERIODÍSTICO CON VALOR EDITORIAL ORIGINAL:
+• "entretenimiento"→ Música (aunque sea Ana Torroja, Shakira, Bad Bunny, Karol G),
+                     cine, series, premios (Grammy, Oscar, Latin Billboard), reality shows,
+                     plataformas de streaming, celebridades, festivales de música.
+                     ⚠️ Una noticia de un artista que lanza un álbum → ENTRETENIMIENTO.
 
-Estructura OBLIGATORIA del contenido_html:
+• "economia"       → Mercados, inflación, dólar, aranceles, petróleo, criptomonedas,
+                     bancos centrales, comercio internacional, recesión, PIB.
 
-1. <p> PÁRRAFO DE APERTURA (≤50 palabras): Qué/Quién/Cuándo/Dónde — datos duros concretos.
+• "tecnologia"     → IA, ciberseguridad, startups, redes sociales, gadgets, software,
+                     innovación tecnológica, fintech.
 
-2. <p> CONTEXTO Y ANTECEDENTES: Por qué esta noticia importa AHORA para América Latina.
-   Qué situación previa la hace relevante. Mínimo 2-3 oraciones con contexto real.
+• "politica"       → Decisiones gubernamentales, elecciones, diplomacia, líderes mundiales,
+                     sanciones, cumbres. Incluye: Netanyahu, Trump, Sánchez, Macron, etc.
+                     cuando toman decisiones políticas.
 
-3. <h2> Subtítulo descriptivo del desarrollo principal
+• "ciencia"        → Descubrimientos, espacio, NASA, física, biología, astronomía.
 
-4. <p><p> DESARROLLO: 2 párrafos con los datos, cifras o hechos más importantes del texto
-   original. Usa <strong> en 3-4 términos clave. Incluye declaraciones o datos específicos.
+• "salud"          → Enfermedades, vacunas, medicamentos, OMS, hospitales, salud mental.
 
-5. <ul><li> PUNTOS CLAVE: Lista de 3-4 aspectos esenciales de la noticia (si aplica).
+• "medio_ambiente" → Cambio climático, Amazonía, glaciares, energía renovable, biodiversidad.
 
-6. <h2>Qué significa esto para Chile y América Latina</h2>
-   <p> PERSPECTIVA LATAM OBLIGATORIA V17.6: Explica el impacto concreto en Chile y sus
-   países vecinos (Argentina, Perú, Bolivia, Colombia). Si la noticia es de otro país LATAM,
-   amplía cómo afecta al cono sur y a la región en general. Si es noticia global,
-   conecta específicamente con Chile y al menos 2 países latinoamericanos.
-   Menciona datos económicos, sociales o políticos reales y concretos de la región.
+• "guerra"         → Conflictos armados, bombardeos, misiles, tropas, terrorismo, víctimas de guerra.
 
-7. <p> CIERRE: Reflexión final o perspectiva que agregue valor al lector latinoamericano.
-   Puede terminar con una pregunta que invite a pensar (NO pedir comentarios).
+• "desastre"       → Terremotos, huracanes, tsunamis, inundaciones con víctimas.
+
+• "mundo"          → Internacional sin categoría más específica. Noticias de política exterior,
+                     organismos internacionales (ONU, FMI, G20) cuando no hay categoría mejor.
+
+• "general"        → Solo si ninguna otra categoría encaja.
+
+REGLA DE ORO: Usa la categoría más ESPECÍFICA. Si es sobre fútbol → deportes. Si es sobre
+un cantante → entretenimiento. "Latinoamerica" es para noticias cuyo eje central ES un país
+o tema de la región, no para noticias globales a las que se les añade "y su impacto en LATAM".
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASO 2 — TÍTULO SEO (máx 60 caracteres):
+- La keyword principal en las primeras 3 palabras
+- Describe el tema real sin exagerar ni forzar conexiones
+- NO añadir "en LATAM" o "para Chile" si la noticia no es genuinamente sobre eso
+- Sí incluir país/región en el título si la noticia ES de ese país: "Colombia reduce...",
+  "Argentina anuncia...", "Chile enfrenta..."
+- Para noticias globales con impacto real en LATAM: "Cómo afecta X a América Latina"
+- Para deportes: título directo sobre el hecho deportivo
+- Para entretenimiento: título sobre el artista/obra/evento real
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASO 3 — ARTÍCULO (estructura adaptada según categoría):
+
+ESTRUCTURA BASE OBLIGATORIA:
+1. <p> APERTURA (≤50 palabras): Qué/Quién/Cuándo/Dónde — datos concretos del hecho real.
+2. <p> CONTEXTO: Por qué importa esta noticia ahora. Antecedentes relevantes (2-3 oraciones).
+3. <h2> Subtítulo descriptivo
+4. <p><p> DESARROLLO: Los hechos, datos y cifras más importantes. Usa <strong> en 3-4 términos clave.
+5. <ul><li> 3-4 PUNTOS CLAVE del tema (si aplica).
+
+SECCIÓN FINAL — APLICA SEGÚN CATEGORÍA:
+
+▶ Si categoría = "latinoamerica":
+   <h2>Contexto regional</h2>
+   <p> Amplía cómo este hecho afecta a otros países de la región. Menciona al menos 2
+   países con datos concretos. Es una noticia de LATAM — no necesita "conectar con LATAM",
+   ya ES de LATAM. Desarrolla el contexto regional sin forzar conexiones artificiales.
+
+▶ Si categoría = "economia" O "politica" O "tecnologia" O "medio_ambiente" O "guerra":
+   (Solo si hay un impacto REAL y CONCRETO en América Latina — no solo teórico)
+   <h2>Qué significa esto para América Latina</h2>
+   <p> Explica el impacto específico en la región con datos reales. Menciona Chile y
+   al menos otro país latinoamericano con contexto económico, social o político concreto.
+   Si el impacto en LATAM es mínimo o especulativo, OMITE esta sección completamente.
+
+▶ Si categoría = "deportes":
+   <h2>Análisis del partido / la competencia</h2>
+   <p> Estadísticas, actuaciones destacadas, próximos partidos o contexto del torneo.
+   Solo añadir perspectiva latinoamericana si hay jugadores o equipos de LATAM involucrados
+   de manera central (no como pretexto para mencionar la región).
+
+▶ Si categoría = "entretenimiento":
+   <h2>Por qué importa este lanzamiento / evento</h2>
+   <p> Contexto artístico, recepción del público, datos de audiencia o streaming.
+   Mencionar artistas o público latinoamericano SOLO si es genuinamente relevante
+   (el artista es latinoamericano, el evento es en LATAM, o los datos lo justifican).
+
+▶ Si categoría = "ciencia" O "salud":
+   <h2>Lo que dicen los expertos</h2>
+   <p> Contexto científico, implicaciones prácticas para la población. Mencionar
+   contexto latinoamericano solo si hay instituciones o datos de la región involucrados.
+
+CIERRE (todas las categorías):
+<p> Reflexión final o dato de perspectiva que aporte valor. Puede terminar con pregunta
+genuina que invite a pensar. NO pedir comentarios ni suscripciones.
+Al final exactamente: [ENLACES_INTERNOS]
 
 REGLAS DE CALIDAD:
-- Mínimo 420 palabras, máximo 680 palabras en el cuerpo
-- Párrafos de máx 4 líneas
-- Tono: periodismo serio, español neutro latinoamericano, sin opinión política partidista
-- BRAND SAFETY: En guerra/crimen → enfoca en implicaciones e impacto humanitario regional.
-  Sin lenguaje gráfico ni conteo detallado de bajas.
-- PROHIBIDO: Inventar datos, citas o cifras que no estén en el contenido original.
-- Al final del contenido_html exactamente: [ENLACES_INTERNOS]
+- Mínimo 420 palabras, máximo 680 palabras
+- Párrafos de máx 4 líneas, español neutro latinoamericano
+- PROHIBIDO: Inventar datos, citas o cifras no presentes en el contenido original
+- PROHIBIDO: Añadir "y su impacto en LATAM" / "en LATAM" al título si no es genuinamente relevante
+- BRAND SAFE: Sin lenguaje gráfico en guerra/crimen, sin conteo detallado de bajas
 
-TÍTULO SEO (máx 60 chars):
-- Keyword principal en primeras 3 palabras
-- Incluir referencia a LATAM cuando sea posible y natural
-- Genera curiosidad o urgencia genuina
-- Estructuras efectivas para audiencia latina:
-  "Así afecta X a Chile y América Latina", "Por qué X cambia todo en LATAM",
-  "Chile y Argentina ante el desafío de X", "Lo que nadie dice sobre X en Latinoamérica"
-
-META DESCRIPCIÓN: Entre 140 y 155 caracteres exactos. Resume el valor informativo real
-con foco en el impacto o relevancia para el lector latinoamericano.
+META DESCRIPCIÓN: 140-155 caracteres exactos. Resume el valor real de la noticia.
+Debe describir el contenido real, no una promesa genérica de "impacto en LATAM".
 
 RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
 {{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<p>...</p>[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3"], "categoria": "latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general"}}"""
@@ -1361,13 +1408,13 @@ def guardar_en_historial(h, url, titulo, desc=""):
 # ──────────────────────────────────────────────────────────
 def puede_publicar_wp():
     """
-    V17.6.1: Lógica de timing mejorada.
+    V17.6.1: Logica de timing mejorada.
     PROBLEMA ANTERIOR: El JSON estado_wp.json se guardaba localmente pero el push
-    a GitHub a veces tardaba o fallaba → la próxima ejecución leía una hora antigua
-    → creía que no habían pasado 30 min → no publicaba → ejecución de 34-49s sin output.
+    a GitHub a veces tardaba o fallaba. La proxima ejecucion leia una hora antigua
+    y creia que no habian pasado 30 min, no publicaba, ejecucion de 34-49s sin output.
 
-    SOLUCIÓN: Usar TIEMPO_ENTRE_WP_MIN=60 + margen de 5 min de tolerancia.
-    Si el JSON dice que publicó hace 55-60 min → publicar igual (JSON puede estar
+    SOLUCION: Usar TIEMPO_ENTRE_WP_MIN=60 + margen de 5 min de tolerancia.
+    Si el JSON dice que publico hace 55-60 min, publicar igual (JSON puede estar
     levemente desactualizado por el delay del push de GitHub Actions).
 
     ADICIONALMENTE: Verificar cuota diaria de WP aquí para no desperdiciar
@@ -3468,7 +3515,7 @@ def procesar_pending_videos():
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V17.6.1")
+    print("🌍 BOT DE NOTICIAS - V17.6.2")
     print("   WP: 24 arts/día, 1 cada 60 min — SEO focus")
     print("   FB: imagen+texto desde verdadhoy.com (horario pico, independiente de WP)")
     print("   LATAM-FIRST: Chile 6/día + LATAM 8/día adicionales")
@@ -3689,7 +3736,7 @@ def main():
     cuotas_hoy = cargar_cuotas_hoy()
     total_wp_hoy = sum(int(v) for v in cuotas_hoy.get('conteo', {}).values())
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V17.6.1:", 'exito')
+    log(f"✅ RESUMEN V17.6.2:", 'exito')
     log(f"   WP hoy: {total_wp_hoy}/{MAX_POSTS_WP_DIA} artículos publicados", 'info')
     log(f"   Total acumulado: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')

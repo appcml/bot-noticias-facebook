@@ -2095,19 +2095,45 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     _titulo_box = f"{_emoji_b} {_texto_b}"
 
     def _generar_box_fallback(titulo_art, contenido_art):
-        """Genera un box resumen básico cuando la IA no lo incluyó."""
-        oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido_art) if len(o.strip()) > 30]
+        """
+        V17.6.6b: Genera box resumen cuando la IA lo omite.
+        Usa oraciones COMPLETAS — nunca corta a mitad de una idea.
+        Si la oración es muy larga (+180 chars), la divide en el punto
+        más cercano a la mitad para mantener sentido completo.
+        """
+        # Limpiar HTML del contenido antes de extraer oraciones
+        texto_limpio = re.sub(r'<[^>]+>', ' ', contenido_art)
+        texto_limpio = re.sub(r'\s+', ' ', texto_limpio).strip()
+        oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', texto_limpio)
+                     if len(o.strip()) > 40 and not o.strip().startswith('<')]
         puntos = []
-        for o in oraciones[:6]:
-            if len(o) > 20:
-                punto = o[:120].rsplit(' ', 1)[0] if len(o) > 120 else o
-                if not punto.endswith('.'):
-                    punto += '.'
-                puntos.append(punto)
+        for o in oraciones[:10]:
+            # Saltar oraciones que son frases de fuente/crédito
+            if any(skip in o.lower() for skip in ['verdad hoy', 'fuente:', 'información verificada']):
+                continue
+            # Oración corta/media — usar completa
+            if len(o) <= 160:
+                punto = o if o.endswith(('.','!','?')) else o + '.'
+            else:
+                # Oración larga — buscar el primer punto, coma o "que" cercano a los 140 chars
+                corte = o[:160]
+                # Intentar cortar en punto y coma, coma, o "que"
+                for sep in ['. ', ', ', ' que ', ' y ', ' con ']:
+                    idx = corte.rfind(sep)
+                    if idx > 80:
+                        punto = corte[:idx + len(sep)].strip()
+                        if not punto.endswith(('.','!','?')):
+                            punto += '...'
+                        break
+                else:
+                    # No encontró buen punto de corte — usar primeras 130 chars en palabra completa
+                    punto = corte.rsplit(' ', 1)[0] + '...'
+            puntos.append(punto)
             if len(puntos) == 4:
                 break
+        # Garantizar mínimo 3 puntos
         while len(puntos) < 3:
-            puntos.append(f"Noticia sobre: {titulo_art[:80]}.")
+            puntos.append(f'Noticia: {titulo_art[:100]}.')
         items_html = '\n'.join(
             f'<li style="margin-bottom:6px;">{p}</li>' for p in puntos
         )

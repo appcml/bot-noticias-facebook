@@ -1,7 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.6.3
+Bot de Noticias Internacionales - V17.6.4
+CAMBIOS EN V17.6.4 (Anti-spam + clasificación mejorada):
+  - FILTRO: es_contenido_spam() — blacklist de 35+ keywords de casas de apuestas,
+    contenido afiliado, préstamos, crypto spam y SEO basura aplicado en TODOS los loops
+  - FILTRO: Bloquea automáticamente: rojabet, bet365, 1xbet, betano, "bono sin depósito",
+    "casino online", "apuestas deportivas", "código promocional", etc.
+  - CLASIFICACIÓN: Relojería de lujo y moda → "entretenimiento" (no "internacional")
+    Keywords: rolex, audemars, patek philippe, swatch, colaboracion relojera, etc.
+  - CLASIFICACIÓN: Smartwatch/wearables → "tecnología"
+    Keywords: apple watch, galaxy watch, garmin, fitbit, reloj inteligente, etc.
+  - PROMPT IA: Actualizado a V17.6.4 en la instrucción de categorías
+
 CAMBIOS EN V17.6.3 (Tiempo de permanencia — de 31s a +2 min):
   - PROMPT IA: Box "En 30 segundos" al inicio de cada artículo (3-4 bullets resumen)
     → Paradójicamente retiene: el lector quiere el detalle después del gancho visual
@@ -540,6 +551,44 @@ BLACKLIST_TITULOS = [
     r'^\s*\d+\s*$',
 ]
 
+# ── V17.6.4: Blacklist de contenido spam, apuestas y publicitario ─────────────
+# Filtra ANTES de procesar — evita contenido brand-unsafe, promocional y casas de apuestas
+BLACKLIST_CONTENIDO_SPAM = [
+    # Casas de apuestas / gambling — alto riesgo desmonetización AdSense
+    "rojabet", "bet365", "1xbet", "betano", "codere", "tómbola", "tombola",
+    "sportingbet", "bwin", "pokerstars", "888casino", "betfair", "unibet",
+    "casino online", "apuestas deportivas", "apuestas en línea", "apuestas en linea",
+    "bono de bienvenida casino", "bono sin depósito", "bono sin deposito",
+    "giros gratis casino", "tragamonedas", "tragaperras", "ruleta online",
+    "poker online", "blackjack online", "slots online", "juegos de azar",
+    "casa de apuestas", "cuotas de apuestas", "pronósticos deportivos pagos",
+    # Afiliados y contenido promocional disfrazado
+    "código promocional", "codigo promocional", "cupón descuento", "cupon descuento",
+    "oferta exclusiva para", "regístrate ahora y obtén", "registrate ahora y obtén",
+    "haz clic aquí para", "cómo conseguirlo en 2026", "como conseguirlo en 2025",
+    "cómo obtener gratis", "como obtener gratis",
+    "descuento exclusivo", "precio especial hoy",
+    # Contenido SEO basura / granjas de contenido
+    "top 10 mejores", "los mejores del mundo en 2026", "ranking definitivo de",
+    "guía definitiva para ganar", "guia definitiva para ganar",
+    "cómo ganar dinero con", "como ganar dinero con",
+    # Préstamos / crypto spam
+    "prestamo rapido online", "préstamo rápido online", "credito inmediato",
+    "crédito inmediato", "bitcoin gratis", "cripto gratis",
+    "ganar criptomonedas", "invertir en crypto desde",
+]
+
+def es_contenido_spam(titulo, descripcion=""):
+    """
+    V17.6.4: Detecta si una noticia es contenido spam, publicitario o de apuestas.
+    Retorna (True, motivo) si es spam, (False, None) si es legítima.
+    """
+    txt = f"{titulo} {descripcion}".lower()
+    for keyword in BLACKLIST_CONTENIDO_SPAM:
+        if keyword.lower() in txt:
+            return True, keyword
+    return False, None
+
 # ──────────────────────────────────────────────────────────
 # DETECCIÓN DE TEMA — MEJORADA V12
 # ──────────────────────────────────────────────────────────
@@ -743,6 +792,9 @@ def detectar_tema(titulo, descripcion=""):
         "red neuronal", "machine learning", "big data", "cloud computing",
         "5g", "6g", "internet de las cosas", "iot", "ciberseguridad",
         "huawei", "nvidia", "spacex", "starlink",
+        # V17.6.4: Smartwatch / wearables — tecnología ponible
+        "smartwatch", "apple watch", "galaxy watch", "wearable", "reloj inteligente",
+        "reloj deportivo", "garmin", "fitbit", "xiaomi band",
     ]):
         return 'tecnologia'
 
@@ -831,6 +883,15 @@ def detectar_tema(titulo, descripcion=""):
         "temporada de", "segunda temporada", "tercera temporada",
         "secuela de", "remake de", "spin-off",
         "marvel", "star wars", "dc comics", "anime",
+        # V17.6.4: Lujo y lifestyle — relojería, moda, gastronomía
+        "reloj de lujo", "relojería", "relojeria", "rolex", "audemars", "patek philippe",
+        "richard mille", "hublot", "tag heuer", "swatch", "omega reloj",
+        "colaboracion relojera", "coleccion de relojes", "edicion limitada reloj",
+        "moda de lujo", "haute couture", "louis vuitton", "gucci", "chanel moda",
+        "hermes", "prada moda", "versace", "fendi", "balenciaga",
+        "lifestyle", "tendencia de moda", "coleccion moda",
+        "gastronomia", "chef estrella", "restaurante michelin",
+        "viaje de lujo", "hotel de lujo", "crucero de lujo",
     ]):
         return 'entretenimiento'
 
@@ -2682,6 +2743,11 @@ def publicar_bloque_latam_chile():
                 continue
             if nt.get('puntaje', 0) < 2:
                 continue
+            # V17.6.4: Filtro spam en bloque Chile
+            es_spam, kw_spam = es_contenido_spam(titulo, desc)
+            if es_spam:
+                log(f"   🚫 SPAM Chile: '{kw_spam}' — descartando", 'advertencia')
+                continue
 
             cont_web, _ = extraer_contenido(url)
             contenido_ok = cont_web if (cont_web and len(cont_web) >= 300) else (desc if len(desc) >= 200 else None)
@@ -3648,6 +3714,12 @@ def main():
                     continue
                 if nt.get('puntaje', 0) < 3:
                     log(f"   ❌ Puntaje bajo ({nt.get('puntaje', 0)})", 'debug')
+                    continue
+
+                # V17.6.4: Filtro spam/apuestas/contenido promocional
+                es_spam, keyword_spam = es_contenido_spam(titulo, desc)
+                if es_spam:
+                    log(f"   🚫 SPAM/APUESTAS detectado: '{keyword_spam}' — descartando", 'advertencia')
                     continue
 
                 # Contenido

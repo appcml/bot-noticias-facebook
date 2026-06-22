@@ -1,7 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.6.2
+Bot de Noticias Internacionales - V17.6.3
+CAMBIOS EN V17.6.3 (Tiempo de permanencia — de 31s a +2 min):
+  - PROMPT IA: Box "En 30 segundos" al inicio de cada artículo (3-4 bullets resumen)
+    → Paradójicamente retiene: el lector quiere el detalle después del gancho visual
+  - PROMPT IA: Estructura H2/H3 obligatoria — lector escanea y decide quedarse
+  - PROMPT IA: Párrafos máx 3 líneas (era 4) — más aire visual, menos abandono
+  - PROMPT IA: Pregunta de engagement al cierre — invita a dejar comentario real
+  - PROMPT IA: "Dato destacado" con <blockquote> en cada artículo — rompe monotonía visual
+  - ESTRUCTURA WP: Box resumen con CSS inline propio — no depende del tema
+  - ESTRUCTURA WP: Tiempo estimado de lectura calculado automáticamente y mostrado
+  - ESTRUCTURA WP: Sección "Sigue leyendo" al final del artículo (ya existía, se refuerza)
+  - OBJETIVO: Analytics time-on-page > 2min (era 31s) para mejorar señal AdSense/Discover
+
 CAMBIOS EN V17.6.2 (Fix clasificación y titulares forzados):
   - PROMPT IA: Reescrito completamente — clasificación con lógica clara por categoría
   - PROMPT IA: "latinoamerica" ya NO es categoría por defecto para todo
@@ -900,8 +912,12 @@ def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
     if not api_key:
         return None
 
+    # V17.6.3: Calcular tiempo de lectura estimado para el box resumen
+    palabras_contenido = len(contenido.split())
+    tiempo_lectura = max(2, round(palabras_contenido / 200))  # ~200 palabras/min lector promedio
+
     prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español para América Latina.
-Tu tarea: clasificar correctamente esta noticia y redactarla como un artículo periodístico original y creíble.
+Tu tarea: clasificar correctamente esta noticia y redactarla como un artículo periodístico original, estructurado y atractivo para el lector.
 
 VerdadHoy.com tiene audiencia en Chile, Argentina, México, Colombia, Perú, Brasil y toda América Latina.
 
@@ -910,6 +926,7 @@ NOTICIA A PROCESAR:
 Título original: {titulo}
 Contenido: {contenido[:3000]}
 Categoría sugerida por sistema: {categoria_sugerida}
+Tiempo de lectura estimado: {tiempo_lectura} min
 ═══════════════════════════════════════
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -973,64 +990,82 @@ PASO 2 — TÍTULO SEO (máx 60 caracteres):
 - Para entretenimiento: título sobre el artista/obra/evento real
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 3 — ARTÍCULO (estructura adaptada según categoría):
+PASO 3 — ARTÍCULO COMPLETO (estructura V17.6.3 — retención de lectura):
 
-ESTRUCTURA BASE OBLIGATORIA:
-1. <p> APERTURA (≤50 palabras): Qué/Quién/Cuándo/Dónde — datos concretos del hecho real.
-2. <p> CONTEXTO: Por qué importa esta noticia ahora. Antecedentes relevantes (2-3 oraciones).
-3. <h2> Subtítulo descriptivo
-4. <p><p> DESARROLLO: Los hechos, datos y cifras más importantes. Usa <strong> en 3-4 términos clave.
-5. <ul><li> 3-4 PUNTOS CLAVE del tema (si aplica).
+⚠️ REGLA CRÍTICA DE ESTRUCTURA: El artículo debe comenzar SIEMPRE con el box resumen
+y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retención.
 
-SECCIÓN FINAL — APLICA SEGÚN CATEGORÍA:
+── ELEMENTO 1: BOX RESUMEN "EN 30 SEGUNDOS" (OBLIGATORIO — va primero siempre) ──
+<div style="background:#f0f4ff;border-left:4px solid #1a56db;padding:16px 20px;margin:0 0 24px 0;border-radius:0 8px 8px 0;">
+<p style="margin:0 0 8px 0;font-weight:700;color:#1a56db;font-size:0.95em;">⚡ En 30 segundos</p>
+<ul style="margin:0;padding-left:20px;color:#374151;">
+<li style="margin-bottom:6px;">[Punto clave 1 — el hecho principal en 1 línea]</li>
+<li style="margin-bottom:6px;">[Punto clave 2 — el dato más relevante]</li>
+<li style="margin-bottom:6px;">[Punto clave 3 — consecuencia o contexto importante]</li>
+<li style="margin-bottom:0;">[Punto clave 4 — quién, cuándo o dónde si aplica]</li>
+</ul>
+</div>
+
+── ELEMENTO 2: APERTURA ──
+<p>[Apertura ≤50 palabras: Qué/Quién/Cuándo/Dónde — datos concretos del hecho real.]</p>
+
+── ELEMENTO 3: CONTEXTO ──
+<p>[Por qué importa esta noticia ahora. Antecedentes relevantes en 2-3 oraciones.]</p>
+
+── ELEMENTO 4: DESARROLLO PRINCIPAL ──
+<h2>[Subtítulo H2 descriptivo del desarrollo — frase informativa, no genérica]</h2>
+<p>[Primer párrafo de desarrollo — hechos y datos principales. Usa <strong>3-4 términos clave</strong>. Máx 3 líneas.]</p>
+<p>[Segundo párrafo — ampliación, contexto adicional, cifras. Máx 3 líneas.]</p>
+
+── ELEMENTO 5: DATO DESTACADO (OBLIGATORIO — rompe monotonía visual) ──
+<blockquote style="border-left:3px solid #e5e7eb;padding:12px 16px;margin:20px 0;background:#f9fafb;font-style:italic;color:#4b5563;">
+[Cita textual o dato estadístico relevante del artículo — máx 2 líneas. Si no hay cita, usa el dato más impactante con formato: "Según [fuente], [dato concreto]."]
+</blockquote>
+
+── ELEMENTO 6: SECCIÓN FINAL SEGÚN CATEGORÍA ──
 
 ▶ Si categoría = "latinoamerica":
-   <h2>Contexto regional</h2>
-   <p> Amplía cómo este hecho afecta a otros países de la región. Menciona al menos 2
-   países con datos concretos. Es una noticia de LATAM — no necesita "conectar con LATAM",
-   ya ES de LATAM. Desarrolla el contexto regional sin forzar conexiones artificiales.
+<h2>Contexto regional</h2>
+<p>[Amplía cómo este hecho afecta a otros países de la región. Menciona al menos 2 países con datos concretos. Ya ES de LATAM — no necesita conectar artificialmente. Máx 3 líneas.]</p>
 
 ▶ Si categoría = "economia" O "politica" O "tecnologia" O "medio_ambiente" O "guerra":
-   (Solo si hay un impacto REAL y CONCRETO en América Latina — no solo teórico)
-   <h2>Qué significa esto para América Latina</h2>
-   <p> Explica el impacto específico en la región con datos reales. Menciona Chile y
-   al menos otro país latinoamericano con contexto económico, social o político concreto.
-   Si el impacto en LATAM es mínimo o especulativo, OMITE esta sección completamente.
+(Solo si hay impacto REAL y CONCRETO en América Latina — no solo teórico)
+<h2>Qué significa esto para América Latina</h2>
+<p>[Impacto específico en la región con datos reales. Menciona Chile y al menos otro país latinoamericano. Si el impacto es mínimo o especulativo, OMITE esta sección.]</p>
 
 ▶ Si categoría = "deportes":
-   <h2>Análisis del partido / la competencia</h2>
-   <p> Estadísticas, actuaciones destacadas, próximos partidos o contexto del torneo.
-   Solo añadir perspectiva latinoamericana si hay jugadores o equipos de LATAM involucrados
-   de manera central (no como pretexto para mencionar la región).
+<h2>Análisis del encuentro</h2>
+<p>[Estadísticas, actuaciones destacadas, próximos partidos o contexto del torneo. Perspectiva LATAM solo si hay jugadores o equipos de la región involucrados de manera central.]</p>
 
 ▶ Si categoría = "entretenimiento":
-   <h2>Por qué importa este lanzamiento / evento</h2>
-   <p> Contexto artístico, recepción del público, datos de audiencia o streaming.
-   Mencionar artistas o público latinoamericano SOLO si es genuinamente relevante
-   (el artista es latinoamericano, el evento es en LATAM, o los datos lo justifican).
+<h2>Por qué importa</h2>
+<p>[Contexto artístico, recepción del público, datos de audiencia o streaming. Mencionar LATAM solo si el artista es latinoamericano o el evento es en la región.]</p>
 
 ▶ Si categoría = "ciencia" O "salud":
-   <h2>Lo que dicen los expertos</h2>
-   <p> Contexto científico, implicaciones prácticas para la población. Mencionar
-   contexto latinoamericano solo si hay instituciones o datos de la región involucrados.
+<h2>Lo que dicen los expertos</h2>
+<p>[Contexto científico e implicaciones prácticas para la población. Contexto latinoamericano solo si hay datos de la región.]</p>
 
-CIERRE (todas las categorías):
-<p> Reflexión final o dato de perspectiva que aporte valor. Puede terminar con pregunta
-genuina que invite a pensar. NO pedir comentarios ni suscripciones.
-Al final exactamente: [ENLACES_INTERNOS]
+── ELEMENTO 7: CIERRE CON PREGUNTA (OBLIGATORIO) ──
+<p>[Reflexión final o dato de perspectiva que aporte valor. Terminar con una pregunta genuina y abierta que invite al lector a pensar o compartir su opinión. Ejemplo: "¿Crees que esta medida tendrá el impacto esperado?" o "¿Cómo afectará esto a tu día a día?". La pregunta debe ser específica al tema, no genérica. NO pedir comentarios ni suscripciones directamente.]</p>
 
-REGLAS DE CALIDAD:
-- Mínimo 420 palabras, máximo 680 palabras
-- Párrafos de máx 4 líneas, español neutro latinoamericano
+[ENLACES_INTERNOS]
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGLAS DE CALIDAD V17.6.3:
+- Mínimo 450 palabras, máximo 700 palabras (artículo más sustancioso = más tiempo de lectura)
+- Párrafos de MÁXIMO 3 líneas — más aire visual, menos abandono
+- Español neutro latinoamericano, sin regionalismos extremos
 - PROHIBIDO: Inventar datos, citas o cifras no presentes en el contenido original
 - PROHIBIDO: Añadir "y su impacto en LATAM" / "en LATAM" al título si no es genuinamente relevante
 - BRAND SAFE: Sin lenguaje gráfico en guerra/crimen, sin conteo detallado de bajas
+- El box "En 30 segundos" y el <blockquote> son OBLIGATORIOS en TODOS los artículos
+- La pregunta de cierre debe ser específica al tema, no genérica
 
 META DESCRIPCIÓN: 140-155 caracteres exactos. Resume el valor real de la noticia.
 Debe describir el contenido real, no una promesa genérica de "impacto en LATAM".
 
 RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
-{{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<p>...</p>[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3"], "categoria": "latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general"}}"""
+{{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<div style=...>[BOX]</div><p>...</p>...[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3"], "categoria": "latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general"}}"""
 
     try:
         if OPENROUTER_API_KEY:
@@ -2079,8 +2114,16 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     except Exception as e:
         log(f"No se pudo obtener URL real de imagen: {e}", "debug")
 
+    # V17.6.3: Calcular tiempo de lectura para mostrar en el artículo
+    palabras_articulo = len(re.sub(r'<[^>]+>', '', contenido_formateado).split())
+    minutos_lectura = max(2, round(palabras_articulo / 200))
+    barra_lectura = f"""<p style="font-size:0.82em;color:#6b7280;margin:0 0 20px 0;display:flex;align-items:center;gap:6px;">
+<span>🕐</span> <span>Tiempo de lectura: <strong>{minutos_lectura} min</strong></span>
+</p>"""
+
     # Reconstruir contenido_html con schema actualizado
     contenido_html = f"""
+{barra_lectura}
 {contenido_formateado}
 
 <hr>
@@ -3515,10 +3558,11 @@ def procesar_pending_videos():
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V17.6.2")
+    print("🌍 BOT DE NOTICIAS - V17.6.3")
     print("   WP: 24 arts/día, 1 cada 60 min — SEO focus")
     print("   FB: imagen+texto desde verdadhoy.com (horario pico, independiente de WP)")
     print("   LATAM-FIRST: Chile 6/día + LATAM 8/día adicionales")
+    print("   RETENCIÓN: Box resumen + blockquote + pregunta cierre (target >2min)")
     print(f"   MODO: {'🌎 LATAM+CHILE' if MODO_LATAM else '🌐 GENERAL'}")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("=" * 60)
@@ -3736,7 +3780,7 @@ def main():
     cuotas_hoy = cargar_cuotas_hoy()
     total_wp_hoy = sum(int(v) for v in cuotas_hoy.get('conteo', {}).values())
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V17.6.2:", 'exito')
+    log(f"✅ RESUMEN V17.6.3:", 'exito')
     log(f"   WP hoy: {total_wp_hoy}/{MAX_POSTS_WP_DIA} artículos publicados", 'info')
     log(f"   Total acumulado: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')

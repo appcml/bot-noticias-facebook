@@ -1,7 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.6.4
+Bot de Noticias Internacionales - V17.6.6
+CAMBIOS EN V17.6.6 (Box resumen garantizado en 100% de artículos):
+  - FIX CRÍTICO: Box resumen ahora se verifica DESPUÉS de que la IA responde
+    Si la IA omite el box (por token limit o error), se inyecta automáticamente
+    con _generar_box_fallback() que extrae los 4 puntos clave del contenido real
+  - FIX CRÍTICO: Fallback sin IA también incluye box resumen ahora
+    Antes: fallback publicaba párrafos crudos sin box
+    Ahora: fallback genera box con las primeras 4 oraciones clave del artículo
+  - DETECCIÓN: 6 variantes de texto detectadas para saber si el box ya está presente
+    ('background:#f0f4ff', 'Lo esencial', 'Puntos clave', 'Resumen r', etc.)
+  - ROTACIÓN: Los 4 títulos del box rotan aleatoriamente en todos los casos (IA y fallback)
+  - RESULTADO: 100% de artículos publicados tendrán box resumen, sin excepciones
+
+CAMBIOS EN V17.6.5 (SEO Yoast + clasificación corregida):
+  - PROMPT IA: Reglas Yoast explícitas — máx 25% frases largas, H2 antes de palabra 150
+  - PROMPT IA: Mínimo 3 H2 distribuidos, mínimo 4 keywords secundarias
+  - PROMPT IA: Instrucciones de voz activa y palabras de transición explícitas
+  - PROMPT IA: Reglas anti-errores frecuentes — España/transporte/relojería bien clasificadas
+  - CLASIFICACIÓN: "decreto"/"legislacion" ya no disparan "política" solos (muy genéricos)
+  - CLASIFICACIÓN: Transporte público, ferroviario, infraestructura → "economia"
+  - ESTRUCTURA: H2 obligatorio antes de palabra 150 (era 300) — fix Yoast rojo
+  - ESTRUCTURA: Segundo H2 en el desarrollo — 3 subtítulos mínimo por artículo
+
 CAMBIOS EN V17.6.4 (Anti-spam + clasificación mejorada):
   - FILTRO: es_contenido_spam() — blacklist de 35+ keywords de casas de apuestas,
     contenido afiliado, préstamos, crypto spam y SEO basura aplicado en TODOS los loops
@@ -752,8 +774,9 @@ def detectar_tema(titulo, descripcion=""):
         "referendum", "parlamento", "primer ministro", "canciller",
         "politica exterior", "relaciones diplomaticas",
         "candidato presidencial", "campana electoral", "partido politico",
-        "ministro", "gabinete", "decreto", "legislacion",
-        "congresista", "diputado", "senador", "alcalde", "gobernador",
+        "ministro de relaciones exteriores", "ministro de defensa", "gabinete presidencial",
+        "decreto presidencial", "reforma legislativa", "proyecto de ley",
+        "congresista", "diputado nacional", "senador nacional", "alcalde mayor", "gobernador regional",
         "oposicion politica", "coalicion", "elecciones presidenciales",
         "segunda vuelta", "balotaje", "voto", "urna", "comicios",
         "macron", "scholz", "sunak", "meloni", "modi", "xi jinping",
@@ -779,6 +802,11 @@ def detectar_tema(titulo, descripcion=""):
         "criptomoneda", "bitcoin", "ethereum", "fintech",
         "inversion extranjera", "deficit fiscal", "superavit",
         "renta variable", "bonos", "acciones", "dividendo",
+        # V17.6.5: Transporte público e infraestructura — economía, no política
+        "transporte publico", "ferroviario", "metro de", "cercanias", "tren de",
+        "aeropuerto", "autopista", "infraestructura vial", "obra publica",
+        "viajeros", "pasajeros", "tarifa de transporte", "abono transporte",
+        "consorcio de transporte", "red de metro", "linea de metro",
     ]):
         return 'economia'
 
@@ -1001,8 +1029,16 @@ Tiempo de lectura estimado: {tiempo_lectura} min
 ═══════════════════════════════════════
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 1 — CLASIFICACIÓN: Elige la categoría MÁS ESPECÍFICA que describe el tema real de la noticia.
+PASO 1 — CLASIFICACIÓN V17.6.5: Elige la categoría MÁS ESPECÍFICA que describe el tema real de la noticia.
 No uses "latinoamerica" como categoría genérica para todo.
+
+⚠️ REGLAS ANTI-ERRORES FRECUENTES:
+→ Noticias de España, Francia, UK, Alemania, Italia, Asia → "mundo" (no "politica", no "latinoamerica")
+→ Transporte público, infraestructura, tren, metro, aeropuertos → "economia" o "mundo"
+→ "politica" SOLO si hay: elecciones, líderes de gobierno tomando decisiones, diplomacia activa
+→ Relojería de lujo, moda, colaboraciones de marcas → "entretenimiento"
+→ Wearables, smartwatch, tecnología ponible → "tecnologia"
+→ Empresa estatal, consejo de administración, tarifas → "economia"
 
 • "latinoamerica"  → SOLO si el protagonista principal ES un país o institución de LATAM.
                      Ejemplos válidos: reforma en Chile, elecciones en Colombia, economía
@@ -1078,15 +1114,17 @@ y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retenc
 </div>
 
 ── ELEMENTO 2: APERTURA ──
-<p>[Apertura ≤50 palabras: Qué/Quién/Cuándo/Dónde — datos concretos del hecho real.]</p>
+<p>[Apertura ≤40 palabras: Qué/Quién/Cuándo/Dónde — datos concretos del hecho real. Máx 2 oraciones cortas.]</p>
 
-── ELEMENTO 3: CONTEXTO ──
-<p>[Por qué importa esta noticia ahora. Antecedentes relevantes en 2-3 oraciones.]</p>
+── ELEMENTO 3: PRIMER H2 + CONTEXTO (⚠️ OBLIGATORIO antes de la palabra 150) ──
+<h2>[Subtítulo H2 descriptivo — debe contener la keyword principal o una variante]</h2>
+<p>[Por qué importa esta noticia ahora. Antecedentes en 2 oraciones cortas (máx 20 palabras cada una).]</p>
 
 ── ELEMENTO 4: DESARROLLO PRINCIPAL ──
-<h2>[Subtítulo H2 descriptivo del desarrollo — frase informativa, no genérica]</h2>
-<p>[Primer párrafo de desarrollo — hechos y datos principales. Usa <strong>3-4 términos clave</strong>. Máx 3 líneas.]</p>
-<p>[Segundo párrafo — ampliación, contexto adicional, cifras. Máx 3 líneas.]</p>
+<p>[Primer párrafo de desarrollo — hechos y datos principales. Usa <strong>3-4 términos clave</strong>. Máx 2 oraciones.]</p>
+<p>[Segundo párrafo — ampliación, contexto adicional, cifras concretas. Máx 2 oraciones.]</p>
+<h2>[Segundo H2 — ángulo diferente del primero, informativo y con keyword secundaria]</h2>
+<p>[Tercer párrafo — datos adicionales o perspectiva complementaria. Máx 2 oraciones.]</p>
 
 ── ELEMENTO 5: DATO DESTACADO (OBLIGATORIO — rompe monotonía visual) ──
 <blockquote style="border-left:3px solid #e5e7eb;padding:12px 16px;margin:20px 0;background:#f9fafb;font-style:italic;color:#4b5563;">
@@ -1122,21 +1160,57 @@ y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retenc
 [ENLACES_INTERNOS]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REGLAS DE CALIDAD V17.6.3:
-- Mínimo 450 palabras, máximo 700 palabras (artículo más sustancioso = más tiempo de lectura)
-- Párrafos de MÁXIMO 3 líneas — más aire visual, menos abandono
-- Español neutro latinoamericano, sin regionalismos extremos
-- PROHIBIDO: Inventar datos, citas o cifras no presentes en el contenido original
-- PROHIBIDO: Añadir "y su impacto en LATAM" / "en LATAM" al título si no es genuinamente relevante
-- BRAND SAFE: Sin lenguaje gráfico en guerra/crimen, sin conteo detallado de bajas
-- El box "En 30 segundos" y el <blockquote> son OBLIGATORIOS en TODOS los artículos
-- La pregunta de cierre debe ser específica al tema, no genérica
+REGLAS DE CALIDAD V17.6.5 — OPTIMIZADO PARA YOAST SEO:
 
-META DESCRIPCIÓN: 140-155 caracteres exactos. Resume el valor real de la noticia.
-Debe describir el contenido real, no una promesa genérica de "impacto en LATAM".
+LONGITUD Y ESTRUCTURA:
+- Mínimo 500 palabras, máximo 750 palabras
+- PRIMER H2 obligatorio antes de la palabra 200 del artículo (Yoast lo penaliza si no)
+- Mínimo 3 subtítulos H2 distribuidos uniformemente en el artículo
+- Párrafos de MÁXIMO 2-3 líneas (máx 25 palabras por oración — requisito Yoast)
+- Alternar párrafos cortos (1-2 líneas) con párrafos medianos (3 líneas) — variedad visual
+
+FRASES Y LEGIBILIDAD (crítico para Yoast):
+- MÁXIMO 25% de frases con más de 25 palabras (Yoast penaliza si supera esto)
+- Si una oración supera 25 palabras → dividirla en dos con punto o punto y coma
+- Usar voz activa siempre: "El gobierno anunció" no "fue anunciado por el gobierno"
+- Palabras de transición obligatorias: sin embargo, además, por otro lado, en consecuencia,
+  a su vez, no obstante, por ejemplo, en primer lugar, finalmente, asimismo
+
+KEYWORD SEO (crítico para Yoast):
+- keyword_principal debe aparecer en: título, primer párrafo, al menos 1 H2, y cierre
+- keywords_secundarias: mínimo 4, máximo 6 — palabras reales del texto, no inventadas
+- Densidad de keyword principal: 1-2% del texto total (no más, no menos)
+- NO repetir la keyword más de 3 veces en el mismo párrafo
+
+ESTRUCTURA HTML CORRECTA:
+- Box resumen → apertura → H2 → desarrollo → H2 → sección especial → H2 → cierre
+- Usar <strong> en 4-6 términos clave distribuidos en todo el artículo
+- <ul><li> para listas de 3+ items (no párrafo corrido)
+- <blockquote> para datos estadísticos o citas textuales importantes
+
+CLASIFICACIÓN (recuerda):
+- España, Francia, Alemania, Italia, UK → "mundo" (no "politica" ni "latinoamerica")
+- Transporte público, infraestructura, empresas estatales → "economia" o "mundo"
+- "politica" SOLO para decisiones de gobierno con impacto político real en LATAM o global
+- Relojería, moda, lujo, lifestyle → "entretenimiento"
+- Wearables, smartwatch → "tecnologia"
+
+ESPAÑOL NEUTRO LATINOAMERICANO:
+- Sin regionalismos extremos de España (evitar: "vosotros", "tío", "guay", "coger")
+- Sin anglicismos innecesarios cuando existe equivalente en español
+
+PROHIBICIONES ABSOLUTAS:
+- PROHIBIDO: Inventar datos, citas o cifras no presentes en el contenido original
+- PROHIBIDO: "y su impacto en LATAM" al título si no es genuinamente relevante
+- BRAND SAFE: Sin lenguaje gráfico en guerra/crimen, sin conteo detallado de bajas
+
+META DESCRIPCIÓN: 140-155 caracteres exactos.
+- Incluir la keyword principal
+- Describir el valor real del artículo (no prometer "descubre", "conoce", "entérate")
+- Terminar con un dato concreto o pregunta que genere curiosidad
 
 RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
-{{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<div style=...>[BOX]</div><p>...</p>...[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3"], "categoria": "latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general"}}"""
+{{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<div style=...>[BOX]</div><p>...</p>...[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3","kw4","kw5"], "categoria": "latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general"}}"""
 
     try:
         if OPENROUTER_API_KEY:
@@ -2009,11 +2083,62 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     alt_text_imagen = titulo[:125]
     tags_ids = []
 
+    # V17.6.6: Generar box resumen aquí — se usa tanto en resultado IA como en fallback
+    # Rotación aleatoria del título del box
+    _TITULOS_BOX = [
+        ('⚡', 'Lo que debes saber'),
+        ('📌', 'Lo esencial'),
+        ('🔑', 'Puntos clave'),
+        ('📋', 'Resumen rápido'),
+    ]
+    _emoji_b, _texto_b = random.choice(_TITULOS_BOX)
+    _titulo_box = f"{_emoji_b} {_texto_b}"
+
+    def _generar_box_fallback(titulo_art, contenido_art):
+        """Genera un box resumen básico cuando la IA no lo incluyó."""
+        oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', contenido_art) if len(o.strip()) > 30]
+        puntos = []
+        for o in oraciones[:6]:
+            if len(o) > 20:
+                punto = o[:120].rsplit(' ', 1)[0] if len(o) > 120 else o
+                if not punto.endswith('.'):
+                    punto += '.'
+                puntos.append(punto)
+            if len(puntos) == 4:
+                break
+        while len(puntos) < 3:
+            puntos.append(f"Noticia sobre: {titulo_art[:80]}.")
+        items_html = '\n'.join(
+            f'<li style="margin-bottom:6px;">{p}</li>' for p in puntos
+        )
+        return (
+            f'<div style="background:#f0f4ff;border-left:4px solid #1a56db;'
+            f'padding:16px 20px;margin:0 0 24px 0;border-radius:0 8px 8px 0;">'
+            f'<p style="margin:0 0 8px 0;font-weight:700;color:#1a56db;font-size:0.95em;">{_titulo_box}</p>'
+            f'<ul style="margin:0;padding-left:20px;color:#374151;">'
+            f'{items_html}'
+            f'</ul></div>'
+        )
+
     if resultado_ia:
         titulo_final         = resultado_ia.get('titulo_seo', titulo)[:60] or titulo
         meta_desc            = resultado_ia.get('meta_descripcion', '')
         frase_clave          = resultado_ia.get('keyword_principal', '')
         contenido_formateado = resultado_ia.get('contenido_html', '')
+
+        # V17.6.6 FIX CRÍTICO: Verificar que el box esté presente en el HTML de la IA
+        # La IA a veces lo omite aunque el prompt lo pida — lo inyectamos si falta
+        _tiene_box = ('background:#f0f4ff' in contenido_formateado or
+                      'En 30 segundos' in contenido_formateado or
+                      'Lo esencial' in contenido_formateado or
+                      'Puntos clave' in contenido_formateado or
+                      'Resumen r' in contenido_formateado or
+                      'Lo que debes saber' in contenido_formateado)
+        if not _tiene_box:
+            log("⚠️ IA omitió el box resumen — inyectando automáticamente", 'advertencia')
+            box_inject = _generar_box_fallback(titulo_final, contenido_formateado)
+            contenido_formateado = box_inject + contenido_formateado
+
         contenido_formateado = insertar_enlaces_internos(contenido_formateado)
         if frase_clave:
             alt_text_imagen = f"{frase_clave} - {titulo_final}"[:125]
@@ -2048,8 +2173,12 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
             parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
 
         # Máximo 12 párrafos en fallback para no publicar paredes de texto
-        contenido_formateado = '\n'.join(parrafos_html[:12])
+        cuerpo_fallback = '\n'.join(parrafos_html[:12])
+        # V17.6.6: Inyectar box resumen también en fallback (sin IA)
+        box_fallback = _generar_box_fallback(titulo_final, texto_limpio)
+        contenido_formateado = box_fallback + cuerpo_fallback
         contenido_formateado += insertar_enlaces_internos("")
+        log("📦 Fallback: box resumen inyectado sin IA", 'info')
         meta_desc   = ""
         frase_clave = ""
 

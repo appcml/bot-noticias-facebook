@@ -916,6 +916,16 @@ def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
     palabras_contenido = len(contenido.split())
     tiempo_lectura = max(2, round(palabras_contenido / 200))  # ~200 palabras/min lector promedio
 
+    # V17.6.3: Rotacion aleatoria del titulo del box resumen — variedad visual entre articulos
+    TITULOS_BOX_RESUMEN = [
+        ('⚡', 'Lo que debes saber'),
+        ('📌', 'Lo esencial'),
+        ('🔑', 'Puntos clave'),
+        ('📋', 'Resumen rápido'),
+    ]
+    emoji_box, texto_box = random.choice(TITULOS_BOX_RESUMEN)
+    titulo_box_resumen = f"{emoji_box} {texto_box}"
+
     prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español para América Latina.
 Tu tarea: clasificar correctamente esta noticia y redactarla como un artículo periodístico original, estructurado y atractivo para el lector.
 
@@ -997,7 +1007,7 @@ y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retenc
 
 ── ELEMENTO 1: BOX RESUMEN "EN 30 SEGUNDOS" (OBLIGATORIO — va primero siempre) ──
 <div style="background:#f0f4ff;border-left:4px solid #1a56db;padding:16px 20px;margin:0 0 24px 0;border-radius:0 8px 8px 0;">
-<p style="margin:0 0 8px 0;font-weight:700;color:#1a56db;font-size:0.95em;">⚡ En 30 segundos</p>
+<p style="margin:0 0 8px 0;font-weight:700;color:#1a56db;font-size:0.95em;">{titulo_box_resumen}</p>
 <ul style="margin:0;padding-left:20px;color:#374151;">
 <li style="margin-bottom:6px;">[Punto clave 1 — el hecho principal en 1 línea]</li>
 <li style="margin-bottom:6px;">[Punto clave 2 — el dato más relevante]</li>

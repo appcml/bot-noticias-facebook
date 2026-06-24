@@ -1,7 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.6.8
+Bot de Noticias Internacionales - V17.6.9
+CAMBIOS EN V17.6.9 (Robustez: API caída, reintentos y errores NoneType):
+  - FIX CRÍTICO: reescribir_noticia_v9() ahora maneja errores de la API correctamente
+    PROBLEMA: Cuando OpenRouter/OpenAI devolvía un error (sin créditos, rate limit,
+    API key inválida), el bot accedía a resp_json["choices"] → KeyError 'choices'
+    → iba al fallback → fallaba por contenido insuficiente → NO publicaba nada.
+    SOLUCIÓN: Verifica "choices" en la respuesta ANTES de acceder. Si falta, lee el
+    campo "error" y muestra un diagnóstico claro:
+      💳 Sin créditos/saldo → recargar API
+      ⏳ Rate limit → reintenta en próxima ejecución
+      🔑 API key inválida → revisar GitHub Secrets
+      🤖 Modelo no disponible → revisar nombre del modelo
+  - FIX CRÍTICO: Loop de publicación con reintentos (MAX_PUBLICACIONES_INTENTOS=5)
+    PROBLEMA: El bot seleccionaba UNA sola noticia. Si fallaba al publicar (IA caída +
+    contenido corto), se rendía sin intentar otra → ejecución desperdiciada.
+    SOLUCIÓN: Ahora acumula hasta 5 candidatas válidas (con contenido + imagen) e
+    intenta publicarlas EN ORDEN hasta que una tenga éxito. Limpia imágenes temporales
+    de las candidatas no usadas.
+  - FIX: object of type 'NoneType' has no len() en NewsData/GNews
+    PROBLEMA: NewsData a veces devuelve description:null o title:null → calcular_puntaje()
+    fallaba al hacer len() sobre None.
+    SOLUCIÓN: a.get('title') or '' / a.get('description') or '' en NewsData y GNews.
+    calcular_puntaje() también blindada: titulo = titulo or "".
+  - FIX: VERSION_BOT como constante única. El banner y el resumen ya NO muestran
+    "V17.6.3" hardcodeado — usan VERSION_BOT (cambiar solo en un lugar).
+
 CAMBIOS EN V17.6.8 (Fix: medio ambiente antes que ciencia — caso Amazonía):
   - FIX CRÍTICO: detectar_tema() — "medio_ambiente" sube a Prioridad 8 (antes era 11)
     PROBLEMA: La noticia "Deforestación en la Amazonía boliviana" se clasificaba como
@@ -314,6 +339,9 @@ HEREDADO DE V11:
   - Brand safety automático
   - Fecha de publicación desde fuente original
 """
+
+# ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
+VERSION_BOT = "V17.6.9"
 
 import requests
 import feedparser
@@ -1265,7 +1293,35 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
         payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}],
                    "temperature": 0.35, "max_tokens": 3500}
         resp     = requests.post(url_api, headers=headers, json=payload, timeout=55)
-        resp_json = resp.json()
+
+        # V17.6.9 FIX: Verificar status HTTP y errores de la API ANTES de acceder a 'choices'
+        try:
+            resp_json = resp.json()
+        except Exception:
+            log(f"❌ IA: respuesta no es JSON válido (HTTP {resp.status_code}): {resp.text[:200]}", 'error')
+            return None
+
+        # Detectar respuesta de error de la API (sin 'choices')
+        if "choices" not in resp_json:
+            err = resp_json.get("error", {})
+            if isinstance(err, dict):
+                msg  = err.get("message", str(resp_json)[:200])
+                code = err.get("code", resp.status_code)
+            else:
+                msg  = str(err)[:200]
+                code = resp.status_code
+            log(f"❌ IA devolvió error (HTTP {resp.status_code}, code={code}): {msg}", 'error')
+            # Diagnóstico de causas frecuentes
+            msg_lower = str(msg).lower()
+            if "insufficient" in msg_lower or "quota" in msg_lower or "credit" in msg_lower or "balance" in msg_lower:
+                log("   💳 CAUSA PROBABLE: Sin créditos/saldo en la API. Recarga OpenRouter/OpenAI.", 'error')
+            elif "rate limit" in msg_lower or code == 429:
+                log("   ⏳ CAUSA PROBABLE: Rate limit alcanzado. El bot reintentará en la próxima ejecución.", 'advertencia')
+            elif "invalid" in msg_lower and "key" in msg_lower or code == 401:
+                log("   🔑 CAUSA PROBABLE: API key inválida o expirada. Verifica los GitHub Secrets.", 'error')
+            elif "model" in msg_lower:
+                log(f"   🤖 CAUSA PROBABLE: Modelo '{modelo}' no disponible o nombre incorrecto.", 'error')
+            return None
 
         # V17.4 FIX: Verificar finish_reason — si es 'length', el JSON está cortado
         choice       = resp_json["choices"][0]
@@ -1277,7 +1333,14 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
             payload["messages"] = [{"role": "user", "content": prompt_corto}]
             payload["max_tokens"] = 3500
             resp = requests.post(url_api, headers=headers, json=payload, timeout=55)
-            resp_json = resp.json()
+            try:
+                resp_json = resp.json()
+            except Exception:
+                log(f"❌ IA reintento: respuesta no es JSON válido (HTTP {resp.status_code})", 'error')
+                return None
+            if "choices" not in resp_json:
+                log(f"❌ IA reintento devolvió error: {str(resp_json.get('error', resp_json))[:200]}", 'error')
+                return None
             choice = resp_json["choices"][0]
             finish_reason = choice.get("finish_reason", "stop")
             if finish_reason == "length":
@@ -1486,6 +1549,8 @@ def limpiar_texto(texto):
     return t.strip()
 
 def calcular_puntaje(titulo, desc):
+    titulo = titulo or ""
+    desc   = desc or ""
     txt = f"{titulo} {desc}".lower()
     p = 0
     for frase in PALABRAS_ALTA_PRIORIDAD:
@@ -3167,11 +3232,11 @@ def obtener_newsdata():
             ).json()
             if r.get('status') == 'success':
                 for a in r.get('results', []):
-                    t   = a.get('title', '')
+                    t   = a.get('title') or ''
                     img = a.get('image_url')
                     if not t or not img:
                         continue
-                    d = a.get('description', '')
+                    d = a.get('description') or ''
                     noticias.append({
                         'titulo':      limpiar_texto(t),
                         'descripcion': limpiar_texto(d),
@@ -3199,11 +3264,11 @@ def obtener_gnews():
                 timeout=15
             ).json()
             for a in r.get('articles', []):
-                t   = a.get('title', '')
+                t   = a.get('title') or ''
                 img = a.get('image')
                 if not t or not img:
                     continue
-                d = a.get('description', '')
+                d = a.get('description') or ''
                 noticias.append({
                     'titulo':      limpiar_texto(t),
                     'descripcion': limpiar_texto(d),
@@ -3827,7 +3892,7 @@ def procesar_pending_videos():
 # ──────────────────────────────────────────────────────────
 def main():
     print("\n" + "=" * 60)
-    print("🌍 BOT DE NOTICIAS - V17.6.3")
+    print(f"🌍 BOT DE NOTICIAS - {VERSION_BOT}")
     print("   WP: 24 arts/día, 1 cada 60 min — SEO focus")
     print("   FB: imagen+texto desde verdadhoy.com (horario pico, independiente de WP)")
     print("   LATAM-FIRST: Chile 6/día + LATAM 8/día adicionales")
@@ -3883,13 +3948,20 @@ def main():
             noticias.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
             log(f"📰 Candidatas ordenadas: {len(noticias)}", 'info')
 
+            # V17.6.9: Loop de publicación con reintentos.
+            # Si una noticia falla al publicar (IA caída + fallback insuficiente),
+            # se intenta con la SIGUIENTE candidata en vez de rendirse.
+            candidatas_validas = []  # acumula (nt, contenido, img_path) listas para publicar
+
             seleccionada = None
             contenido    = None
             img_path     = None
             intentos     = 0
+            MAX_PUBLICACIONES_INTENTOS = 5  # cuántas noticias intentar publicar antes de rendirse
 
+            # Primero filtramos candidatas válidas (con contenido + imagen)
             for i, nt in enumerate(noticias):
-                if intentos >= 60:
+                if intentos >= 60 or len(candidatas_validas) >= MAX_PUBLICACIONES_INTENTOS:
                     break
                 url    = nt.get('url', '')
                 titulo = nt.get('titulo', '')
@@ -3945,61 +4017,84 @@ def main():
                     continue
 
                 log("   ✅ Noticia válida con imagen")
-                seleccionada = nt
-                contenido    = contenido_ok
-                img_path     = imagen_encontrada
-                break
+                candidatas_validas.append((nt, contenido_ok, imagen_encontrada))
 
-            if not seleccionada:
+            if not candidatas_validas:
                 log("ERROR: No se encontró noticia válida con imagen", 'error')
             else:
-                log(f"\n📝 SELECCIONADA: {seleccionada['titulo'][:70]}")
-                # V16: detectar_tema() es solo la pista inicial para la IA.
-                # La categoría definitiva la decide la IA al leer el contenido completo.
-                tema_sugerido = detectar_tema(seleccionada['titulo'], seleccionada.get('descripcion', ''))
-                tema_sugerido = ajustar_categoria_por_cuota(tema_sugerido)
-                log(f"   Categoría sugerida (keywords): {tema_sugerido} — la IA decidirá la final", 'info')
+                # V17.6.9: Intentar publicar las candidatas en orden hasta que una tenga éxito
+                for idx_pub, (nt_pub, cont_pub, img_pub) in enumerate(candidatas_validas):
+                    log(f"\n📝 SELECCIONADA ({idx_pub+1}/{len(candidatas_validas)}): {nt_pub['titulo'][:70]}")
+                    # V16: detectar_tema() es solo la pista inicial para la IA.
+                    # La categoría definitiva la decide la IA al leer el contenido completo.
+                    tema_sugerido = detectar_tema(nt_pub['titulo'], nt_pub.get('descripcion', ''))
+                    tema_sugerido = ajustar_categoria_por_cuota(tema_sugerido)
+                    log(f"   Categoría sugerida (keywords): {tema_sugerido} — la IA decidirá la final", 'info')
 
-                url_articulo_wp = publicar_en_wordpress(
-                    titulo       = seleccionada['titulo'],
-                    contenido    = contenido,
-                    tema         = tema_sugerido,
-                    imagen_path  = img_path,
-                    fuente_url   = seleccionada['url'],
-                    fecha_fuente = seleccionada.get('fecha'),
-                    fuente_noticia = seleccionada.get('fuente', ''),
-                )
+                    url_articulo_wp = publicar_en_wordpress(
+                        titulo       = nt_pub['titulo'],
+                        contenido    = cont_pub,
+                        tema         = tema_sugerido,
+                        imagen_path  = img_pub,
+                        fuente_url   = nt_pub['url'],
+                        fecha_fuente = nt_pub.get('fecha'),
+                        fuente_noticia = nt_pub.get('fuente', ''),
+                    )
 
-                if url_articulo_wp:
-                    exito_wp = True
-                    guardar_estado_wp()
-                    # Registrar cuota con tema_sugerido (la cat IA se usa internamente en WP)
-                    registrar_cuota(tema_sugerido)
-                    h['estadisticas']['total_wp'] = h['estadisticas'].get('total_wp', 0) + 1
+                    if url_articulo_wp:
+                        # Éxito — fijar como seleccionada y continuar con Pinterest/historial
+                        seleccionada = nt_pub
+                        contenido    = cont_pub
+                        img_path     = img_pub
+                        exito_wp = True
+                        guardar_estado_wp()
+                        registrar_cuota(tema_sugerido)
+                        h['estadisticas']['total_wp'] = h['estadisticas'].get('total_wp', 0) + 1
 
-                    # ── Pinterest en paralelo con WP ───────────────
-                    if PINTEREST_TOKEN:
-                        log("\n📌 Publicando en Pinterest...", 'info')
-                        ok_pt = publicar_pinterest(
-                            titulo       = seleccionada['titulo'],
-                            descripcion  = contenido[:490],
-                            url_articulo = url_articulo_wp,
-                            img_path     = img_path,
-                            categoria    = tema_sugerido,
-                        )
-                        if ok_pt:
-                            h['estadisticas']['total_pinterest'] = h['estadisticas'].get('total_pinterest', 0) + 1
+                        # ── Pinterest en paralelo con WP ───────────────
+                        if PINTEREST_TOKEN:
+                            log("\n📌 Publicando en Pinterest...", 'info')
+                            ok_pt = publicar_pinterest(
+                                titulo       = seleccionada['titulo'],
+                                descripcion  = contenido[:490],
+                                url_articulo = url_articulo_wp,
+                                img_path     = img_path,
+                                categoria    = tema_sugerido,
+                            )
+                            if ok_pt:
+                                h['estadisticas']['total_pinterest'] = h['estadisticas'].get('total_pinterest', 0) + 1
 
-                    # Guardar en historial
-                    desc_completa = (seleccionada.get('descripcion', '') + ' ' + contenido[:400]).strip()
-                    h = guardar_en_historial(h, seleccionada['url'], seleccionada['titulo'], desc_completa)
+                        # Guardar en historial
+                        desc_completa = (seleccionada.get('descripcion', '') + ' ' + contenido[:400]).strip()
+                        h = guardar_en_historial(h, seleccionada['url'], seleccionada['titulo'], desc_completa)
 
-                # Limpiar imagen temporal WP
-                try:
-                    if img_path and os.path.exists(img_path):
-                        os.remove(img_path)
-                except:
-                    pass
+                        # Limpiar imagen temporal WP de la publicada
+                        try:
+                            if img_path and os.path.exists(img_path):
+                                os.remove(img_path)
+                        except:
+                            pass
+                        break  # publicación exitosa — salir del loop de reintentos
+                    else:
+                        # Falló esta candidata — limpiar su imagen y probar la siguiente
+                        log(f"   ⚠️ No se pudo publicar esta noticia — probando siguiente candidata", 'advertencia')
+                        try:
+                            if img_pub and os.path.exists(img_pub):
+                                os.remove(img_pub)
+                        except:
+                            pass
+                        continue
+
+                # Limpiar imágenes temporales de candidatas no usadas
+                for _, _, img_sobrante in candidatas_validas:
+                    try:
+                        if img_sobrante and os.path.exists(img_sobrante):
+                            os.remove(img_sobrante)
+                    except:
+                        pass
+
+                if not exito_wp:
+                    log("⚠️ Ninguna de las candidatas se pudo publicar (IA caída o contenido insuficiente)", 'advertencia')
 
     # ══════════════════════════════════════════════════════
     # BLOQUE 2: PUBLICAR EN FACEBOOK — imagen+texto desde WP
@@ -4055,7 +4150,7 @@ def main():
     cuotas_hoy = cargar_cuotas_hoy()
     total_wp_hoy = sum(int(v) for v in cuotas_hoy.get('conteo', {}).values())
     log(f"\n{'='*50}", 'info')
-    log(f"✅ RESUMEN V17.6.3:", 'exito')
+    log(f"✅ RESUMEN {VERSION_BOT}:", 'exito')
     log(f"   WP hoy: {total_wp_hoy}/{MAX_POSTS_WP_DIA} artículos publicados", 'info')
     log(f"   Total acumulado: {stats.get('total_publicadas', 0)}", 'info')
     log(f"   WordPress: {stats.get('total_wp', 0)}", 'info')

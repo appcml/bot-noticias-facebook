@@ -1,7 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.6.7
+Bot de Noticias Internacionales - V17.6.8
+CAMBIOS EN V17.6.8 (Fix: medio ambiente antes que ciencia — caso Amazonía):
+  - FIX CRÍTICO: detectar_tema() — "medio_ambiente" sube a Prioridad 8 (antes era 11)
+    PROBLEMA: La noticia "Deforestación en la Amazonía boliviana" se clasificaba como
+    'ciencia' porque mencionaba "NASA" (como fuente de datos satelitales MODIS).
+    La keyword genérica "nasa" disparaba ciencia ANTES de evaluar medio ambiente.
+    SOLUCIÓN:
+      1. medio_ambiente ahora se evalúa ANTES de salud y ciencia
+      2. Keywords ampliadas: deforestación, desmonte, tala ilegal, bosque, selva,
+         amazonía, pueblos indígenas, territorio indígena, frontera agrícola,
+         área protegida, glaciar, deshielo, ecosistema, fauna/flora silvestre
+      3. Keyword "nasa" en ciencia ahora requiere contexto espacial real:
+         "nasa lanza", "misión de la nasa", "agencia espacial nasa"
+         (ya no dispara ciencia si "NASA" solo aparece mencionada como fuente)
+    RESULTADO: "Deforestación Amazonía Bolivia" → medio_ambiente ✅ (antes → ciencia ❌)
+               "NASA lanza misión a Marte" → ciencia ✅ (sigue correcto)
+
 CAMBIOS EN V17.6.7 (Fix clasificación LATAM — categorías temáticas correctas):
   - FIX CRÍTICO: detectar_tema() — "latinoamerica" baja de Prioridad 4 → Prioridad 15
     Antes: cualquier noticia con "Argentina", "Chile", "Brasil" → clasificada como 'latinoamerica'
@@ -646,10 +662,10 @@ def detectar_tema(titulo, descripcion=""):
       5. Entretenimiento (artistas, cine, series, premios)
       6. Tecnología (IA, gadgets, ciberseguridad, startups)
       7. Economía (inflación, dólar, bolsa, bancos centrales)
-      8. Salud / Medicina
-      9. Ciencia / Espacio
-      10. Política (elecciones, gobierno, diplomacia)
-      11. Medio ambiente / Clima
+      8. Medio ambiente / Clima (deforestación, Amazonía, bosques)
+      9. Salud / Medicina
+      10. Ciencia / Espacio
+      11. Política (elecciones, gobierno, diplomacia)
       12. Educación
       13. Religión
       14. Latinoamérica (fallback regional si no hubo categoría temática)
@@ -803,7 +819,30 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'economia'
 
-    # ── Prioridad 8: Salud / Medicina
+    # ── Prioridad 8: Medio ambiente / Clima (ANTES de ciencia — "NASA" como fuente no es ciencia)
+    if any(p in txt for p in [
+        "cambio climatico", "cambio climático", "calentamiento global",
+        "temperatura record", "sequia", "sequía",
+        "incendio forestal", "contaminacion ambiental", "co2 emisiones",
+        "medio ambiente", "cop30", "cop29", "emision de carbono",
+        "biodiversidad", "extincion de especies", "deforestacion", "deforestación",
+        "desmonte", "tala ilegal", "tala de bosque", "tala de arboles",
+        "bosque", "selva", "amazonía", "amazonia", "amazonas",
+        "reserva natural", "area protegida", "área protegida",
+        "pueblos indigenas", "pueblos indígenas", "territorio indigena", "territorio indígena",
+        "expansion agricola", "expansión agrícola", "frontera agricola",
+        "plastico en el oceano", "energia renovable",
+        "energia solar", "energia eolica", "hidrogeno verde",
+        "huella de carbono", "acuerdo de paris clima", "ipcc",
+        "ola de calor", "ciclon", "tornado",
+        "lluvia intensa", "frente frio", "pronostico meteorologico",
+        "conservacion ambiental", "conservación ambiental",
+        "recursos naturales", "ecosistema", "fauna silvestre", "flora silvestre",
+        "glaciar", "deshielo", "nivel del mar",
+    ]):
+        return 'medio_ambiente'
+
+    # ── Prioridad 9: Salud / Medicina
     if any(p in txt for p in [
         "cancer", "cáncer", "enfermedad", "hospital", "medico",
         "pandemia", "vacuna", "virus", "salud publica", "oms",
@@ -817,21 +856,22 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'salud'
 
-    # ── Prioridad 9: Ciencia / Espacio
+    # ── Prioridad 10: Ciencia / Espacio (keywords con contexto científico REAL)
     if any(p in txt for p in [
         "descubrimiento cientifico", "descubrimiento científico",
-        "nasa", "agencia espacial", "cohete espacial", "satelite lanzado",
+        "agencia espacial nasa", "mision de la nasa", "nasa lanza",
+        "agencia espacial", "cohete espacial", "satelite lanzado",
         "planeta", "universo", "agujero negro", "exoplaneta",
         "investigacion cientifica", "investigación científica",
         "astronomia", "telescopio espacial", "marte exploracion",
         "particula subatomica", "laboratorio cientifico",
         "adn descubrimiento", "evolucion biologica",
-        "esa agencia", "supernova", "palentologia",
+        "esa agencia espacial", "supernova", "paleontologia",
         "premio nobel de", "fisica cuantica",
     ]):
         return 'ciencia'
 
-    # ── Prioridad 10: Política — elecciones, gobierno, diplomacia
+    # ── Prioridad 11: Política — elecciones, gobierno, diplomacia
     if any(p in txt for p in [
         "eleccion", "elección", "elecciones presidenciales",
         "presidente anuncia", "gobierno de", "gabinete presidencial",
@@ -857,20 +897,6 @@ def detectar_tema(titulo, descripcion=""):
     ]):
         return 'politica'
 
-    # ── Prioridad 11: Medio ambiente / Clima
-    if any(p in txt for p in [
-        "cambio climatico", "cambio climático", "calentamiento global",
-        "temperatura record", "sequia", "sequía",
-        "incendio forestal", "contaminacion ambiental", "co2 emisiones",
-        "medio ambiente", "cop30", "cop29", "emision de carbono",
-        "biodiversidad", "extincion de especies", "deforestacion",
-        "plastico en el oceano", "energia renovable",
-        "energia solar", "energia eolica", "hidrogeno verde",
-        "huella de carbono", "acuerdo de paris clima", "ipcc",
-        "ola de calor", "ciclon", "tornado",
-        "lluvia intensa", "frente frio", "pronostico meteorologico",
-    ]):
-        return 'medio_ambiente'
 
     # ── Prioridad 12: Educación
     if any(p in txt for p in [

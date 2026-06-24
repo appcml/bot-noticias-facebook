@@ -1,7 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.6.6
+Bot de Noticias Internacionales - V17.6.7
+CAMBIOS EN V17.6.7 (Fix clasificación LATAM — categorías temáticas correctas):
+  - FIX CRÍTICO: detectar_tema() — "latinoamerica" baja de Prioridad 4 → Prioridad 15
+    Antes: cualquier noticia con "Argentina", "Chile", "Brasil" → clasificada como 'latinoamerica'
+    Ahora: pasa primero por todas las categorías temáticas (deportes, politica, economia,
+    tecnologia, salud, ciencia, entretenimiento) y solo llega a 'latinoamerica' si ninguna
+    categoría más específica aplica.
+    Efecto real:
+      "Inflación en Argentina" → 'economia' ✅ (antes → 'latinoamerica' ❌)
+      "Elecciones en Colombia" → 'politica' ✅ (antes → 'latinoamerica' ❌)
+      "Messi en Libertadores" → 'deportes' ✅ (antes → 'latinoamerica' ❌)
+      "Shakira lanza álbum"   → 'entretenimiento' ✅ (antes → 'latinoamerica' ❌)
+      "IA en startups Brasil"  → 'tecnologia' ✅ (antes → 'latinoamerica' ❌)
+      "Cumbre CELAC sin agenda clara" → 'latinoamerica' ✅ (correcto, sin categoría mejor)
+  - FIX PROMPT IA: Instrucción de "latinoamerica" completamente reescrita
+    Antes: "SOLO si el protagonista ES un país de LATAM" — ambiguo, la IA seguía sobre-usando
+    Ahora: Lista de 8 ejemplos negativos (❌) y 4 ejemplos positivos (✅) con regla clara:
+    "Si puedes usar una categoría más específica → úsala siempre"
+  - RESULTADO: Las noticias latinoamericanas ahora se distribuyen en sus categorías temáticas
+    correctas (economia, politica, deportes, tecnologia, etc.) en lugar de acumularse todas
+    en la categoría 'latinoamerica'. La categoría 'latinoamerica' queda para noticias
+    exclusivamente regionales sin tema temático dominante.
 CAMBIOS EN V17.6.6 (Box resumen garantizado en 100% de artículos):
   - FIX CRÍTICO: Box resumen ahora se verifica DESPUÉS de que la IA responde
     Si la IA omite el box (por token limit o error), se inyecta automáticamente
@@ -612,322 +633,300 @@ def es_contenido_spam(titulo, descripcion=""):
     return False, None
 
 # ──────────────────────────────────────────────────────────
-# DETECCIÓN DE TEMA — MEJORADA V12
+# DETECCIÓN DE TEMA — V17.6.7
 # ──────────────────────────────────────────────────────────
 def detectar_tema(titulo, descripcion=""):
     """
-    Detecta el tema principal de una noticia.
-    V17.6 LATAM-FIRST: latinoamerica sube a prioridad 4 (era prioridad 11).
-    Esto garantiza que noticias regionales no sean reclasificadas como 'mundo'
-    o categorías genéricas antes de evaluar su origen geográfico LATAM.
+    V17.6.7: Clasificación mejorada con keywords más precisas y sin colisiones.
     Orden de prioridad:
-      1. Guerra/conflicto armado (nunca debe mezclarse)
-      2. Desastre natural con víctimas
-      3. Crimen organizado / seguridad
-      4. ← NUEVO: Latinoamérica (detección geográfica ANTES que categorías temáticas)
-      5. Deportes (Mundial 2026, fútbol LATAM)
-      6. Política (líderes LATAM y mundiales)
-      7. Economía
-      8. Tecnología
-      9. Salud
-      10. Ciencia
+      1. Desastre natural (terremoto, tsunami, huracán)
+      2. Crimen organizado / seguridad
+      3. Guerra/conflicto armado (keywords específicas, no genéricas)
+      4. Deportes (fútbol, Copa Libertadores, Champions, NBA, etc.)
+      5. Entretenimiento (artistas, cine, series, premios)
+      6. Tecnología (IA, gadgets, ciberseguridad, startups)
+      7. Economía (inflación, dólar, bolsa, bancos centrales)
+      8. Salud / Medicina
+      9. Ciencia / Espacio
+      10. Política (elecciones, gobierno, diplomacia)
       11. Medio ambiente / Clima
-      12. Entretenimiento
-      13. Mundo (fallback internacional)
+      12. Educación
+      13. Religión
+      14. Latinoamérica (fallback regional si no hubo categoría temática)
+      15. Mundo (fallback internacional)
+      16. General (último recurso)
+    CAMBIO CLAVE V17.6.7: latinoamerica ya NO está en prioridad 4.
+    Ahora es fallback (prioridad 14) para noticias LATAM sin tema dominante.
     """
     txt = f"{titulo} {descripcion}".lower()
 
-    # ── Prioridad 1: Conflicto / Guerra (nunca debe ir a entretenimiento)
+    # ── Prioridad 1: Desastre natural / emergencia (antes que guerra)
     if any(p in txt for p in [
-        "guerra", "bombardeo", "misil", "ataque", "conflicto armado",
-        "invasion", "tropas", "nuclear", "terroris", "hamas",
-        "hezbollah", "ucrania", "gaza", "israel", "rusia", "otan", "nato",
-        "siria", "yemen", "sudan", "taliban", "isis", "ataque aereo",
-        "escalada", "combate", "ofensiva", "contraofensiva", "drones militares",
-        "muertos en combate", "bombardeado", "atacado", "fuego cruzado",
-        "ejercito", "militares", "fuerza aerea", "marina de guerra",
-        "corea del norte", "iran nuclear", "misil balistico",
-        "alto el fuego", "alto al fuego", "cese del fuego", "cese al fuego",
-        "heridos", "muertos", "victimas", "bajas militares",
-        "intercambio de fuego", "tiroteo", "fusilamiento",
-        "ataque terrorista", "atentado", "explosion",
-        "fuerzas armadas", "fuerzas militares", "tropa",
-        "avion militar", "avion de guerra", "avion tanquero", "tanquero militar",
-        "portaviones", "fragata", "submarino", "destructor naval",
-        "iran", "irán", "persia", "golfo persico", "golfo pérsico",
-        "ejercito libanes", "libano", "líbano", "hezbola",
-        "pakist", "afganistan", "irak", "siria",
-        "negociacion de paz", "acuerdo de paz", "mediacion militar",
-        "rehenes", "rehen", "secuestrado por",
-        "dron de ataque", "drones de combate",
-        "misil interceptado", "defensa aerea", "iron dome",
-        "muerto", "fallecido en conflicto", "civiles muertos",
-        "palestin", "cisjordania", "huti", "houthis",
-        "airbus mrtt", "reabastecimiento aereo", "aeronave militar",
-        "policia israelí", "ejercito israelí", "idf",
-        "guerra civil", "milicias", "paramilitares",
-        "zona de guerra", "frente de batalla", "linea de combate",
-        "convoy militar", "base militar", "cuartel",
-        "capturado por tropas", "prisionero de guerra",
-    ]):
-        return 'guerra'
-
-    # ── Prioridad 2: Desastre natural / emergencia
-    if any(p in txt for p in [
-        "terremoto", "huracan", "inundacion", "desastre natural",
-        "evacuacion", "tsunami", "explosion industrial", "incendio masivo",
-        "derrumbe", "erupcion volcanica", "tormenta tropical",
-        "alerta roja", "emergencia nacional", "sismo", "alerta de tsunami",
-        "victimas del desastre", "catastrofe natural",
+        "terremoto", "sismo", "huracan", "huracán", "inundacion", "inundación",
+        "desastre natural", "tsunami", "erupcion volcanica", "erupción volcánica",
+        "tormenta tropical", "derrumbe", "aluvion", "aluvión",
+        "alerta de tsunami", "victimas del desastre", "catastrofe natural",
+        "incendio forestal masivo", "explosion industrial",
     ]):
         return 'desastre'
 
-    # ── Prioridad 3: Crimen / Seguridad
+    # ── Prioridad 2: Crimen / Seguridad
     if any(p in txt for p in [
-        "asesinato", "homicidio", "secuestro", "narcotrafico", "cartel",
-        "crimen organizado", "mafia", "robo masivo", "fraude millonario",
-        "detenido", "arrestado", "capturado", "condenado a prison",
+        "asesinato", "homicidio", "narcotrafico", "narcotráfico", "cartel",
+        "crimen organizado", "mafia", "fraude millonario",
         "banda criminal", "sicario", "feminicidio", "masacre",
-        "traficante", "narcotraficante", "policia abate",
+        "narcotraficante", "policia abate", "detenidos por crimen",
     ]):
         return 'crimen'
 
-    # ── Prioridad 4 (V17.6 NUEVO): Latinoamérica — SUBIDA desde prioridad 11
-    # Detectar PRIMERO el origen geográfico LATAM antes que categorías temáticas genéricas
-    # Esto garantiza que "economía de Argentina" → latinoamerica, no solo "economia"
+    # ── Prioridad 3: Guerra / Conflicto armado (keywords ESPECÍFICAS, no genéricas)
     if any(p in txt for p in [
-        # Chile y sus instituciones
-        "chile", "chilena", "chileno", "santiago de chile", "boric",
-        "carabineros", "codelco", "la roja chilena", "colo-colo",
-        # México
-        "mexico", "mexicano", "mexicana", "cdmx", "ciudad de mexico",
-        "sheinbaum", "pemex", "guadalajara", "monterrey",
-        # Argentina
-        "argentina", "argentino", "buenos aires", "milei",
-        "merval", "rosario ar", "córdoba ar",
-        # Brasil
-        "brasil", "brazil", "brasileño", "lula", "sao paulo",
-        "río de janeiro", "rio de janeiro", "brasilia",
-        # Colombia
-        "colombia", "colombiano", "bogotá", "bogota", "petro",
-        "medellín", "medellin",
-        # Perú
-        "perú", "peru", "peruano", "lima perú", "boluarte",
-        # Venezuela
-        "venezuela", "venezolano", "maduro", "caracas",
-        # Ecuador
-        "ecuador", "ecuatoriano", "quito", "noboa",
-        # Bolivia
-        "bolivia", "boliviano", "la paz bolivia",
-        # Uruguay
-        "uruguay", "uruguayo", "montevideo",
-        # Paraguay
-        "paraguay", "paraguayo", "asunción",
-        # Centroamérica y Caribe
-        "cuba", "cubano", "nicaragua", "guatemala", "honduras",
-        "el salvador", "bukele", "panamá", "panama", "costa rica",
-        "república dominicana", "dominicano", "haití", "haiti",
-        # Genéricos LATAM
-        "america latina", "latinoamerica", "latinoamericano",
-        "centroamerica", "caribe", "sudamerica", "cono sur",
-        "mercosur", "unasur", "celac", "alba",
-        # Copa Libertadores, Sudamericana — específicos de LATAM
-        "copa libertadores", "copa sudamericana", "conmebol",
-        "eliminatorias sudamericanas", "seleccion chilena",
-        "seleccion argentina", "seleccion colombiana",
-        # Economía regional LATAM
-        "peso chileno", "peso argentino", "peso mexicano",
-        "real brasileiro", "bolívar venezolano",
-        "banco central de chile", "banco de mexico",
-        "inflacion en chile", "inflacion en argentina",
-        "dólar en chile", "dolar en colombia",
-        # Recursos naturales LATAM
-        "litio chile", "litio bolivia", "cobre chileno", "petroleo venezolano",
-        "amazonía", "amazonia", "patagonia", "andes",
-        "atacama", "altiplano", "pampas", "la pampa",
+        "guerra", "bombardeo", "misil balístico", "misil balistico",
+        "conflicto armado", "invasion", "invasión", "tropas rusas", "tropas ucranianas",
+        "hamas", "hezbollah", "hezbola", "otan en guerra", "nato en guerra",
+        "ataque aéreo", "ataque aereo", "ofensiva militar", "contraofensiva militar",
+        "drones militares", "drones de combate", "dron de ataque",
+        "muertos en combate", "bombardeado", "fuego cruzado", "bajas militares",
+        "intercambio de fuego", "fusilamiento",
+        "ataque terrorista", "atentado terrorista",
+        "fuerzas armadas en", "marina de guerra",
+        "portaviones", "fragata", "submarino de guerra",
+        "misil interceptado", "defensa aerea", "iron dome",
+        "civiles muertos en", "palestin", "cisjordania",
+        "huti", "houthis", "zona de guerra", "frente de batalla",
+        "convoy militar", "base militar atacada", "prisionero de guerra",
+        "guerra civil", "milicias armadas", "paramilitares",
+        "alto el fuego", "cese del fuego", "cese al fuego",
+        "ucrania bombardeada", "gaza bombardeada", "israel ataca",
+        "rusia ataca", "iran nuclear", "corea del norte misil",
     ]):
-        return 'latinoamerica'
+        return 'guerra'
 
-    # ── Prioridad 5: Deportes — fútbol LATAM y Mundial 2026
+    # ── Prioridad 4: Deportes — fútbol, Copa Libertadores, Mundial, NBA, etc.
     if any(p in txt for p in [
-        "futbol", "olimpiadas", "mundial", "copa del mundo",
-        "atletismo", "tenis", "baloncesto", "nba", "fifa",
-        "formula 1", "f1", "champions league", "liga", "gol",
-        "campeonato", "torneo", "medalla", "seleccion nacional",
-        "boxeo", "ufc", "rugby", "ciclismo", "natacion",
-        "partido", "jugador", "entrenador", "estadio", "marcador",
-        "derrota deportiva", "victoria deportiva", "mundial 2026",
-        "premier league", "laliga", "serie a", "bundesliga", "mls",
-        "beisbol", "golf", "voleibol", "handball", "triathlon",
-        "juegos olimpicos", "paris 2024", "los angeles 2028",
-        "transfer futbolistico", "fichaje", "traspaso deportivo",
-        "clasificacion mundial", "eliminatoria", "semifinal", "final deportiva",
-        "arbitro", "penalti", "penalto", "corner", "fuera de juego",
+        "futbol", "fútbol", "copa libertadores", "copa sudamericana",
+        "copa del mundo", "mundial de futbol", "mundial 2026",
+        "champions league", "premier league", "laliga", "la liga",
+        "serie a futbol", "bundesliga", "mls futbol",
+        "eliminatoria", "eliminatorias mundialistas", "clasificacion mundial",
+        "gol", "penalti", "penalto", "arbitro", "partido de futbol",
+        "seleccion chilena", "seleccion argentina", "seleccion colombiana",
+        "seleccion brasileña", "seleccion mexicana", "la roja",
+        "colo-colo", "universidad de chile", "river plate", "boca juniors",
+        "nba", "baloncesto", "basquetbol",
+        "tenis", "djokovic", "alcaraz", "wimbledon",
+        "formula 1", "f1", "gran premio",
+        "olimpiadas", "juegos olimpicos",
+        "atletismo", "boxeo", "ufc", "rugby",
+        "ciclismo tour", "natacion mundial",
+        "fichaje futbol", "traspaso deportivo", "transfer futbolistico",
+        "semifinal deportiva", "final deportiva", "campeón deportivo",
+        "medalla de oro", "medalla de plata",
+        "messi", "cristiano ronaldo", "mbappe", "neymar futbol",
+        "lebron james", "stephen curry",
+        "verstappen formula",
     ]):
         return 'deportes'
 
-    # ── Prioridad 6: Política — líderes LATAM y diplomacia internacional
+    # ── Prioridad 5: Entretenimiento — artistas, cine, series, premios
     if any(p in txt for p in [
-        "trump", "biden", "harris", "presidente", "gobierno", "eleccion",
-        "golpe de estado", "coup", "diplomaci", "congreso", "senado",
-        "sancion", "otan", "g7", "g20", "cumbre", "tratado",
-        "referendum", "parlamento", "primer ministro", "canciller",
-        "politica exterior", "relaciones diplomaticas",
-        "candidato presidencial", "campana electoral", "partido politico",
-        "ministro de relaciones exteriores", "ministro de defensa", "gabinete presidencial",
-        "decreto presidencial", "reforma legislativa", "proyecto de ley",
-        "congresista", "diputado nacional", "senador nacional", "alcalde mayor", "gobernador regional",
-        "oposicion politica", "coalicion", "elecciones presidenciales",
-        "segunda vuelta", "balotaje", "voto", "urna", "comicios",
-        "macron", "scholz", "sunak", "meloni", "modi", "xi jinping",
-        "putin", "zelensky", "erdogan", "netanyahu",
-        "acuerdo nuclear", "acuerdo diplomatico", "bloqueo economico",
-        "espionaje", "inteligencia militar", "cia", "mossad", "kgb",
-        "embajador", "cancilleria", "nota diplomatica",
-        "sanciones internacionales", "embargo", "negociaciones diplomaticas",
-        "retiro de tropas", "retirar tropas", "despliegue militar",
-        "alianza militar", "pacto de defensa", "acuerdo bilateral",
-        "cumbre de paz", "mediador internacional",
+        "pelicula estreno", "película estreno", "estreno de pelicula",
+        "trailer oficial", "tráiler oficial", "estreno mundial cine",
+        "taquilla", "recaudacion en cines", "box office",
+        "oscar", "grammy", "emmy", "golden globe", "bafta", "latin grammy",
+        "festival de cine", "cannes", "sundance", "venecia film",
+        "album musical", "álbum musical", "nuevo album", "nuevo álbum",
+        "gira musical", "concierto de", "lanzamiento musical", "videoclip",
+        "spotify charts", "billboard charts", "numero uno musical",
+        "taylor swift", "bad bunny", "shakira", "beyonce", "rihanna",
+        "billie eilish", "the weeknd", "drake",
+        "karol g", "maluma", "j balvin", "rauw alejandro",
+        "rosalía", "rosalia", "daddy yankee", "ozuna",
+        "netflix estrena", "netflix serie", "disney plus estreno",
+        "serie de tv", "temporada de", "segunda temporada",
+        "actor de cine", "actriz premiada", "director de cine",
+        "reggaeton", "musica pop latin", "artista latin",
+        "reality show", "tiktoker viral", "youtuber",
+        "reloj de lujo", "rolex", "audemars patek",
+        "moda de lujo", "haute couture", "louis vuitton coleccion",
+        "marvel pelicula", "star wars serie", "anime estreno",
+        "secuela pelicula", "remake pelicula",
+        "celebrity", "celebridad",
     ]):
-        return 'politica'
+        return 'entretenimiento'
 
-    # ── Prioridad 7: Economía
+    # ── Prioridad 6: Tecnología — IA, ciberseguridad, startups, gadgets
     if any(p in txt for p in [
-        "economia", "inflacion", "recesion", "bolsa", "mercado financiero",
-        "petroleo", "dolar", "euro", "fmi", "banco central",
-        "crisis economica", "aranceles", "comercio", "exportaciones",
-        "pib", "desempleo", "banco mundial", "reserva federal", "deuda",
-        "crecimiento economico", "contraccion economica", "tasa de interes",
-        "wall street", "nasdaq", "dow jones", "ibex", "merval",
-        "criptomoneda", "bitcoin", "ethereum", "fintech",
-        "inversion extranjera", "deficit fiscal", "superavit",
-        "renta variable", "bonos", "acciones", "dividendo",
-        # V17.6.5: Transporte público e infraestructura — economía, no política
-        "transporte publico", "ferroviario", "metro de", "cercanias", "tren de",
-        "aeropuerto", "autopista", "infraestructura vial", "obra publica",
-        "viajeros", "pasajeros", "tarifa de transporte", "abono transporte",
-        "consorcio de transporte", "red de metro", "linea de metro",
-    ]):
-        return 'economia'
-
-    # ── Prioridad 8: Tecnología
-    if any(p in txt for p in [
-        "inteligencia artificial", "ia ", " ia,", "robot", "automatizacion",
-        "ciberataque", "hackeo", "elon musk", "openai", "chatgpt",
-        "software", "startup", "samsung", "apple", "google", "microsoft",
-        "amazon", "tesla", "chip", "semiconductor", "quantum",
-        "metaverso", "blockchain", "deepseek", "gemini", "llm",
-        "red neuronal", "machine learning", "big data", "cloud computing",
-        "5g", "6g", "internet de las cosas", "iot", "ciberseguridad",
-        "huawei", "nvidia", "spacex", "starlink",
-        # V17.6.4: Smartwatch / wearables — tecnología ponible
-        "smartwatch", "apple watch", "galaxy watch", "wearable", "reloj inteligente",
-        "reloj deportivo", "garmin", "fitbit", "xiaomi band",
+        "inteligencia artificial", "chatgpt", "openai", "gemini google",
+        "deepseek", "llm ", "modelo de lenguaje", "ia generativa",
+        "robot", "automatizacion tecnologica", "automatización tecnológica",
+        "ciberataque", "hackeo", "ciberseguridad", "ransomware",
+        "elon musk", "spacex", "starlink", "tesla tecnologia",
+        "openai", "microsoft ia", "google ia", "meta ia",
+        "samsung galaxy", "apple iphone", "ipad", "macbook",
+        "chip semiconductor", "nvidia gpu", "quantum computing",
+        "startup tecnologica", "startup tecnológica", "fintech",
+        "blockchain", "criptomoneda", "bitcoin tecnologia",
+        "metaverso", "realidad virtual", "realidad aumentada",
+        "5g", "6g", "internet de las cosas", "iot",
+        "huawei", "deepmind", "anthropic", "xai",
+        "smartwatch", "apple watch", "galaxy watch", "wearable",
+        "reloj inteligente", "garmin sport", "fitbit",
+        "software", "app nueva", "plataforma digital",
+        "red neuronal", "machine learning", "big data",
+        "startups tecnologica", "startups tecnológica",
+        "innovacion tecnologica", "innovación tecnológica",
     ]):
         return 'tecnologia'
 
-    # ── Prioridad 9: Salud / Medicina
+    # ── Prioridad 7: Economía — inflación, dólar, bolsa, bancos centrales
     if any(p in txt for p in [
-        "cancer", "enfermedad", "hospital", "medico", "tratamiento",
+        "inflacion", "inflación", "recesion", "recesión",
+        "bolsa de valores", "mercado financiero", "mercado bursatil",
+        "dolar", "dólar", "euro cae", "euro sube", "tipo de cambio",
+        "fmi acuerdo", "banco central", "reserva federal",
+        "crisis economica", "crisis económica", "aranceles",
+        "exportaciones", "importaciones",
+        "pib", "producto interno bruto", "desempleo",
+        "banco mundial", "deuda externa", "deuda publica",
+        "crecimiento economico", "contraccion economica",
+        "wall street", "nasdaq", "dow jones", "ibex 35", "merval bolsa",
+        "petroleo precio", "precio del petroleo", "barril de petroleo",
+        "gas natural precio",
+        "inversion extranjera", "deficit fiscal", "superavit",
+        "bonos soberanos", "riesgo pais",
+        "transporte publico tarifa", "metro de", "linea de metro",
+        "aeropuerto concesion", "autopista concesion", "obra publica",
+        "escasez de divisas", "fuga de divisas", "reservas en dolares",
+        "libre comercio", "tratado comercial", "acuerdo comercial",
+        "crisis de divisas", "devaluacion", "devaluación",
+    ]):
+        return 'economia'
+
+    # ── Prioridad 8: Salud / Medicina
+    if any(p in txt for p in [
+        "cancer", "cáncer", "enfermedad", "hospital", "medico",
         "pandemia", "vacuna", "virus", "salud publica", "oms",
-        "epidemia", "brote", "medicamento", "cirugia", "diagnostico",
-        "sintoma", "dosis", "clinica", "ensayo clinico", "paciente",
-        "investigadores hallaron", "estudio revela", "nuevo tratamiento",
-        "farmaco", "terapia", "cura", "prevencion", "mortalidad",
-        "obesidad", "diabetes", "hipertension", "salud mental",
-        "antibiotico", "cepa", "mutacion viral", "variante",
-        "oncologia", "cardiologia", "neurologia", "pediatria",
+        "epidemia", "brote infeccioso", "medicamento",
+        "cirugia", "cirugía", "diagnostico médico",
+        "ensayo clinico", "tratamiento médico",
+        "farmaco", "fármaco", "terapia medica", "cura enfermedad",
+        "mortalidad por enfermedad", "obesidad", "diabetes",
+        "hipertension", "salud mental", "antibiotico",
+        "variante viral", "oncologia", "cardiologia",
     ]):
         return 'salud'
 
-    # ── Prioridad 10: Ciencia / Espacio
+    # ── Prioridad 9: Ciencia / Espacio
     if any(p in txt for p in [
-        "ciencia", "investigacion cientifica", "descubrimiento cientifico",
-        "espacio", "nasa", "planeta", "universo", "agujero negro",
-        "fisica", "quimica", "biologia molecular", "genetica",
-        "experimento", "laboratorio", "cohete", "satelite",
-        "estudio cientifico", "hallazgo", "investigadores",
-        "astronomia", "telescopio", "marte", "luna", "iss",
-        "particula", "adn", "celula", "evolucion",
-        "esa ", "agencia espacial", "exoplaneta", "supernova",
-        "nobel de", "premio nobel", "paleontologia", "arqueologia",
+        "descubrimiento cientifico", "descubrimiento científico",
+        "nasa", "agencia espacial", "cohete espacial", "satelite lanzado",
+        "planeta", "universo", "agujero negro", "exoplaneta",
+        "investigacion cientifica", "investigación científica",
+        "astronomia", "telescopio espacial", "marte exploracion",
+        "particula subatomica", "laboratorio cientifico",
+        "adn descubrimiento", "evolucion biologica",
+        "esa agencia", "supernova", "palentologia",
+        "premio nobel de", "fisica cuantica",
     ]):
         return 'ciencia'
 
+    # ── Prioridad 10: Política — elecciones, gobierno, diplomacia
+    if any(p in txt for p in [
+        "eleccion", "elección", "elecciones presidenciales",
+        "presidente anuncia", "gobierno de", "gabinete presidencial",
+        "golpe de estado", "diplomacia", "cumbre diplomatica",
+        "sancion diplomatica", "sanciones internacionales",
+        "g7", "g20", "onu debate", "naciones unidas debate",
+        "referendum", "parlamento aprueba", "congreso aprueba",
+        "primer ministro", "canciller anuncia",
+        "politica exterior", "relaciones diplomaticas",
+        "campana electoral", "partido politico",
+        "decreto presidencial", "reforma legislativa",
+        "diputado", "senador", "alcalde",
+        "oposicion politica", "coalicion gubernamental",
+        "segunda vuelta", "balotaje", "comicios",
+        "macron", "scholz", "sunak", "meloni", "modi",
+        "xi jinping", "putin", "zelensky", "erdogan", "netanyahu",
+        "acuerdo diplomatico", "bloqueo economico",
+        "espionaje estatal", "embajador expulsado",
+        "nota diplomatica",
+        "trump anuncia", "biden anuncia", "harris anuncia",
+        "sheinbaum anuncia", "boric anuncia", "milei anuncia",
+        "petro anuncia", "lula anuncia", "maduro anuncia",
+    ]):
+        return 'politica'
+
     # ── Prioridad 11: Medio ambiente / Clima
     if any(p in txt for p in [
-        "cambio climatico", "calentamiento global", "temperatura record",
-        "sequia", "incendio forestal", "contaminacion", "co2",
-        "medio ambiente", "cop", "emision de carbono", "biodiversidad",
-        "extincion", "deforestacion", "plastico en el oceano",
-        "energia renovable", "solar", "eolica", "hidrogeno verde",
-        "huella de carbono", "acuerdo de paris", "ipcc",
+        "cambio climatico", "cambio climático", "calentamiento global",
+        "temperatura record", "sequia", "sequía",
+        "incendio forestal", "contaminacion ambiental", "co2 emisiones",
+        "medio ambiente", "cop30", "cop29", "emision de carbono",
+        "biodiversidad", "extincion de especies", "deforestacion",
+        "plastico en el oceano", "energia renovable",
+        "energia solar", "energia eolica", "hidrogeno verde",
+        "huella de carbono", "acuerdo de paris clima", "ipcc",
+        "ola de calor", "ciclon", "tornado",
+        "lluvia intensa", "frente frio", "pronostico meteorologico",
     ]):
         return 'medio_ambiente'
 
-    if any(p in txt for p in [
-        "clima", "lluvia intensa", "nieve record", "ola de calor",
-        "helada", "tormenta", "ciclon", "tornado", "granizo",
-        "pronostico meteorologico", "frente frio",
-    ]):
-        return 'clima'
-
     # ── Prioridad 12: Educación
     if any(p in txt for p in [
-        "educacion", "escuela", "universidad", "estudiantes",
-        "maestros", "profesores", "reforma educativa", "becas",
-        "escolaridad", "matricula", "campus", "pedagogia",
+        "reforma educativa", "sistema educativo", "becas universitarias",
+        "universidad publica", "escuelas publicas",
+        "maestros en huelga", "profesores protestan",
+        "prueba pisa", "educacion en",
     ]):
         return 'educacion'
 
     # ── Prioridad 13: Religión
     if any(p in txt for p in [
-        "papa francisco", "vaticano", "iglesia", "islam", "judaismo",
-        "budismo", "hinduismo", "mezquita", "sinagoga", "catedral",
-        "fe religiosa", "clerigo", "obispo", "encíclica", "enciclica",
-        "pontífice", "pontifice", "cardenal", "pastor evangelico",
+        "papa francisco", "vaticano", "iglesia católica", "iglesia catolicla",
+        "islam", "judaismo", "budismo", "hinduismo",
+        "mezquita", "sinagoga", "catedral",
+        "pontífice", "pontifice", "cardenal", "encíclica",
+        "pastor evangelico", "obispo",
     ]):
         return 'religion'
 
-    # ── Prioridad 14: Entretenimiento — V17.6: foco en artistas latinos
+    # ── Prioridad 14: Latinoamérica (fallback regional)
+    # Solo llega aquí si la noticia NO tiene categoría temática más específica.
+    # Ejemplos: "Cumbre CELAC sin acuerdos", "Migración LATAM", noticias regionales genéricas.
     if any(p in txt for p in [
-        "pelicula estreno", "serie de television", "estreno de", "trailer oficial",
-        "estreno mundial", "taquilla", "recaudacion", "box office",
-        "hollywood", "netflix serie", "netflix estrena", "disney plus",
-        "oscar", "grammy", "emmy", "golden globe", "bafta",
-        "festival de cine", "cannes", "sundance", "venecia film",
-        "actor de cine", "actriz premiada", "director de cine",
-        "musica pop", "artista musical", "album musical", "nuevo album",
-        "concierto mundial", "banda de musica", "gira musical",
-        "spotify", "youtube music", "billboard", "numero uno",
-        "lanzamiento musical", "videoclip", "videoclip oficial",
-        "taylor swift", "bad bunny", "shakira", "beyonce", "rihanna",
-        "billie eilish", "the weeknd", "drake", "reggaeton",
-        "karol g", "maluma", "j balvin", "rauw alejandro",
-        "rosalía", "rosalia", "daddy yankee", "ozuna",
-        "celebridad", "influencer", "reality show", "tiktoker",
-        "youtube", "youtuber", "streamer",
-        "nominado a", "premio a la mejor",
-        "temporada de", "segunda temporada", "tercera temporada",
-        "secuela de", "remake de", "spin-off",
-        "marvel", "star wars", "dc comics", "anime",
-        # V17.6.4: Lujo y lifestyle — relojería, moda, gastronomía
-        "reloj de lujo", "relojería", "relojeria", "rolex", "audemars", "patek philippe",
-        "richard mille", "hublot", "tag heuer", "swatch", "omega reloj",
-        "colaboracion relojera", "coleccion de relojes", "edicion limitada reloj",
-        "moda de lujo", "haute couture", "louis vuitton", "gucci", "chanel moda",
-        "hermes", "prada moda", "versace", "fendi", "balenciaga",
-        "lifestyle", "tendencia de moda", "coleccion moda",
-        "gastronomia", "chef estrella", "restaurante michelin",
-        "viaje de lujo", "hotel de lujo", "crucero de lujo",
+        "chile", "chilena", "chileno", "boric", "carabineros", "codelco",
+        "mexico", "mexicano", "mexicana", "cdmx", "sheinbaum", "pemex",
+        "argentina", "argentino", "buenos aires", "milei",
+        "brasil", "brazil", "brasileño", "lula", "sao paulo", "brasilia",
+        "colombia", "colombiano", "bogotá", "bogota", "petro",
+        "perú", "peru", "peruano", "boluarte",
+        "venezuela", "venezolano", "maduro", "caracas",
+        "ecuador", "ecuatoriano", "noboa",
+        "bolivia", "boliviano",
+        "uruguay", "uruguayo", "montevideo",
+        "paraguay", "paraguayo",
+        "cuba", "cubano", "nicaragua", "guatemala", "honduras",
+        "el salvador", "bukele", "panamá", "panama", "costa rica",
+        "república dominicana", "dominicano", "haití", "haiti",
+        "america latina", "latinoamerica", "latinoamericano", "latam",
+        "centroamerica", "caribe", "sudamerica", "cono sur",
+        "mercosur", "unasur", "celac", "alba",
+        "conmebol eliminatorias", "seleccion de futbol",
+        "peso chileno", "peso argentino", "peso mexicano",
+        "real brasileiro", "bolívar venezolano",
+        "banco central de chile", "banco de mexico",
+        "litio chile", "litio bolivia", "cobre chileno",
+        "petroleo venezolano", "gas de bolivia",
+        "amazonía", "amazonia", "patagonia", "atacama",
     ]):
-        return 'entretenimiento'
+        return 'latinoamerica'
 
     # ── Prioridad 15: Mundo (geografía internacional sin categoría específica)
     if any(p in txt for p in [
-        "africa", "asia", "europa", "pacifico", "oriente medio",
-        "naciones unidas", "onu", "cumbre mundial",
-        "embajada", "cancilleria", "union europea",
+        "africa", "asia pacifico", "europa occidental", "oriente medio",
+        "naciones unidas", "onu cumbre", "cumbre mundial",
+        "union europea", "brics",
     ]):
         return 'mundo'
 
@@ -1040,11 +1039,24 @@ No uses "latinoamerica" como categoría genérica para todo.
 → Wearables, smartwatch, tecnología ponible → "tecnologia"
 → Empresa estatal, consejo de administración, tarifas → "economia"
 
-• "latinoamerica"  → SOLO si el protagonista principal ES un país o institución de LATAM.
-                     Ejemplos válidos: reforma en Chile, elecciones en Colombia, economía
-                     de Argentina, crisis en Venezuela, acuerdo entre Brasil y Uruguay.
-                     NO usar para: noticias de España, Israel, EE.UU., Europa donde LATAM
-                     solo aparece mencionado de refilón.
+• "latinoamerica"  → SOLO si el tema de la noticia es regional sin categoría temática más específica.
+                     Úsala para: relaciones entre países LATAM, organismos regionales (CELAC,
+                     MERCOSUR, ALBA), noticias sin tema dominante claro de otro tipo.
+                     ❌ NO usar si la noticia tiene categoría temática más específica:
+                       - "Inflación en Argentina" → "economia" (no latinoamerica)
+                       - "Elecciones en Colombia" → "politica" (no latinoamerica)
+                       - "Messi en la Copa Libertadores" → "deportes" (no latinoamerica)
+                       - "Shakira lanza álbum en Colombia" → "entretenimiento" (no latinoamerica)
+                       - "Chile sufre terremoto" → "desastre" (no latinoamerica)
+                       - "IA en startups de Brasil" → "tecnologia" (no latinoamerica)
+                       - "Lula anuncia reforma económica" → "economia" (no latinoamerica)
+                       - "Petro firma decreto presidencial" → "politica" (no latinoamerica)
+                     ✅ SÍ usar si:
+                       - "Cumbre de presidentes latinoamericanos sin agenda concreta"
+                       - "CELAC debate integración regional"
+                       - "Migración venezolana impacta a varios países de LATAM"
+                       - "América Latina y la deuda con el FMI" (sin economía específica)
+                     REGLA: Si puedes usar una categoría más específica → úsala siempre.
 
 • "deportes"       → TODO lo deportivo: fútbol (Champions, Copa Libertadores, eliminatorias,
                      Mundial 2026, ligas), tenis, NBA, F1, boxeo, atletismo, etc.

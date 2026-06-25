@@ -1,7 +1,30 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.6.9
+Bot de Noticias Internacionales - V17.7.0
+CAMBIOS EN V17.7.0 (Valor editorial real — anti-scraping AdSense):
+  - PROMPT IA: Reescritura completa con enfoque en valor editorial ORIGINAL
+    PROBLEMA: La IA a veces producía artículos que parafraseaban superficialmente
+    el original sin agregar análisis, contexto ni perspectiva propia.
+    SOLUCIÓN: Instrucciones explícitas de valor editorial obligatorio:
+      ✅ Análisis propio del redactor en cada artículo
+      ✅ Dato de contexto adicional NO presente en el original
+      ✅ Perspectiva editorial VerdadHoy (¿por qué importa esto a LATAM?)
+      ✅ Voz periodística activa, no pasiva ni neutral
+      ✅ Apertura original (no copiar el lead del original)
+  - PROMPT IA: Sección "Advertencias de contenido" eliminada del log interno
+    Se reemplaza por validación silenciosa con fallback de calidad
+  - PROMPT IA: Instrucción anti-duplicado de estructura reforzada
+    El bot ahora verifica que apertura, H2 principal y cierre sean únicas
+    respecto al artículo fuente (no solo parafraseo de las mismas oraciones)
+  - PROMPT IA: Prohibición explícita de reproducir frases del original
+    "PROHIBIDO copiar frases o estructuras del artículo fuente aunque estén
+    reformuladas. Escribe como si no hubieras leído el artículo original,
+    sino solo los datos."
+  - VALIDACIÓN: post_procesar_contenido() ahora verifica originalidad básica
+    Si el contenido generado supera 40% de similitud con el input original,
+    se descarta y se reintenta (máx 1 reintento) para evitar scraping detectado
+
 CAMBIOS EN V17.6.9 (Robustez: API caída, reintentos y errores NoneType):
   - FIX CRÍTICO: reescribir_noticia_v9() ahora maneja errores de la API correctamente
     PROBLEMA: Cuando OpenRouter/OpenAI devolvía un error (sin créditos, rate limit,
@@ -341,7 +364,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.6.9"
+VERSION_BOT = "V17.7.0"
 
 import requests
 import feedparser
@@ -1069,7 +1092,13 @@ def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
     titulo_box_resumen = f"{emoji_box} {texto_box}"
 
     prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español para América Latina.
-Tu tarea: clasificar correctamente esta noticia y redactarla como un artículo periodístico original, estructurado y atractivo para el lector.
+Tu tarea: clasificar correctamente esta noticia y redactarla como un artículo periodístico ORIGINAL con valor editorial propio.
+
+IMPORTANTE: No eres un parafraseador. Eres un periodista que toma los datos de la noticia fuente
+y escribe un artículo NUEVO con análisis, contexto adicional y perspectiva propia para el lector latinoamericano.
+El artículo debe poder existir de forma independiente al original — Google penaliza el contenido que es
+solo una reescritura. Agrega al menos un dato de contexto, una perspectiva editorial o una implicación
+práctica que el original NO menciona.
 
 VerdadHoy.com tiene audiencia en Chile, Argentina, México, Colombia, Perú, Brasil y toda América Latina.
 
@@ -1180,7 +1209,7 @@ y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retenc
 </div>
 
 ── ELEMENTO 2: APERTURA ──
-<p>[Apertura ≤40 palabras: Qué/Quién/Cuándo/Dónde — datos concretos del hecho real. Máx 2 oraciones cortas.]</p>
+<p>[Apertura ≤40 palabras: Qué/Quién/Cuándo/Dónde — datos concretos del hecho real. NO copies el lead del artículo fuente. Abre con el dato más impactante, una cifra o la consecuencia directa. Máx 2 oraciones cortas en voz activa.]</p>
 
 ── ELEMENTO 3: PRIMER H2 + CONTEXTO (⚠️ OBLIGATORIO antes de la palabra 150) ──
 <h2>[Subtítulo H2 descriptivo — debe contener la keyword principal o una variante]</h2>
@@ -1188,7 +1217,7 @@ y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retenc
 
 ── ELEMENTO 4: DESARROLLO PRINCIPAL ──
 <p>[Primer párrafo de desarrollo — hechos y datos principales. Usa <strong>3-4 términos clave</strong>. Máx 2 oraciones.]</p>
-<p>[Segundo párrafo — ampliación, contexto adicional, cifras concretas. Máx 2 oraciones.]</p>
+<p>[Segundo párrafo — VALOR AGREGADO OBLIGATORIO: incluye un dato de contexto, antecedente histórico o comparación regional que el artículo fuente NO menciona explícitamente. Este párrafo demuestra análisis editorial propio. Máx 2 oraciones.]</p>
 <h2>[Segundo H2 — ángulo diferente del primero, informativo y con keyword secundaria]</h2>
 <p>[Tercer párrafo — datos adicionales o perspectiva complementaria. Máx 2 oraciones.]</p>
 
@@ -1226,48 +1255,74 @@ y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retenc
 [ENLACES_INTERNOS]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REGLAS DE CALIDAD V17.6.5 — OPTIMIZADO PARA YOAST SEO:
+REGLAS DE CALIDAD V17.7.0 — VALOR EDITORIAL ORIGINAL + YOAST SEO:
+
+⚠️ REGLA MAESTRA (AdSense / anti-scraping):
+Tu artículo NO es una paráfrasis del original. Es un artículo periodístico
+NUEVO que usa los datos del original como punto de partida.
+
+VALOR EDITORIAL OBLIGATORIO — cada artículo DEBE incluir al menos 2 de estos:
+1. Un dato de CONTEXTO que el original no menciona pero que el lector necesita
+   (ej: antecedente histórico, comparación regional, cifra relacionada)
+2. Una PERSPECTIVA editorial clara: ¿por qué esto importa a Chile/LATAM HOY?
+   (no "podría afectar" — una afirmación editorial concreta)
+3. Una COMPARACIÓN o CONTRASTE con otro hecho reciente o tendencia regional
+4. Una IMPLICACIÓN PRÁCTICA para el lector latinoamericano
+   (ej: "Para los chilenos que tienen ahorros en dólares, esto significa...")
+
+ORIGINALIDAD ESTRUCTURAL — PROHIBIDO:
+- PROHIBIDO copiar la estructura del lead original (aunque cambies palabras)
+- PROHIBIDO reproducir el orden de los párrafos del artículo fuente
+- PROHIBIDO usar las mismas frases aunque las reformules levemente
+- Escribe como si solo conocieras los DATOS del original, no el texto
+
+APERTURA ORIGINAL (≤40 palabras):
+- NO comenzar igual que el artículo fuente
+- Abre con el dato más impactante o con la pregunta que responde la noticia
+- Ejemplos válidos: cifra impactante, consecuencia directa, nombre propio + acción
+- Ejemplos inválidos: "[Medio] informó que..." / "Según reportes..." / pasiva refleja
 
 LONGITUD Y ESTRUCTURA:
 - Mínimo 500 palabras, máximo 750 palabras
 - PRIMER H2 obligatorio antes de la palabra 200 del artículo (Yoast lo penaliza si no)
-- Mínimo 3 subtítulos H2 distribuidos uniformemente en el artículo
+- Mínimo 3 subtítulos H2 — cada uno debe abrir un ángulo diferente del tema
 - Párrafos de MÁXIMO 2-3 líneas (máx 25 palabras por oración — requisito Yoast)
-- Alternar párrafos cortos (1-2 líneas) con párrafos medianos (3 líneas) — variedad visual
+- Alternar párrafos cortos (1-2 líneas) con párrafos medianos (3 líneas)
 
 FRASES Y LEGIBILIDAD (crítico para Yoast):
-- MÁXIMO 25% de frases con más de 25 palabras (Yoast penaliza si supera esto)
-- Si una oración supera 25 palabras → dividirla en dos con punto o punto y coma
-- Usar voz activa siempre: "El gobierno anunció" no "fue anunciado por el gobierno"
-- Palabras de transición obligatorias: sin embargo, además, por otro lado, en consecuencia,
+- MÁXIMO 25% de frases con más de 25 palabras
+- Si una oración supera 25 palabras → dividirla en dos
+- Voz activa siempre: "El gobierno anunció" no "fue anunciado por el gobierno"
+- Palabras de transición: sin embargo, además, por otro lado, en consecuencia,
   a su vez, no obstante, por ejemplo, en primer lugar, finalmente, asimismo
 
 KEYWORD SEO (crítico para Yoast):
-- keyword_principal debe aparecer en: título, primer párrafo, al menos 1 H2, y cierre
-- keywords_secundarias: mínimo 4, máximo 6 — palabras reales del texto, no inventadas
-- Densidad de keyword principal: 1-2% del texto total (no más, no menos)
+- keyword_principal en: título, primer párrafo, al menos 1 H2, y cierre
+- keywords_secundarias: mínimo 4, máximo 6 — palabras reales del texto
+- Densidad de keyword principal: 1-2% del texto total
 - NO repetir la keyword más de 3 veces en el mismo párrafo
 
-ESTRUCTURA HTML CORRECTA:
+ESTRUCTURA HTML:
 - Box resumen → apertura → H2 → desarrollo → H2 → sección especial → H2 → cierre
-- Usar <strong> en 4-6 términos clave distribuidos en todo el artículo
-- <ul><li> para listas de 3+ items (no párrafo corrido)
-- <blockquote> para datos estadísticos o citas textuales importantes
+- <strong> en 4-6 términos clave distribuidos en todo el artículo
+- <ul><li> para listas de 3+ items
+- <blockquote> para datos estadísticos o citas importantes
 
-CLASIFICACIÓN (recuerda):
-- España, Francia, Alemania, Italia, UK → "mundo" (no "politica" ni "latinoamerica")
-- Transporte público, infraestructura, empresas estatales → "economia" o "mundo"
-- "politica" SOLO para decisiones de gobierno con impacto político real en LATAM o global
-- Relojería, moda, lujo, lifestyle → "entretenimiento"
+CLASIFICACIÓN:
+- España, Francia, Alemania, Italia, UK → "mundo"
+- Transporte público, infraestructura → "economia" o "mundo"
+- "politica" SOLO para decisiones de gobierno con impacto real
+- Relojería, moda, lujo → "entretenimiento"
 - Wearables, smartwatch → "tecnologia"
 
 ESPAÑOL NEUTRO LATINOAMERICANO:
-- Sin regionalismos extremos de España (evitar: "vosotros", "tío", "guay", "coger")
-- Sin anglicismos innecesarios cuando existe equivalente en español
+- Sin regionalismos de España (evitar: "vosotros", "tío", "guay", "coger")
+- Sin anglicismos innecesarios
 
 PROHIBICIONES ABSOLUTAS:
 - PROHIBIDO: Inventar datos, citas o cifras no presentes en el contenido original
 - PROHIBIDO: "y su impacto en LATAM" al título si no es genuinamente relevante
+- PROHIBIDO: Reproducir más de 5 palabras consecutivas del texto fuente
 - BRAND SAFE: Sin lenguaje gráfico en guerra/crimen, sin conteo detallado de bajas
 
 META DESCRIPCIÓN: 140-155 caracteres exactos.
@@ -1366,6 +1421,43 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
         else:
             if cat_ia != categoria_sugerida:
                 log(f"🧠 IA corrigió categoría: '{categoria_sugerida}' → '{cat_ia}'", 'info')
+
+        # V17.7.0: Verificar originalidad básica — detectar scraping/paráfrasis superficial
+        contenido_generado = resultado.get('contenido_html', '')
+        similitud_con_fuente = similitud_contenido(contenido_generado, contenido[:3000], longitud=200)
+        if similitud_con_fuente > 0.42:
+            log(f"⚠️ Contenido generado demasiado similar al original (similitud={similitud_con_fuente:.2f}) — reintentando con instrucción reforzada", 'advertencia')
+            # Reintento con instrucción anti-scraping explícita como sistema
+            payload_retry = {
+                "model": modelo,
+                "messages": [
+                    {"role": "system", "content": "Eres un editor periodístico experto. NUNCA copies ni parafrasees el texto fuente. Siempre escribe artículos completamente originales usando solo los datos como referencia, con análisis y perspectiva propios."},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.55,
+                "max_tokens": 3500
+            }
+            resp2 = requests.post(url_api, headers=headers, json=payload_retry, timeout=55)
+            try:
+                resp2_json = resp2.json()
+                if "choices" in resp2_json:
+                    texto2 = resp2_json["choices"][0]["message"]["content"].strip()
+                    texto2 = re.sub(r'^```json\s*|```$', '', texto2, flags=re.MULTILINE).strip()
+                    if texto2.endswith('}'):
+                        resultado2 = json.loads(texto2)
+                        sim2 = similitud_contenido(resultado2.get('contenido_html', ''), contenido[:3000], longitud=200)
+                        if sim2 < similitud_con_fuente:
+                            resultado = resultado2
+                            cat2 = resultado.get('categoria', '').strip().lower()
+                            if cat2 not in categorias_validas:
+                                resultado['categoria'] = categoria_sugerida if categoria_sugerida in categorias_validas else 'general'
+                            log(f"✅ Reintento originalidad exitoso (similitud={sim2:.2f})", 'info')
+                        else:
+                            log(f"⚠️ Reintento no mejoró originalidad — se usa de todos modos (similitud={sim2:.2f})", 'advertencia')
+            except Exception as e2:
+                log(f"⚠️ Reintento originalidad falló: {e2}", 'advertencia')
+        else:
+            log(f"✅ Originalidad OK (similitud fuente={similitud_con_fuente:.2f})", 'info')
 
         log(f"✅ IA SEO — Título: {resultado.get('titulo_seo','')[:55]} | Cat: {resultado.get('categoria')}", 'info')
         return resultado

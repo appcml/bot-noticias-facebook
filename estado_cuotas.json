@@ -1,10 +1,6 @@
 {
-  "fecha": "2026-06-24",
+  "fecha": "2026-06-25",
   "conteo": {
-    "latinoamerica": 1,
-    "guerra": 3,
-    "ciencia": 1,
-    "deportes": 2,
-    "desastre": 1
+    "deportes": 1
   }
 }

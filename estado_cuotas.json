@@ -1,10 +1,6 @@
 {
-  "fecha": "2026-06-26",
+  "fecha": "2026-06-27",
   "conteo": {
-    "guerra": 2,
-    "deportes": 3,
-    "politica": 2,
-    "desastre": 1,
-    "general": 1
+    "desastre": 1
   }
 }

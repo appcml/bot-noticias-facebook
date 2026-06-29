@@ -1,6 +1,5 @@
 {
   "urls": [
-    "https://www.diariolibre.com/mundo/estados-unidos/2026/06/14/secretario-de-la-onu-celebra-anuncio-de-acuerdo-ee-uu-iran/3566821",
     "https://www.abc.es/economia/uso-civil-tecnologia-defensa-alas-startups-sector-20260615022401-nt.html",
     "https://es.euronews.com/my-europe/2026/06/15/catedral-kiev-llamas-rusia-lanza-nuevos-ataques-contra-ucrania",
     "https://www.diariolibre.com/mundo/europa/2026/06/15/emmanuel-macron-desafia-a-trump-y-mantiene-el-impuesto-digital/3567365",
@@ -130,10 +129,10 @@
     "https://www.si.com/es-us/futbol/el-pronostico-de-la-inteligencia-artificial-para-el-partido-brasil-vs-japon",
     "https://www.diariolibre.com/mundo/medio-oriente/2026/06/28/ejercito-de-israel-aprueba-mantener-sus-operaciones-en-sur-libanes/3582448",
     "https://lapaginamillonaria.com/mercado-de-pases/giovani-lo-celso-descarto-su-llegada-a-river-en-este-mercado-de-pases-no-es-algo-que-va-a-suceder",
-    "https://www.abc.es/opinion/ignacio-camacho-breve-historia-suicidio-politico-20260628190649-nt.html"
+    "https://www.abc.es/opinion/ignacio-camacho-breve-historia-suicidio-politico-20260628190649-nt.html",
+    "https://www.eldiario.es/mundial-2026/algoritmos-predicen-lesiones-analizan-fichajes-big-data-cambia-futbol-mueve-5-600-millones_1_13313468.html"
   ],
   "hashes": [
-    "d883844e66577cf0281a03c923adb365",
     "a4d05e6885814c24d42b330c3e53e821",
     "ec36383fbe58ef42cdedb94f5c37b2ac",
     "5d2004aad39381a4a36453c672a34b06",
@@ -263,10 +262,10 @@
     "c44b463473d2897121554827fa3ce185",
     "3cbcdd216642b323f8d59f0e63dda245",
     "e81815e593d1bb3bf001e2b672f5f656",
-    "662227942177a18abce0c1edaf49dafe"
+    "662227942177a18abce0c1edaf49dafe",
+    "815194aef77db504f0b5e4e01833556c"
   ],
   "timestamps": [
-    "2026-06-15T07:28:52.416851",
     "2026-06-15T13:32:25.701810",
     "2026-06-15T18:23:30.024046",
     "2026-06-15T21:30:12.141887",
@@ -396,10 +395,10 @@
     "2026-06-28T21:38:04.655164",
     "2026-06-28T22:59:41.646268",
     "2026-06-29T00:16:41.870881",
-    "2026-06-29T05:11:07.165718"
+    "2026-06-29T05:11:07.165718",
+    "2026-06-29T10:07:16.695063"
   ],
   "titulos": [
-    "Secretario de la ONU celebra anuncio de acuerdo EE. UU. Irán.",
     "El uso civil de la tecnología de defensa da alas a las startups del sector.",
     "La catedral de Kiev, en llamas: Rusia lanza nuevos ataques contra Ucrania y mata a 9 personas.",
     "Emmanuel Macron desafía a Trump y mantiene el impuesto digital.",
@@ -529,10 +528,10 @@
     "El pronóstico de la Inteligencia Artificial para el partido Brasil vs Japón.",
     "Ejército de Israel aprueba mantener sus operaciones en sur libanés.",
     "Giovani Lo Celso descartó su llegada a River en este mercado de pases: “No es algo que va a suceder”.",
-    "Breve historia de un suicidio político."
+    "Breve historia de un suicidio político.",
+    "Algoritmos que predicen lesiones y analizan fichajes: el 'big data' cambia el fútbol y mueve 5.600 millones."
   ],
   "descripciones": [
-    "El secretario general de la ONU , António Guterres , celebró el domingo el acuerdo de paz entre Estados Unidos e Israel y dijo que es un \"paso crucial\" hacia la paz en Medio Oriente. \"El secretario general espera que las partes aprovechen este nuevo impulso y redoblen sus esfuerzos hacia una resolución final del conflicto\", dijo Guterres en un comunicado atribuido a su portavoz, Stéphane Dujarric. El presidente de los Estados Unidos, Donald Trump , anunció este domingo que alcanzó un acuerdo con Irán para reabrir el estrecho de Ormuz tras más de tres meses de conflicto. En una publicac",
     "La II Guerra Mundial, la Guerra Fría y la carrera espacial marcaron, en la segunda mitad del siglo XX, las bases de la importancia de las denominadas tecnologías duales, aquellas que trascienden a un solo ámbito de aplicación. Investigación de élite aplicada a aspectos críticos (como la Defensa) que, con el tiempo, pasan a formar parte de nuestro día y que se sitúan como apuestas de primer orden en la iniciativa europea, con casos como el fondo Connecting Europe Facility (para proyectos de movilidad dual e infraestructuras de doble uso) o como su integración en la Estrategia de Segur",
     "La ola de ataques coincidió con las noticias sobre un acuerdo entre Estados Unidos e Irán que abre una vía a la paz en Oriente Medio y subraya la falta de avances hacia el fin de más de cuatro años de guerra en Ucrania. Rusia lanzó durante la noche del domingo al lunes una andanada de misiles contra varias de las principales ciudades ucranianas, en ataques que causaron al menos 11 muertos y provocaron un incendio en la histórica catedral de la Dormición de Kiev. La nueva ola de ataques coincidió con las noticias de un acuerdo entre Estados Unidos e Irán que deja entrever una vía hacia la paz e",
     "El presidente francés, Emmanuel Macron , aseguró este lunes que no cederá a la exigencia de Donald Trump para que suprima el impuesto a las compañías digitales, bajo la amenaza de aranceles al vino y al champán, y avanzó que sobre esa cuestión mantendrá una discusión \"respetuosa pero firme\" con él. \"El impuesto a las digitales, los europeos lo decidieron, varios países lo han puesto en marcha y forma parte de nuestro derecho. No son los Estados Unidos los que deciden por el derecho de los europeos ni de los franceses\", subrayó Macron en una entrevista al canal de televisión franc",
@@ -662,10 +661,10 @@
     "La realidad supera al anime con el atractivo enfrentamiento entre las naciones que protagonizaron la final de Copa del Mundo en 'Supercampeones'. El pentacampeón del mundo, uno de los países insignia del balompié, la selección de Brasil se instaló en las eliminatorias de 32 como líder del Grupo C para enfrentarse a la selección de Japón que se quedó con el segundo puesto del Grupo F. La ronda de dieciseisavos de final de la Copa del Mundo 2026 entre estas naciones se llevará a cabo en el Estadio Houston el próximo lunes 29 de junio a las 13",
     "El jefe del Estado Mayor de Israel , Eyal Zamir , aprobó este domingo que el Ejército mantenga sus operaciones en el sur del Líbano ocupado , dos días después de la firma del acuerdo marco para el fin de las hostilidades alcanzado en Washington que contempla la retirada progresiva de las tropas israelíes. Durante una visita al Comando Norte de las fuerzas armadas, \"el jefe del Estado Mayor llevó a cabo una evaluación de la situación a la luz de la realidad cambiante, aprobó planes para operaciones continuadas y mantuvo una discusión de mando con los comandantes de brigada\", recoge u",
     "El volante estuvo en la carpeta del Millonario y hasta Coudet hizo lo posible para acercarse, pero en sus palabras confirmó que hay una decisión tomada. Luego de haber comunicado salidas masivas del plantel, la dirigencia de River se propuso ir en busca de jerarquía y con intenciones de hacer una fuerte inversión en caso de ser necesario. Uno de los nombres que se puso sobre la mesa fue Giovani Lo Celso , con futuro incierto en Europa. Eduardo Coudet llegó a comunicarse personalmente para intentar convencerlo , pero en las últimas horas el jugador se encargó de cerrarle la puerta a la p",
-    "A veinte años recién cumplidos de su esperanzadora fundación, Ciudadanos no existe o si existe es como si no existiera. Se malogró porque toda la gente de talento que tenía dentro carecía de experiencia y le sobraban escrúpulos para aceptar las miserias de la hiperprofesionalizada escena pública moderna. Como movimiento cívico aportó un soplo fresco de regeneración y limpieza pero como partido le faltó implantación, estructura, organización y claridad estratégica. Fue una pena; esa España tercerista que preconizaba, moderada, conciliadora, ecléctica, como una fuerza de cascos "
+    "A veinte años recién cumplidos de su esperanzadora fundación, Ciudadanos no existe o si existe es como si no existiera. Se malogró porque toda la gente de talento que tenía dentro carecía de experiencia y le sobraban escrúpulos para aceptar las miserias de la hiperprofesionalizada escena pública moderna. Como movimiento cívico aportó un soplo fresco de regeneración y limpieza pero como partido le faltó implantación, estructura, organización y claridad estratégica. Fue una pena; esa España tercerista que preconizaba, moderada, conciliadora, ecléctica, como una fuerza de cascos ",
+    "El estudio de las estadísticas del juego y la inteligencia artificial revolucionan la forma de entender el deporte, planificar las plantillas y desmontan algunos tópicos: en la lotería de los penaltis no todo es azar Las gradas intentan resistir frente a la gentrificación del viejo fútbol En otra de sus noches, Leo Messi dio este miércoles la victoria a Argentina con tres goles. Hace 20 años, ese dato hubiera bastado para concluir cualquier análisis. Ya no. Al acabar el partido, trascienden más estadísticas, como los kilómetros recorridos y su mapa de calor (por dónde se desplazó "
   ],
   "hashes_contenido": [
-    "de51b7a14c98d20ec8d55837d4ce7255",
     "2386f7b252c4b71745b72d4711e84ce9",
     "630642c6cee029b1179c443c8977c329",
     "cd0a6e27729092e4702f3df9e07cfc3f",
@@ -795,10 +794,10 @@
     "d173a7275e26b9b44845988929245750",
     "c870486421ccda84fd3f49c269a1bd3a",
     "4fb84da26d2931b6ae9fb480073d4489",
-    "9f6eadd5db27870e8bbc4cfbf749ce67"
+    "9f6eadd5db27870e8bbc4cfbf749ce67",
+    "5579d0abc584fa5429b2120cc15cdce3"
   ],
   "hashes_permanentes": [
-    "0edb3d10ea00f5555baba6f6e82de730",
     "3c3bf6c64daeac1c296b84e9e28b8b8b",
     "1bb7694b76e120792355029de0f75c95",
     "1fda6e0c1039c2416eafa941cd8bdaa6",
@@ -1297,15 +1296,15 @@
     "c44b463473d2897121554827fa3ce185",
     "3cbcdd216642b323f8d59f0e63dda245",
     "e81815e593d1bb3bf001e2b672f5f656",
-    "662227942177a18abce0c1edaf49dafe"
+    "662227942177a18abce0c1edaf49dafe",
+    "815194aef77db504f0b5e4e01833556c"
   ],
   "estadisticas": {
-    "total_publicadas": 650,
-    "total_fb": 193,
-    "total_wp": 544
+    "total_publicadas": 651,
+    "total_fb": 194,
+    "total_wp": 545
   },
   "urls_normalizadas": [
-    "diariolibre.com/mundo/estados-unidos/2026/06/14/secretario-de-la-onu-celebra-anuncio-de-acuerdo-ee-uu-iran/3566821",
     "abc.es/economia/uso-civil-tecnologia-defensa-alas-startups-sector-20260615022401-nt",
     "es.euronews.com/my-europe/2026/06/15/catedral-kiev-llamas-rusia-lanza-nuevos-ataques-contra-ucrania",
     "diariolibre.com/mundo/europa/2026/06/15/emmanuel-macron-desafia-a-trump-y-mantiene-el-impuesto-digital/3567365",
@@ -1435,7 +1434,8 @@
     "si.com/es-us/futbol/el-pronostico-de-la-inteligencia-artificial-para-el-partido-brasil-vs-japon",
     "diariolibre.com/mundo/medio-oriente/2026/06/28/ejercito-de-israel-aprueba-mantener-sus-operaciones-en-sur-libanes/3582448",
     "lapaginamillonaria.com/mercado-de-pases/giovani-lo-celso-descarto-su-llegada-a-river-en-este-mercado-de-pases-no-es-algo-que-va-a-suceder",
-    "abc.es/opinion/ignacio-camacho-breve-historia-suicidio-politico-20260628190649-nt"
+    "abc.es/opinion/ignacio-camacho-breve-historia-suicidio-politico-20260628190649-nt",
+    "eldiario.es/mundial-2026/algoritmos-predicen-lesiones-analizan-fichajes-big-data-cambia-futbol-mueve-5-600-millones_1_13313468"
   ],
   "urls_fb_publicadas": [
     "776",
@@ -1623,6 +1623,8 @@
     "1557",
     "https://verdadhoy.com/scaloni-les-da-la-chance-los-ex-river-que-seran-titulares-en-argentina-ante-jordania/",
     "1573",
-    "https://verdadhoy.com/giovani-lo-celso-descarto-su-llegada-a-river-en-este-mercado-de-pases-no-es-algo-que-va-a-suceder/"
+    "https://verdadhoy.com/giovani-lo-celso-descarto-su-llegada-a-river-en-este-mercado-de-pases-no-es-algo-que-va-a-suceder/",
+    "1577",
+    "https://verdadhoy.com/algoritmos-que-predicen-lesiones-y-analizan-fichajes-el-big-data-cambia-el-futbol-y-mueve-5-600-millones/"
   ]
 }

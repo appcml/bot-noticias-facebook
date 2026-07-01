@@ -1,7 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.9.9
+Bot de Noticias Internacionales - V17.9.10
+CAMBIOS EN V17.9.10 (Visibilidad + reintento en RSS Chile — Emol falla seguido):
+  - CONTEXTO: "RSS Chile: 0 noticias" con solo 1 de las 13 fuentes mostrando
+    error (Emol: Connection reset by peer) — las otras 12 fallaban en
+    silencio (HTTP != 200 o feed vacío) sin quedar registrado en el log,
+    haciendo imposible saber cuál era el verdadero cuello de botella.
+  - FIX: obtener_rss_chile() ahora loguea (nivel debug) cuándo una fuente
+    devuelve un HTTP distinto de 200 o un feed sin entradas, no solo cuando
+    hay una excepción de conexión.
+  - FIX: reintento automático (1 vez, con 1.5s de espera) ante errores de
+    conexión/timeout — Emol resetea la conexión de forma intermitente, y en
+    varios casos un segundo intento sí funciona. Esto no es un bug del bot:
+    es el servidor de Emol rechazando la conexión momentáneamente, algo que
+    no podemos controlar del todo, pero el reintento recupera parte de esos
+    casos sin intervención manual.
+  - Si en las próximas corridas Emol sigue fallando incluso con reintento,
+    lo más probable es que esté bloqueando el rango de IPs de GitHub
+    Actions — en ese caso no hay mucho que hacer desde el código, las otras
+    12 fuentes RSS + NewsAPI Chile siguen cubriendo el bloque igual.
+
 CAMBIOS EN V17.9.9 (Confirmación de slugs + eliminada región "América del Norte"):
   - CONFIRMADO: Cic revisó Entradas → Categorías en WordPress y los 8 slugs
     adivinados en V17.9.8 eran todos correctos (africa, america-del-norte,
@@ -621,7 +640,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.9.9"
+VERSION_BOT = "V17.9.10"
 
 import requests
 import feedparser
@@ -630,6 +649,7 @@ import hashlib
 import json
 import os
 import random
+import time
 from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
@@ -3408,11 +3428,22 @@ def obtener_rss_chile():
     noticias = []
     for url_feed, nombre in fuentes_chile:
         try:
-            r = requests.get(url_feed, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            # V17.9.10: un reintento simple ante errores de conexión
+            # transitorios (ej. Emol resetea la conexión de vez en cuando).
+            # No es un problema del bot — es el servidor de la fuente
+            # rechazando la conexión momentáneamente — pero reintentar una
+            # vez, con una pequeña pausa, recupera varios de esos casos.
+            try:
+                r = requests.get(url_feed, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+                time.sleep(1.5)
+                r = requests.get(url_feed, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
             if r.status_code != 200:
+                log(f"RSS Chile: {nombre} devolvió HTTP {r.status_code}", 'debug')
                 continue
             feed = feedparser.parse(r.content)
             if not feed or not feed.entries:
+                log(f"RSS Chile: {nombre} sin entradas en el feed", 'debug')
                 continue
             for e in feed.entries[:10]:
                 t = e.get('title', '')

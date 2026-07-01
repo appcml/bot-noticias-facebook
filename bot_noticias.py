@@ -1,7 +1,39 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.9.10
+Bot de Noticias Internacionales - V17.9.11
+CAMBIOS EN V17.9.11 (9 de 13 fuentes RSS de Chile estaban muertas — HTTP 404):
+  - DIAGNÓSTICO CONFIRMADO con el log real: La Tercera, BioBioChile,
+    Cooperativa (URL vieja), T13, Diario Financiero, El Mostrador, 24 Horas,
+    Mega Noticias, CHV Noticias y Publimetro devolvían HTTP 404 — NO era un
+    bloqueo temporal de red, son URLs de RSS que esos medios ya no publican.
+    Solo Emol (reset de conexión intermitente), CNN Chile y La Cuarta
+    devolvían HTTP 200.
+  - INVESTIGACIÓN: busqué reemplazos para cada fuente muerta. La mayoría de
+    esos medios chilenos parecen haber descontinuado su RSS público por
+    completo (tendencia general del rubro en los últimos años) — no
+    encontré URLs de reemplazo confiables para 8 de las 9.
+  - FIX CONFIRMADO: Cooperativa SÍ mantiene RSS vivo, solo que en otra ruta:
+    https://www.cooperativa.cl/noticias/site/tax/port/all/rss_3___1.xml
+    (categoría "País" — la más parecida a noticias generales de Chile).
+    Encontrado en su propia página "RSS a la carta".
+  - FIX: se eliminan las 8 fuentes sin reemplazo confiable de fuentes_chile
+    en obtener_rss_chile(). Quedan 4: Emol, Cooperativa (URL corregida),
+    CNN Chile, La Cuarta. Es una lista más corta, pero con URLs reales en
+    vez de URLs muertas que solo agregaban tiempo de ejecución y ruido al
+    log sin aportar ninguna noticia.
+  - IMPORTANTE: no pude probar en vivo la URL corregida de Cooperativa desde
+    mi entorno de pruebas (Claude tiene una lista blanca de dominios de red
+    y cooperativa.cl no está en ella — el error que me devolvió fue de mi
+    propio proxy, no de Cooperativa). La validé por otra vía (su propia
+    página de suscripción RSS), pero la prueba real es la próxima ejecución
+    del bot en GitHub Actions, que sí tiene acceso completo a internet.
+  - Con solo 4 fuentes RSS, el bloque de Chile depende más de NewsAPI Chile
+    para tener volumen — si en el próximo log NewsAPI Chile también aparece
+    en 0, revisar cuota diaria de NewsAPI (planes gratis suelen tener
+    límite ~100 solicitudes/día, y el bot hace varias decenas por día
+    sumando los 3 flujos).
+
 CAMBIOS EN V17.9.10 (Visibilidad + reintento en RSS Chile — Emol falla seguido):
   - CONTEXTO: "RSS Chile: 0 noticias" con solo 1 de las 13 fuentes mostrando
     error (Emol: Connection reset by peer) — las otras 12 fallaban en
@@ -640,7 +672,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.9.10"
+VERSION_BOT = "V17.9.11"
 
 import requests
 import feedparser
@@ -3411,19 +3443,17 @@ def obtener_rss_chile():
     Solo retorna noticias confirmadas de Chile.
     """
     fuentes_chile = [
-        ('https://www.latercera.com/feed/',                          'La Tercera'),
+        # V17.9.11: se eliminaron 9 fuentes que devolvían HTTP 404 de forma
+        # permanente (La Tercera, BioBioChile, T13, Diario Financiero, El
+        # Mostrador, 24 Horas, Mega Noticias, CHV Noticias, Publimetro) — no
+        # era un bloqueo temporal, son URLs de RSS que esos medios ya no
+        # usan. Busqué reemplazos, pero varios de esos medios parecen haber
+        # descontinuado su RSS público por completo (tendencia del rubro).
+        # Cooperativa SÍ tenía RSS vivo, solo en otra ruta — corregida abajo.
         ('https://www.emol.com/rss/',                               'Emol'),
-        ('https://www.biobiochile.cl/rss/',                         'BioBioChile'),
-        ('https://www.cooperativa.cl/noticias/rss.xml',             'Cooperativa'),
-        ('https://www.t13.cl/feeds/rss',                            'T13 Chile'),
+        ('https://www.cooperativa.cl/noticias/site/tax/port/all/rss_3___1.xml', 'Cooperativa'),
         ('https://www.cnnchile.com/feed/',                          'CNN Chile'),
-        ('https://www.df.cl/rss.xml',                               'Diario Financiero'),
-        ('https://www.elmostrador.cl/feed/',                        'El Mostrador'),
-        ('https://www.24horas.cl/rss.xml',                         '24 Horas Chile'),
-        ('https://www.meganoticias.cl/feed/',                       'Mega Noticias'),
-        ('https://www.chilevision.cl/noticias/rss',                 'CHV Noticias'),
         ('https://www.lacuarta.com/feed/',                          'La Cuarta'),
-        ('https://www.publimetro.cl/feed/',                         'Publimetro Chile'),
     ]
     noticias = []
     for url_feed, nombre in fuentes_chile:

@@ -1,12 +1,29 @@
 name: Bot Noticias Facebook
 on:
   schedule:
-    # Corre cada 30 minutos
+    # ── GENERAL (WP + FB) ──────────────────────────────────────────────
+    # Corre cada 30 min. El bot internamente solo publica en WP cada ~230
+    # min (TIEMPO_ENTRE_WP_MIN) y en FB solo dentro de sus horarios pico,
+    # así que esta frecuencia es un "sondeo" barato, no la cadencia real.
     - cron: '*/30 * * * *'
+    # ── LATAM + CHILE ───────────────────────────────────────────────────
+    # V17.9.2: antes esto NO existía y MODO_LATAM nunca se activaba, por lo
+    # que el bloque de Chile/LATAM nunca corría. 3 veces al día (~8h de
+    # separación), alineado a los mismos horarios pico que usa Facebook
+    # (UTC 2, 10, 18 ≈ 23:00 / 07:00 / 15:00 hora Chile).
+    - cron: '0 2,10,18 * * *'
   workflow_dispatch:
     inputs:
       forzar:
         description: 'Forzar publicación inmediata (omite control de tiempo y horario)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      modo_latam:
+        description: 'Modo al ejecutar manualmente: false = general (WP+FB), true = bloque Chile/LATAM'
         required: false
         default: 'false'
         type: choice
@@ -34,6 +51,23 @@ jobs:
 
       - name: Instalar dependencias Python
         run: pip install -r requirements.txt
+
+      # ──────────────────────────────────────────────────────
+      # V17.9.2: Decide si esta ejecución corre en modo GENERAL o LATAM.
+      # - Si fue disparado manualmente (workflow_dispatch) → usa el input.
+      # - Si fue el cron de LATAM ('0 2,10,18 * * *') → MODO_LATAM=true.
+      # - Cualquier otro caso (el cron de cada 30 min) → MODO_LATAM=false.
+      # ──────────────────────────────────────────────────────
+      - name: Determinar modo (general o LATAM)
+        id: modo
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "modo_latam=${{ github.event.inputs.modo_latam }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 2,10,18 * * *" ]; then
+            echo "modo_latam=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "modo_latam=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Ejecutar bot
         env:
@@ -69,12 +103,15 @@ jobs:
           HISTORIAL_PATH:       historial_publicaciones.json
           ESTADO_PATH:          estado_bot.json
           FORZAR_PUBLICACION:   ${{ github.event.inputs.forzar || 'false' }}
+          MODO_LATAM:           ${{ steps.modo.outputs.modo_latam }}
 
         run: python bot_noticias.py
 
       # ──────────────────────────────────────────────────────
       # GUARDAR TODOS LOS ARCHIVOS DE ESTADO EN EL REPO
       # Sin este paso el bot repite noticias y pierde control
+      # V17.9.2: se agrega estado_cuotas_latam.json — faltaba, y sin él las
+      # cuotas diarias de Chile/LATAM se reseteaban en cada ejecución.
       # ──────────────────────────────────────────────────────
       - name: Guardar estado en repositorio
         if: always()
@@ -89,6 +126,7 @@ jobs:
             estado_fb.json
             estado_formato_fb.json
             estado_cuotas.json
+            estado_cuotas_latam.json
             estado_pending_videos.json
           )
 
@@ -121,5 +159,6 @@ jobs:
             estado_wp.json
             estado_fb.json
             estado_cuotas.json
+            estado_cuotas_latam.json
             estado_pending_videos.json
           retention-days: 7

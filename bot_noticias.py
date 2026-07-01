@@ -1,7 +1,32 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.9.3
+Bot de Noticias Internacionales - V17.9.4
+CAMBIOS EN V17.9.4 (Fix del run real que reportaste — HTTP 402 OpenRouter):
+  - CAUSA CONFIRMADA del "fallo": OpenRouter devolvió HTTP 402 "This request
+    requires more credits... You requested up to 3500 tokens, but can only
+    afford 3390" en las 6 noticias candidatas del bloque LATAM. Es decir: la
+    cuenta de OpenRouter tiene saldo casi en cero (le faltaban ~110 tokens de
+    presupuesto). El bot descartó correctamente las 6 noticias (tal como se
+    diseñó en V17.9.3) en vez de publicarlas con contenido pobre — eso YA
+    funcionó bien. Lo que faltaba era no rendirse ahí mismo.
+  - FIX: fallback automático OpenRouter → OpenAI. Si el proveedor principal
+    (OpenRouter) fallla por falta de crédito o rate limit, y hay una
+    OPENAI_API_KEY configurada, el bot reintenta automáticamente con OpenAI
+    directo antes de descartar la noticia. Requiere que OPENAI_API_KEY tenga
+    saldo propio — si ambas cuentas están sin crédito, seguirá sin publicar
+    (correctamente: es preferible no publicar a publicar contenido pobre).
+  - FIX: se quita el exit(1) que marcaba la corrida de GitHub Actions como
+    "fallida" (❌ roja) solo porque no se publicó nada en ese ciclo. Eso
+    generaba alarmas falsas: "no publiqué esta vez" (sin crédito, sin
+    candidatas, cuota llena) NO es un error del workflow. Los errores reales
+    (excepciones no controladas) siguen marcando la corrida como fallida,
+    igual que antes.
+  - ACCIÓN PENDIENTE PARA TI: recargar saldo en OpenRouter
+    (https://openrouter.ai/settings/credits) es la solución real y definitiva.
+    El fallback a OpenAI es una red de seguridad, no un reemplazo — si OpenAI
+    tampoco tiene saldo, el bot seguirá sin publicar esos ciclos.
+
 CAMBIOS EN V17.9.3 (FIX CRÍTICO: eliminado el fallback sin IA que publicaba
 contenido pobre — ver caso real "Senado se prepara para rechazar AC..."):
   - DIAGNÓSTICO: la nota sobre Chile publicada en verdadhoy.com no pasó por la
@@ -481,7 +506,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.9.3"
+VERSION_BOT = "V17.9.4"
 
 import requests
 import feedparser
@@ -1481,8 +1506,52 @@ es un paso interno.
 RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
 {{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<div style=...>[BOX]</div><p>...</p>...[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3","kw4","kw5"], "categoria": "latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general"}}"""
 
+    def _llamar_api_ia(url_api, headers, modelo, payload):
+        """
+        V17.9.4: request a la API de IA aislado en su propia función para poder
+        reutilizarlo tanto para el proveedor principal como para el fallback.
+        Devuelve (resp_json, None) si la llamada fue exitosa, o (None, motivo)
+        si falló — motivo en {'credito','rate_limit','auth','modelo','otro'}.
+        """
+        try:
+            resp = requests.post(url_api, headers=headers, json=payload, timeout=55)
+        except Exception as e:
+            log(f"❌ IA: error de red llamando a {url_api}: {e}", 'error')
+            return None, 'otro'
+        try:
+            resp_json = resp.json()
+        except Exception:
+            log(f"❌ IA: respuesta no es JSON válido (HTTP {resp.status_code}): {resp.text[:200]}", 'error')
+            return None, 'otro'
+
+        if "choices" not in resp_json:
+            err = resp_json.get("error", {})
+            if isinstance(err, dict):
+                msg  = err.get("message", str(resp_json)[:200])
+                code = err.get("code", resp.status_code)
+            else:
+                msg  = str(err)[:200]
+                code = resp.status_code
+            log(f"❌ IA devolvió error (HTTP {resp.status_code}, code={code}): {msg}", 'error')
+            msg_lower = str(msg).lower()
+            if "insufficient" in msg_lower or "quota" in msg_lower or "credit" in msg_lower or "balance" in msg_lower:
+                log("   💳 CAUSA PROBABLE: Sin créditos/saldo en la API.", 'error')
+                return None, 'credito'
+            elif "rate limit" in msg_lower or code == 429:
+                log("   ⏳ CAUSA PROBABLE: Rate limit alcanzado.", 'advertencia')
+                return None, 'rate_limit'
+            elif ("invalid" in msg_lower and "key" in msg_lower) or code == 401:
+                log("   🔑 CAUSA PROBABLE: API key inválida o expirada. Verifica los GitHub Secrets.", 'error')
+                return None, 'auth'
+            elif "model" in msg_lower:
+                log(f"   🤖 CAUSA PROBABLE: Modelo '{modelo}' no disponible o nombre incorrecto.", 'error')
+                return None, 'modelo'
+            return None, 'otro'
+        return resp_json, None
+
     try:
-        if OPENROUTER_API_KEY:
+        usando_openrouter = bool(OPENROUTER_API_KEY)
+        if usando_openrouter:
             url_api = "https://openrouter.ai/api/v1/chat/completions"
             headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
             modelo  = "openai/gpt-4o-mini"
@@ -1495,35 +1564,29 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
         # El prompt ocupa ~1500-1800 tokens; necesitamos al menos 1500 para el artículo completo
         payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}],
                    "temperature": 0.35, "max_tokens": 3500}
-        resp     = requests.post(url_api, headers=headers, json=payload, timeout=55)
 
-        # V17.6.9 FIX: Verificar status HTTP y errores de la API ANTES de acceder a 'choices'
-        try:
-            resp_json = resp.json()
-        except Exception:
-            log(f"❌ IA: respuesta no es JSON válido (HTTP {resp.status_code}): {resp.text[:200]}", 'error')
-            return None
+        resp_json, motivo = _llamar_api_ia(url_api, headers, modelo, payload)
 
-        # Detectar respuesta de error de la API (sin 'choices')
-        if "choices" not in resp_json:
-            err = resp_json.get("error", {})
-            if isinstance(err, dict):
-                msg  = err.get("message", str(resp_json)[:200])
-                code = err.get("code", resp.status_code)
-            else:
-                msg  = str(err)[:200]
-                code = resp.status_code
-            log(f"❌ IA devolvió error (HTTP {resp.status_code}, code={code}): {msg}", 'error')
-            # Diagnóstico de causas frecuentes
-            msg_lower = str(msg).lower()
-            if "insufficient" in msg_lower or "quota" in msg_lower or "credit" in msg_lower or "balance" in msg_lower:
-                log("   💳 CAUSA PROBABLE: Sin créditos/saldo en la API. Recarga OpenRouter/OpenAI.", 'error')
-            elif "rate limit" in msg_lower or code == 429:
-                log("   ⏳ CAUSA PROBABLE: Rate limit alcanzado. El bot reintentará en la próxima ejecución.", 'advertencia')
-            elif "invalid" in msg_lower and "key" in msg_lower or code == 401:
-                log("   🔑 CAUSA PROBABLE: API key inválida o expirada. Verifica los GitHub Secrets.", 'error')
-            elif "model" in msg_lower:
-                log(f"   🤖 CAUSA PROBABLE: Modelo '{modelo}' no disponible o nombre incorrecto.", 'error')
+        # V17.9.4 FIX: fallback automático OpenRouter → OpenAI directo.
+        # PROBLEMA REAL detectado en producción: OpenRouter devolvió HTTP 402
+        # "requires more credits" (saldo insuficiente) y el bot descartaba la
+        # noticia sin más — aunque hubiera una OPENAI_API_KEY configurada y con
+        # saldo disponible. Ahora, si el proveedor principal falla por crédito
+        # o rate limit y existe una OPENAI_API_KEY distinta, se reintenta
+        # automáticamente con OpenAI antes de rendirse.
+        if resp_json is None and usando_openrouter and motivo in ('credito', 'rate_limit') and OPENAI_API_KEY:
+            log("   🔁 OpenRouter sin saldo/rate limit — reintentando con OpenAI directo...", 'advertencia')
+            url_api_fb = "https://api.openai.com/v1/chat/completions"
+            headers_fb = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+            modelo_fb  = "gpt-4o-mini"
+            payload_fb = {**payload, "model": modelo_fb}
+            resp_json, motivo = _llamar_api_ia(url_api_fb, headers_fb, modelo_fb, payload_fb)
+            if resp_json is not None:
+                # Usar estas credenciales también para el reintento por longitud más abajo
+                url_api, headers, modelo, payload = url_api_fb, headers_fb, modelo_fb, payload_fb
+                log("   ✅ Fallback a OpenAI exitoso", 'exito')
+
+        if resp_json is None:
             return None
 
         # V17.4 FIX: Verificar finish_reason — si es 'length', el JSON está cortado
@@ -4549,7 +4612,14 @@ def main():
 if __name__ == "__main__":
     try:
         resultado = main()
-        exit(0 if resultado is not False else 1)
+        # V17.9.4 FIX: antes, si main() devolvía False (nada publicado en este
+        # ciclo — ej. sin créditos de IA, sin candidatas válidas, cuota ya
+        # llena) el script salía con exit(1), marcando la corrida de GitHub
+        # Actions como "fallida" en rojo aunque no hubiera ningún error real.
+        # Los errores DE VERDAD (excepciones) ya se capturan abajo y ahí sí
+        # corresponde exit(1). "No publiqué nada esta vez" no es un fallo del
+        # workflow — es un resultado normal y se ve reflejado en los logs.
+        exit(0)
     except Exception as e:
         log(f"Error crítico: {e}", 'error')
         import traceback

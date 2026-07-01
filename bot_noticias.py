@@ -1,7 +1,34 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.9.5
+Bot de Noticias Internacionales - V17.9.6
+CAMBIOS EN V17.9.6 (FIX: se coló un artículo de apuestas — riesgo AdSense):
+  - CASO REAL: se publicó "Cuotas para el Mundial 2026" (cuotas de casas de
+    apuestas, favoritos, "casa de apuestas" en el cuerpo) sin ser detectado
+    como spam/apuestas.
+  - CAUSA #1: el bloque LATAM (publicar_bloque_latam_chile, la mitad "LATAM
+    sin Chile") NUNCA tuvo el filtro es_contenido_spam() — solo lo tenía la
+    mitad de Chile y el flujo general. Esta noticia venía de una fuente
+    peruana (RPP), así que pasó por el bloque que no tenía ningún filtro.
+  - CAUSA #2: el filtro solo revisaba título+descripción de la fuente, nunca
+    el contenido completo del artículo. El titular de origen era genérico
+    ("Cuotas y favoritos"), sin ninguna palabra de la lista negra — la
+    mención explícita a "casa de apuestas" solo aparecía en el cuerpo.
+  - FIX: se agrega el filtro es_contenido_spam() al bloque LATAM (faltaba
+    por completo).
+  - FIX: en las 3 rutas (general, Chile, LATAM) ahora se revisa el contenido
+    DOS veces — antes de scrapear (título+desc, barato, descarta rápido los
+    casos obvios) y después de extraer el contenido completo (título+cuerpo,
+    atrapa los casos donde el enfoque de apuestas solo aparece en el texto).
+  - BLACKLIST ampliada con términos genéricos de cuotas/pronósticos que no
+    requieren nombrar una casa de apuestas específica: "cuotas para el
+    mundial", "cuotas y favoritos", "pronóstico deportivo", "para apostar",
+    "dónde apostar", "favoritos para ganar el mundial", etc.
+  - Motivo editorial: contenido de apuestas es una de las categorías de
+    mayor riesgo de desmonetización/rechazo en AdSense — mejor perder
+    ocasionalmente una noticia deportiva legítima con vocabulario ambiguo
+    que arriesgar la cuenta.
+
 CAMBIOS EN V17.9.5 (Groq como proveedor de IA gratuito — principal):
   - CONTEXTO: OpenRouter y OpenAI se quedaron sin saldo el mismo día
     (ver V17.9.4). En vez de solo recargar saldo, se agrega Groq como
@@ -528,7 +555,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.9.5"
+VERSION_BOT = "V17.9.6"
 
 import requests
 import feedparser
@@ -840,7 +867,18 @@ BLACKLIST_CONTENIDO_SPAM = [
     "bono de bienvenida casino", "bono sin depósito", "bono sin deposito",
     "giros gratis casino", "tragamonedas", "tragaperras", "ruleta online",
     "poker online", "blackjack online", "slots online", "juegos de azar",
-    "casa de apuestas", "cuotas de apuestas", "pronósticos deportivos pagos",
+    "casa de apuestas", "casas de apuestas", "cuotas de apuestas", "pronósticos deportivos pagos",
+    # V17.9.6: términos genéricos de cuotas/pronósticos — el caso real que
+    # se coló fue un artículo de "cuotas y favoritos" para el Mundial 2026
+    # que NO usaba ninguna de las frases de arriba en el título/descripción,
+    # solo en el cuerpo del artículo (de ahí también el fix de revisar el
+    # contenido completo, no solo título+desc, ver es_contenido_spam()).
+    "cuotas para el mundial", "cuotas y favoritos", "mejores cuotas",
+    "cuota mundial", "apostar en", "para apostar", "dónde apostar", "donde apostar",
+    "pronóstico deportivo", "pronostico deportivo", "picks deportivos",
+    "predicciones deportivas", "predicción deportiva", "prediccion deportiva",
+    "favoritos para ganar el mundial", "quién es favorito para ganar",
+    "quien es favorito para ganar", "handicap deportivo", "casa de apuestas online",
     # Afiliados y contenido promocional disfrazado
     "código promocional", "codigo promocional", "cupón descuento", "cupon descuento",
     "oferta exclusiva para", "regístrate ahora y obtén", "registrate ahora y obtén",
@@ -3456,6 +3494,13 @@ def publicar_bloque_latam_chile():
             if not contenido_ok:
                 continue
 
+            # V17.9.6: segundo chequeo de spam/apuestas contra el contenido
+            # completo — ver nota completa en el flujo general.
+            es_spam2, kw_spam2 = es_contenido_spam(titulo, contenido_ok[:3000])
+            if es_spam2:
+                log(f"   🚫 SPAM Chile en contenido: '{kw_spam2}' — descartando", 'advertencia')
+                continue
+
             imagen_encontrada = None
             if nt.get('imagen'):
                 imagen_encontrada = descargar_imagen(nt['imagen'])
@@ -3528,6 +3573,15 @@ def publicar_bloque_latam_chile():
             if nt.get('puntaje', 0) < 2:
                 continue
 
+            # V17.9.6 FIX: este bloque LATAM nunca tuvo filtro de spam/apuestas
+            # — solo lo tenía el bloque Chile. Por eso se coló un artículo de
+            # cuotas de apuestas del Mundial 2026 (fuente peruana). Se agrega
+            # el mismo filtro que ya existe en Chile y en el flujo general.
+            es_spam, kw_spam = es_contenido_spam(titulo, desc)
+            if es_spam:
+                log(f"   🚫 SPAM LATAM: '{kw_spam}' — descartando", 'advertencia')
+                continue
+
             # V17.9.3: umbrales subidos (300→500 / 200→400 / 150→250) — ver
             # nota completa en el flujo general, mismo motivo.
             cont_web, _ = extraer_contenido(url)
@@ -3535,6 +3589,13 @@ def publicar_bloque_latam_chile():
             if not contenido_ok and cont_web and len(cont_web) >= 250:
                 contenido_ok = cont_web + ' ' + desc if desc else cont_web
             if not contenido_ok:
+                continue
+
+            # V17.9.6: segundo chequeo de spam/apuestas contra el contenido
+            # completo — ver nota completa en el flujo general.
+            es_spam2, kw_spam2 = es_contenido_spam(titulo, contenido_ok[:3000])
+            if es_spam2:
+                log(f"   🚫 SPAM LATAM en contenido: '{kw_spam2}' — descartando", 'advertencia')
                 continue
 
             imagen_encontrada = None
@@ -4481,6 +4542,17 @@ def main():
                     contenido_ok = cont_web + ' ' + desc if desc else cont_web
                 else:
                     log("   ❌ Contenido insuficiente (<250 chars) — no hay material para un artículo real", 'advertencia')
+                    continue
+
+                # V17.9.6: segundo chequeo de spam/apuestas, ahora contra el
+                # CONTENIDO COMPLETO (no solo título+descripción de la fuente).
+                # Caso real que motivó esto: un artículo de cuotas de apuestas
+                # para el Mundial con título genérico ("Cuotas y favoritos")
+                # que no disparaba el filtro por título/desc, pero cuyo cuerpo
+                # completo era 100% sobre casas de apuestas.
+                es_spam2, kw_spam2 = es_contenido_spam(titulo, contenido_ok[:3000])
+                if es_spam2:
+                    log(f"   🚫 SPAM/APUESTAS detectado en el contenido: '{kw_spam2}' — descartando", 'advertencia')
                     continue
 
                 # Imagen — OBLIGATORIA

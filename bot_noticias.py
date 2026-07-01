@@ -1,7 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.9.4
+Bot de Noticias Internacionales - V17.9.5
+CAMBIOS EN V17.9.5 (Groq como proveedor de IA gratuito — principal):
+  - CONTEXTO: OpenRouter y OpenAI se quedaron sin saldo el mismo día
+    (ver V17.9.4). En vez de solo recargar saldo, se agrega Groq como
+    proveedor GRATUITO (sin tarjeta, para siempre dentro de límites de uso
+    normales) y se lo pone primero en la cola.
+  - FIX: reescribir_noticia_v9() y generar_metadatos_video_manual() ahora
+    arman una lista ordenada de proveedores según qué API keys existan:
+    Groq → OpenRouter → OpenAI. Prueba el primero; si falla, prueba el
+    siguiente automáticamente, sin intervención manual. Groq es compatible
+    con el formato "estilo OpenAI" (mismo esquema de chat/completions), así
+    que no hizo falta tocar el parseo de la respuesta ni el prompt.
+  - MODELO: Groq usa "llama-3.3-70b-versatile" (open-source, gratis, con
+    capacidad de sobra para reescribir noticias de 550-800 palabras).
+  - NUEVA VARIABLE DE ENTORNO: GROQ_API_KEY (agregar como secret en GitHub
+    Actions). Si no está configurada, el bot simplemente la salta y usa
+    OpenRouter/OpenAI como antes — no rompe nada para quien no la use.
+  - LÍMITES DE GROQ (referencia, pueden variar por modelo): del orden de
+    cientos a miles de solicitudes/día gratis. Con 12 artículos/día del bot,
+    queda muchísimo margen — no debería acercarse al límite en uso normal.
+  - PENDIENTE PARA TI: agregar el secret GROQ_API_KEY en el .yml del
+    workflow (se entrega el .yml actualizado aparte).
+
 CAMBIOS EN V17.9.4 (Fix del run real que reportaste — HTTP 402 OpenRouter):
   - CAUSA CONFIRMADA del "fallo": OpenRouter devolvió HTTP 402 "This request
     requires more credits... You requested up to 3500 tokens, but can only
@@ -506,7 +528,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.9.4"
+VERSION_BOT = "V17.9.5"
 
 import requests
 import feedparser
@@ -565,6 +587,7 @@ WP_APP_PASSWORD    = os.getenv('WP_APP_PASSWORD', '')
 
 PINTEREST_TOKEN    = os.getenv('PINTEREST_TOKEN', '')
 YOUTUBE_API_KEY    = os.getenv('YOUTUBE_API_KEY', '')
+GROQ_API_KEY       = os.getenv('GROQ_API_KEY', '')       # V17.9.5: proveedor gratuito principal
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 OPENAI_API_KEY     = os.getenv('OPENAI_API_KEY', '')
 GITHUB_TOKEN       = os.getenv('GITHUB_TOKEN', '')
@@ -1219,7 +1242,7 @@ def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
     Devuelve dict con: titulo_seo, meta_descripcion, contenido_html,
                        keyword_principal, keywords_secundarias, categoria
     """
-    api_key = OPENROUTER_API_KEY or OPENAI_API_KEY
+    api_key = GROQ_API_KEY or OPENROUTER_API_KEY or OPENAI_API_KEY
     if not api_key:
         return None
 
@@ -1550,41 +1573,54 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
         return resp_json, None
 
     try:
-        usando_openrouter = bool(OPENROUTER_API_KEY)
-        if usando_openrouter:
-            url_api = "https://openrouter.ai/api/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
-            modelo  = "openai/gpt-4o-mini"
-        else:
-            url_api = "https://api.openai.com/v1/chat/completions"
-            headers = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
-            modelo  = "gpt-4o-mini"
+        # V17.9.5: Groq como proveedor GRATUITO principal. Se arma una lista
+        # ordenada de proveedores disponibles (según qué API keys existan) y
+        # se prueba uno por uno — el primero que responda gana. Antes de esto
+        # solo existía OpenRouter→OpenAI; ahora Groq va primero porque no
+        # cuesta nada y usa el mismo formato "estilo OpenAI" que ya soporta
+        # _llamar_api_ia(), así que no hace falta tocar el resto del parseo.
+        proveedores = []
+        if GROQ_API_KEY:
+            proveedores.append((
+                "Groq",
+                "https://api.groq.com/openai/v1/chat/completions",
+                {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                "llama-3.3-70b-versatile",
+            ))
+        if OPENROUTER_API_KEY:
+            proveedores.append((
+                "OpenRouter",
+                "https://openrouter.ai/api/v1/chat/completions",
+                {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
+                "openai/gpt-4o-mini",
+            ))
+        if OPENAI_API_KEY:
+            proveedores.append((
+                "OpenAI",
+                "https://api.openai.com/v1/chat/completions",
+                {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                "gpt-4o-mini",
+            ))
 
         # V17.4 FIX: max_tokens subido a 3500 para evitar JSON cortado
         # El prompt ocupa ~1500-1800 tokens; necesitamos al menos 1500 para el artículo completo
-        payload = {"model": modelo, "messages": [{"role": "user", "content": prompt}],
-                   "temperature": 0.35, "max_tokens": 3500}
-
-        resp_json, motivo = _llamar_api_ia(url_api, headers, modelo, payload)
-
-        # V17.9.4 FIX: fallback automático OpenRouter → OpenAI directo.
-        # PROBLEMA REAL detectado en producción: OpenRouter devolvió HTTP 402
-        # "requires more credits" (saldo insuficiente) y el bot descartaba la
-        # noticia sin más — aunque hubiera una OPENAI_API_KEY configurada y con
-        # saldo disponible. Ahora, si el proveedor principal falla por crédito
-        # o rate limit y existe una OPENAI_API_KEY distinta, se reintenta
-        # automáticamente con OpenAI antes de rendirse.
-        if resp_json is None and usando_openrouter and motivo in ('credito', 'rate_limit') and OPENAI_API_KEY:
-            log("   🔁 OpenRouter sin saldo/rate limit — reintentando con OpenAI directo...", 'advertencia')
-            url_api_fb = "https://api.openai.com/v1/chat/completions"
-            headers_fb = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
-            modelo_fb  = "gpt-4o-mini"
-            payload_fb = {**payload, "model": modelo_fb}
-            resp_json, motivo = _llamar_api_ia(url_api_fb, headers_fb, modelo_fb, payload_fb)
+        resp_json = None
+        motivo    = 'otro'
+        url_api = headers = modelo = payload = None
+        for i, (nombre, url_i, headers_i, modelo_i) in enumerate(proveedores):
+            payload_i = {"model": modelo_i, "messages": [{"role": "user", "content": prompt}],
+                         "temperature": 0.35, "max_tokens": 3500}
+            if i > 0:
+                log(f"   🔁 Reintentando con {nombre}...", 'advertencia')
+            resp_json, motivo = _llamar_api_ia(url_i, headers_i, modelo_i, payload_i)
             if resp_json is not None:
-                # Usar estas credenciales también para el reintento por longitud más abajo
-                url_api, headers, modelo, payload = url_api_fb, headers_fb, modelo_fb, payload_fb
-                log("   ✅ Fallback a OpenAI exitoso", 'exito')
+                url_api, headers, modelo, payload = url_i, headers_i, modelo_i, payload_i
+                if i > 0:
+                    log(f"   ✅ Fallback a {nombre} exitoso", 'exito')
+                break
+            # Cada proveedor es una cuenta/clave distinta, así que un error
+            # con uno (crédito, rate limit, auth, modelo) no implica el mismo
+            # resultado en el siguiente — probamos igual con el que sigue.
 
         if resp_json is None:
             return None
@@ -4166,7 +4202,7 @@ def parsear_archivo_pending(contenido):
     return resultado
 
 def generar_metadatos_video_manual(descripcion, embed):
-    api_key = OPENROUTER_API_KEY or OPENAI_API_KEY
+    api_key = GROQ_API_KEY or OPENROUTER_API_KEY or OPENAI_API_KEY
     if not api_key:
         titulo = descripcion[:60].strip()
         return {
@@ -4183,7 +4219,11 @@ RESPONDE SOLO con JSON exacto:
 {{"titulo_seo": "máx 60 chars, keyword primero", "meta_descripcion": "140-155 chars exactos", "categoria": "guerra|politica|economia|tecnologia|desastre|deportes|ciencia|salud|entretenimiento|latinoamerica|clima|mundo|general", "keyword_principal": "2-4 palabras", "keywords_secundarias": ["kw2","kw3"], "contenido_html": "HTML con párrafos, máx 400 palabras"}}"""
     try:
         headers = {'Content-Type': 'application/json'}
-        if OPENROUTER_API_KEY:
+        # V17.9.5: Groq (gratis) como proveedor preferido, igual que en reescribir_noticia_v9
+        if GROQ_API_KEY:
+            headers['Authorization'] = f'Bearer {GROQ_API_KEY}'
+            url_ia, model = 'https://api.groq.com/openai/v1/chat/completions', 'llama-3.3-70b-versatile'
+        elif OPENROUTER_API_KEY:
             headers['Authorization'] = f'Bearer {OPENROUTER_API_KEY}'
             url_ia, model = 'https://openrouter.ai/api/v1/chat/completions', 'openai/gpt-4o-mini'
         else:

@@ -1,7 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.9.1
+Bot de Noticias Internacionales - V17.9.2
+CAMBIOS EN V17.9.2 (Ajuste de timing tras revisar el .yml real):
+  - DESCUBRIMIENTO CLAVE: el workflow de GitHub Actions NUNCA seteaba la
+    variable MODO_LATAM. Resultado: publicar_bloque_latam_chile() jamás se
+    ejecutaba en producción — todo el trabajo de Chile/LATAM (V17.3 en
+    adelante) estaba vivo en el código pero no se usaba nunca.
+  - DESCUBRIMIENTO: el workflow tampoco guardaba estado_cuotas_latam.json
+    en el commit de estado. Aunque se activara MODO_LATAM, los contadores
+    diarios de Chile/LATAM se habrían reseteado en cada ejecución y la cuota
+    diaria (3/3) no se habría respetado entre corridas.
+  - FIX (bot): TIEMPO_ENTRE_WP_MIN subido de 60 a 230 min. Con
+    MAX_POSTS_WP_DIA=6, un gate de 60 min permitía gastar toda la cuota del
+    día en las primeras 6 horas y quedar sin publicar el resto del día.
+    230 min reparte las 6 notas a lo largo de las 24 horas.
+  - FIX (bot): margen de tolerancia del gate de WP subido de 5 a 15 min,
+    proporcional al nuevo intervalo (evita falsos negativos por delay de
+    push de GitHub Actions).
+  - NOTA: el archivo .yml correspondiente se entrega aparte, con MODO_LATAM
+    conectado a un segundo cron 3 veces/día y estado_cuotas_latam.json
+    agregado al commit/artefacto de estado.
+
 CAMBIOS EN V17.9.1 (Arranque conservador — bajar el total diario a 12):
   - CUOTAS: total diario bajado de 44 a 12 artículos/día para partir más despacio
     mientras se valida la calidad del contenido y el comportamiento de AdSense.
@@ -432,7 +452,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.9.1"
+VERSION_BOT = "V17.9.2"
 
 import requests
 import feedparser
@@ -513,7 +533,11 @@ MODO_LATAM = os.getenv('MODO_LATAM', 'false').lower() == 'true'
 # V17.6.1: Subido a 60 min para dar margen real entre ejecuciones.
 # Con 30 min el JSON de estado frecuentemente no estaba pusheado a tiempo
 # y el bot leía la hora antigua → saltaba la publicación sin publicar nada.
-TIEMPO_ENTRE_WP_MIN = 60
+# V17.9.1: Con MAX_POSTS_WP_DIA=6, si el gate se queda en 60 min, el bot puede
+# gastar toda la cuota del día en las primeras 6 horas y quedar en silencio el
+# resto del día. Subido a 230 min (~3h50) para repartir las 6 notas a lo largo
+# de las 24 horas (24h / 6 = 4h, con margen).
+TIEMPO_ENTRE_WP_MIN = 230
 TIEMPO_ENTRE_FB_MIN = 90   # 1.5 horas mínima entre posts de Facebook
 
 # Límites diarios — V17.6.1: Reducidos a números alcanzables
@@ -1965,8 +1989,10 @@ def puede_publicar_wp():
         return True
     try:
         minutos = (datetime.now() - datetime.fromisoformat(u)).total_seconds() / 60
-        # Margen de 5 min de tolerancia por delay de push en GitHub Actions
-        margen = TIEMPO_ENTRE_WP_MIN - 5
+        # Margen de tolerancia por delay de push en GitHub Actions
+        # V17.9.1: con TIEMPO_ENTRE_WP_MIN=230, un margen de 15 min es más
+        # proporcional que el de 5 min que usaba con el intervalo de 60 min.
+        margen = TIEMPO_ENTRE_WP_MIN - 15
         if minutos < margen:
             log(f"⏱️ WP: publicado hace {minutos:.0f} min — mínimo {margen} min (con margen)", 'info')
             return False

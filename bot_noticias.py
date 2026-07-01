@@ -1,7 +1,75 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.7.0
+Bot de Noticias Internacionales - V17.9.1
+CAMBIOS EN V17.9.1 (Arranque conservador — bajar el total diario a 12):
+  - CUOTAS: total diario bajado de 44 a 12 artículos/día para partir más despacio
+    mientras se valida la calidad del contenido y el comportamiento de AdSense.
+    MAX_POSTS_WP_DIA 24→6, MAX_POSTS_WP_DIA_CHILE 8→3, MAX_POSTS_WP_DIA_LATAM 12→3.
+  - Nada más cambió: el scoring por país, el filtro anti-España y el prompt del
+    Editor Jefe (V17.9.0) siguen exactamente igual — solo se redujeron los topes.
+  - Para subir el total más adelante, basta con volver a subir estas 3 constantes;
+    no hace falta tocar nada más del bot.
+
+CAMBIOS EN V17.9.0 (Editor Jefe — scoring por país/tema + autovalidación IA):
+  - PUNTAJE: calcular_puntaje() reemplaza el bono LATAM plano (V17.6) por un
+    sistema de NIVELES por país, igual que pediste (Chile > México/Brasil/
+    Argentina > Colombia/Perú > resto de Sudamérica > Centroamérica > Caribe),
+    más un bono editorial por tema prioritario (economía, tecnología, política,
+    salud, medio ambiente, deportes). Esto es el "editor de selección": evalúa
+    TODAS las candidatas en Python (gratis e instantáneo) antes de que la IA
+    escriba nada — no hace falta gastar tokens de IA en elegir, solo en redactar.
+  - IMPORTANTE (arquitectura): no implementamos un "editor de selección" con IA
+    que revise cientos de noticias a la vez, porque sería mucho más lento y caro
+    (habría que mandarle 50-100 titulares en cada llamada) sin mejorar el
+    resultado — el scoring por keywords ya cubre ese trabajo a costo cero.
+  - PROMPT IA: se agrega el ELEMENTO extra "Tercer H2" para llegar a 4 subtítulos
+    H2 obligatorios (antes eran 3), igual que en tu checklist manual.
+  - PROMPT IA: keyword principal ahora debe aparecer antes de la palabra 100
+    (antes decía "antes de la palabra 150"), para acercarse más a Yoast verde.
+  - PROMPT IA: se agrega el bloque "AUTOVALIDACIÓN OBLIGATORIA ANTES DE RESPONDER"
+    con el checklist que usas para la edición manual (keyword en título/slug/meta,
+    box rotado, 4 H2, longitud de frases, transiciones, enlaces internos, etc.)
+    para que la IA se autocorrija ANTES de devolver el JSON, en vez de que tengas
+    que corregirlo tú después de publicado.
+  - LONGITUD: rango de palabras ajustado a 550-800 (antes 500-750) para dar
+    espacio al H2 adicional sin que quede forzado.
+  - FIX: VERSION_BOT sincronizado a "V17.9.0" (quedó desactualizado en un
+    borrador anterior) y etiquetas de versión dentro del prompt actualizadas.
+
+CAMBIOS EN V17.8.0 (LATAM-BOOST — más noticias latinoamericanas, menos ruido de España):
+  - PROBLEMA DETECTADO: el pool GENERAL (obtener_newsapi/newsdata/gnews/rss) usa
+    language='es', y eso trae MUCHAS noticias 100% domésticas de España (Madrid,
+    Ayuso, Teatro Real, Congreso de los Diputados, etc.) porque España es el país
+    con más medios en español indexados. Esas noticias no tenían ningún filtro,
+    solo se penalizaba EE.UU./Europa anglosajona, nunca España.
+  - FIX: KEYWORDS_ESPANA_DOMESTICO + es_noticia_espana_domestica() — nueva función
+    que detecta noticias 100% domésticas de España (política interna, sucesos y
+    cultura locales) SIN ninguna conexión latinoamericana o de impacto global.
+    Se aplica como filtro DURO (se descartan, no solo se penalizan) en
+    obtener_newsapi(), obtener_newsdata(), obtener_gnews() y obtener_rss(),
+    para que dejen de competir por los 24 espacios/día del flujo general.
+  - FIX: calcular_puntaje() ahora también penaliza (-6) noticias con marcadores
+    domésticos de España sin conexión LATAM, igual que ya hacía con EE.UU./Europa.
+  - FUENTES: NewsData — se agrega 'country': 'cl,ar,mx,co,pe' en obtener_newsdata()
+    para pedirle a la API directamente noticias de esos 5 países (máx. permitido
+    en plan free/basic) en lugar de depender solo del idioma.
+  - FUENTES: GNews — cada tópico de obtener_gnews() ahora fija un país LATAM
+    (cl/ar/mx/co rotando) en vez de usar el país por defecto de la API, sin
+    aumentar el número de llamadas.
+  - LATAM+CHILE: KEYWORDS_LATAM_PAISES ampliado con Puerto Rico, Guyana, Surinam
+    y Belice, más ciudades adicionales (Arequipa, Cusco, Maracaibo, Barranquilla,
+    Santa Cruz de la Sierra) para mejorar la clasificación por país.
+  - LATAM+CHILE: nuevas queries NewsAPI para Centroamérica/Caribe con menor
+    cobertura previa (Guatemala, Honduras, Costa Rica, Panamá, Rep. Dominicana,
+    Cuba, Puerto Rico).
+  - CUOTAS: MAX_POSTS_WP_DIA_CHILE 6→8, MAX_POSTS_WP_DIA_LATAM 8→12.
+    MAX_POSTS_WP_DIA_TOTAL actualizado a 44 (24 general + 8 Chile + 12 LATAM).
+    IMPORTANTE: esto solo sube el TECHO diario del bot. Para que realmente se
+    publiquen más notas LATAM/Chile hace falta que el workflow de GitHub Actions
+    ejecute el modo MODO_LATAM=true con la frecuencia suficiente (revisar el
+    .yml del workflow, que no forma parte de este archivo).
+
 CAMBIOS EN V17.7.0 (Valor editorial real — anti-scraping AdSense):
   - PROMPT IA: Reescritura completa con enfoque en valor editorial ORIGINAL
     PROBLEMA: La IA a veces producía artículos que parafraseaban superficialmente
@@ -364,7 +432,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.7.0"
+VERSION_BOT = "V17.9.1"
 
 import requests
 import feedparser
@@ -452,10 +520,10 @@ TIEMPO_ENTRE_FB_MIN = 90   # 1.5 horas mínima entre posts de Facebook
 # Antes: 82/día → el bot no llegaba ni a 20. Ahora: 38/día → realista con 60min/pub
 # Beneficio SEO: 24 artículos de alta calidad > 72 artículos de calidad variable
 MAX_POSTS_FB_DIA        = 4    # Máximo 4 posts/día en Facebook (calidad > cantidad)
-MAX_POSTS_WP_DIA        = 24   # Flujo general: 1 cada 60 min → 24/día máx teórico
-MAX_POSTS_WP_DIA_CHILE  = 6    # Chile: 6 artículos/día
-MAX_POSTS_WP_DIA_LATAM  = 8    # LATAM sin Chile: 8 artículos/día
-MAX_POSTS_WP_DIA_TOTAL  = 38   # Total máximo global (24 + 6 + 8)
+MAX_POSTS_WP_DIA        = 6    # Flujo general (V17.9.1: bajado de 24 a 6 — arranque conservador)
+MAX_POSTS_WP_DIA_CHILE  = 3    # Chile: 3 artículos/día (V17.9.1: antes 8)
+MAX_POSTS_WP_DIA_LATAM  = 3    # LATAM sin Chile: 3 artículos/día (V17.9.1: antes 12)
+MAX_POSTS_WP_DIA_TOTAL  = 12   # Total máximo global (6 + 3 + 3)
 
 # Anti-duplicados
 UMBRAL_SIMILITUD_TITULO    = 0.72
@@ -1192,7 +1260,7 @@ PASO 2 — TÍTULO SEO (máx 60 caracteres):
 - Para entretenimiento: título sobre el artista/obra/evento real
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 3 — ARTÍCULO COMPLETO (estructura V17.6.3 — retención de lectura):
+PASO 3 — ARTÍCULO COMPLETO (estructura V17.9.0 — retención de lectura + 4 H2):
 
 ⚠️ REGLA CRÍTICA DE ESTRUCTURA: El artículo debe comenzar SIEMPRE con el box resumen
 y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retención.
@@ -1211,22 +1279,24 @@ y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retenc
 ── ELEMENTO 2: APERTURA ──
 <p>[Apertura ≤40 palabras: Qué/Quién/Cuándo/Dónde — datos concretos del hecho real. NO copies el lead del artículo fuente. Abre con el dato más impactante, una cifra o la consecuencia directa. Máx 2 oraciones cortas en voz activa.]</p>
 
-── ELEMENTO 3: PRIMER H2 + CONTEXTO (⚠️ OBLIGATORIO antes de la palabra 150) ──
-<h2>[Subtítulo H2 descriptivo — debe contener la keyword principal o una variante]</h2>
+── ELEMENTO 3: PRIMER H2 + CONTEXTO (⚠️ OBLIGATORIO antes de la palabra 100) ──
+<h2>[H2 #1 — debe contener la keyword principal o una variante]</h2>
 <p>[Por qué importa esta noticia ahora. Antecedentes en 2 oraciones cortas (máx 20 palabras cada una).]</p>
 
 ── ELEMENTO 4: DESARROLLO PRINCIPAL ──
 <p>[Primer párrafo de desarrollo — hechos y datos principales. Usa <strong>3-4 términos clave</strong>. Máx 2 oraciones.]</p>
 <p>[Segundo párrafo — VALOR AGREGADO OBLIGATORIO: incluye un dato de contexto, antecedente histórico o comparación regional que el artículo fuente NO menciona explícitamente. Este párrafo demuestra análisis editorial propio. Máx 2 oraciones.]</p>
-<h2>[Segundo H2 — ángulo diferente del primero, informativo y con keyword secundaria]</h2>
+<h2>[H2 #2 — ángulo diferente del primero, informativo y con keyword secundaria]</h2>
 <p>[Tercer párrafo — datos adicionales o perspectiva complementaria. Máx 2 oraciones.]</p>
+<h2>[H2 #3 — un tercer ángulo del tema: consecuencias, reacciones, cifras o próximos pasos]</h2>
+<p>[Cuarto párrafo — profundiza en ese ángulo con datos concretos. Máx 2 oraciones.]</p>
 
 ── ELEMENTO 5: DATO DESTACADO (OBLIGATORIO — rompe monotonía visual) ──
 <blockquote style="border-left:3px solid #e5e7eb;padding:12px 16px;margin:20px 0;background:#f9fafb;font-style:italic;color:#4b5563;">
 [Cita textual o dato estadístico relevante del artículo — máx 2 líneas. Si no hay cita, usa el dato más impactante con formato: "Según [fuente], [dato concreto]."]
 </blockquote>
 
-── ELEMENTO 6: SECCIÓN FINAL SEGÚN CATEGORÍA ──
+── ELEMENTO 6: SECCIÓN FINAL SEGÚN CATEGORÍA (H2 #4 — obligatorio, cierra el desarrollo) ──
 
 ▶ Si categoría = "latinoamerica":
 <h2>Contexto regional</h2>
@@ -1255,7 +1325,7 @@ y seguir el orden exacto indicado. Esto aumenta el tiempo de lectura y la retenc
 [ENLACES_INTERNOS]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REGLAS DE CALIDAD V17.7.0 — VALOR EDITORIAL ORIGINAL + YOAST SEO:
+REGLAS DE CALIDAD V17.9.0 — VALOR EDITORIAL ORIGINAL + YOAST SEO:
 
 ⚠️ REGLA MAESTRA (AdSense / anti-scraping):
 Tu artículo NO es una paráfrasis del original. Es un artículo periodístico
@@ -1283,9 +1353,9 @@ APERTURA ORIGINAL (≤40 palabras):
 - Ejemplos inválidos: "[Medio] informó que..." / "Según reportes..." / pasiva refleja
 
 LONGITUD Y ESTRUCTURA:
-- Mínimo 500 palabras, máximo 750 palabras
-- PRIMER H2 obligatorio antes de la palabra 200 del artículo (Yoast lo penaliza si no)
-- Mínimo 3 subtítulos H2 — cada uno debe abrir un ángulo diferente del tema
+- Mínimo 550 palabras, máximo 800 palabras
+- PRIMER H2 obligatorio antes de la palabra 100 del artículo (Yoast lo penaliza si no)
+- Mínimo 4 subtítulos H2 — cada uno debe abrir un ángulo diferente del tema
 - Párrafos de MÁXIMO 2-3 líneas (máx 25 palabras por oración — requisito Yoast)
 - Alternar párrafos cortos (1-2 líneas) con párrafos medianos (3 líneas)
 
@@ -1297,7 +1367,7 @@ FRASES Y LEGIBILIDAD (crítico para Yoast):
   a su vez, no obstante, por ejemplo, en primer lugar, finalmente, asimismo
 
 KEYWORD SEO (crítico para Yoast):
-- keyword_principal en: título, primer párrafo, al menos 1 H2, y cierre
+- keyword_principal en: título, primer párrafo (antes de la palabra 100), al menos 1 H2, y cierre
 - keywords_secundarias: mínimo 4, máximo 6 — palabras reales del texto
 - Densidad de keyword principal: 1-2% del texto total
 - NO repetir la keyword más de 3 veces en el mismo párrafo
@@ -1329,6 +1399,31 @@ META DESCRIPCIÓN: 140-155 caracteres exactos.
 - Incluir la keyword principal
 - Describir el valor real del artículo (no prometer "descubre", "conoce", "entérate")
 - Terminar con un dato concreto o pregunta que genere curiosidad
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AUTOVALIDACIÓN OBLIGATORIA ANTES DE RESPONDER (V17.9.0):
+Antes de entregar el JSON, revisa tu propio borrador punto por punto contra este
+checklist — es el mismo que se usa para la edición manual de VerdadHoy. Si algún
+punto falla, CORRIGE el artículo tú mismo y vuelve a revisarlo. Solo entrega el
+JSON cuando todos los puntos se cumplan. No menciones el checklist en la respuesta,
+es un paso interno.
+
+  1. La keyword principal aparece en el primer párrafo, antes de la palabra 100.
+  2. La keyword principal aparece en el título SEO.
+  3. La keyword principal (o una variante natural) aparece en al menos un H2.
+  4. La keyword principal aparece en la meta descripción.
+  5. Hay exactamente 4 subtítulos H2, cada uno con un ángulo distinto.
+  6. El box resumen "en 30 segundos" va primero, con 4 puntos concretos.
+  7. Ningún párrafo supera 2-3 líneas / 25 palabras por oración.
+  8. Como máximo el 25% de las oraciones supera las 25 palabras.
+  9. Se usan al menos 5 palabras de transición (sin embargo, además, por otro
+     lado, en consecuencia, asimismo, no obstante, por ejemplo, finalmente...).
+  10. El artículo tiene entre 550 y 800 palabras.
+  11. Existe el dato de contexto/valor editorial que el original no menciona.
+  12. El cierre termina con una pregunta genuina y específica al lector.
+  13. [ENLACES_INTERNOS] aparece tal cual, al final del contenido_html.
+  14. No hay frases ni estructura de párrafo copiadas del artículo original.
+  15. El texto suena a periodista humano, no a resumen automático de IA.
 
 RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
 {{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<div style=...>[BOX]</div><p>...</p>...[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3","kw4","kw5"], "categoria": "latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general"}}"""
@@ -1663,21 +1758,75 @@ def calcular_puntaje(titulo, desc):
     if len(desc) >= 50:
         p += 2
 
-    # ── V17.6: Bonus LATAM — noticias con conexión regional reciben prioridad ──
-    keywords_latam_puntaje = [
-        "chile", "argentina", "mexico", "brasil", "colombia", "peru",
-        "venezuela", "ecuador", "bolivia", "uruguay", "paraguay",
-        "latinoamerica", "america latina", "centroamerica",
-        "copa libertadores", "conmebol", "eliminatorias",
-        "boric", "milei", "lula", "sheinbaum", "petro", "maduro",
-        "peso chileno", "peso argentino", "litio", "cobre", "petroleo venezolano",
-        "amazonia", "patagonia", "atacama",
+    # ── V17.9.0: Bonus LATAM por NIVEL de país (reemplaza el bono plano V17.6) ──
+    # Filosofía "editor jefe": no todos los países pesan igual. Chile es el
+    # mercado principal de VerdadHoy, luego los países grandes de LATAM,
+    # después el resto de Sudamérica, y un bono menor para Centroamérica/Caribe.
+    # Reutiliza las mismas listas de KEYWORDS_CHILE / KEYWORDS_LATAM_PAISES que
+    # ya usa el bloque exclusivo de Chile/LATAM, para no mantener dos fuentes
+    # de verdad distintas.
+    PAISES_TIER_1 = KEYWORDS_CHILE
+    PAISES_TIER_2 = (KEYWORDS_LATAM_PAISES['mexico'] + KEYWORDS_LATAM_PAISES['brasil']
+                      + KEYWORDS_LATAM_PAISES['argentina'])
+    PAISES_TIER_3 = KEYWORDS_LATAM_PAISES['colombia'] + KEYWORDS_LATAM_PAISES['peru']
+    PAISES_TIER_4 = (KEYWORDS_LATAM_PAISES['ecuador'] + KEYWORDS_LATAM_PAISES['bolivia']
+                      + KEYWORDS_LATAM_PAISES['paraguay'] + KEYWORDS_LATAM_PAISES['uruguay']
+                      + KEYWORDS_LATAM_PAISES['venezuela'])
+    PAISES_TIER_5 = (KEYWORDS_LATAM_PAISES['panama'] + KEYWORDS_LATAM_PAISES['costa_rica']
+                      + KEYWORDS_LATAM_PAISES['guatemala'] + KEYWORDS_LATAM_PAISES['el_salvador']
+                      + KEYWORDS_LATAM_PAISES['honduras'] + KEYWORDS_LATAM_PAISES['nicaragua'])
+    PAISES_TIER_6 = (KEYWORDS_LATAM_PAISES['rep_dom'] + KEYWORDS_LATAM_PAISES['cuba']
+                      + KEYWORDS_LATAM_PAISES['puerto_rico'] + KEYWORDS_LATAM_PAISES['haiti']
+                      + KEYWORDS_LATAM_PAISES['guyana'] + KEYWORDS_LATAM_PAISES['surinam']
+                      + KEYWORDS_LATAM_PAISES['belice'])
+
+    tiene_pais_latam = False
+    if any(kw in txt for kw in PAISES_TIER_1):
+        p += 14; tiene_pais_latam = True
+    elif any(kw in txt for kw in PAISES_TIER_2):
+        p += 12; tiene_pais_latam = True
+    elif any(kw in txt for kw in PAISES_TIER_3):
+        p += 11; tiene_pais_latam = True
+    elif any(kw in txt for kw in PAISES_TIER_4):
+        p += 9; tiene_pais_latam = True
+    elif any(kw in txt for kw in PAISES_TIER_5):
+        p += 7; tiene_pais_latam = True
+    elif any(kw in txt for kw in PAISES_TIER_6):
+        p += 6; tiene_pais_latam = True
+
+    # Señal regional genérica: temas/líderes/recursos LATAM sin país explícito
+    # en el texto (ej. "Copa Libertadores", "Boric", "litio") — bono menor,
+    # se suma aparte del bono por país (pueden coexistir).
+    señales_regionales_latam = [
+        "latinoamerica", "america latina", "centroamerica", "sudamerica",
+        "copa libertadores", "copa sudamericana", "conmebol", "eliminatorias",
+        "boric", "milei", "lula", "sheinbaum", "petro", "maduro", "bukele",
+        "litio", "cobre", "petroleo venezolano", "amazonia", "patagonia", "atacama",
     ]
-    latam_hits = sum(1 for kw in keywords_latam_puntaje if kw in txt)
-    if latam_hits >= 2:
-        p += 10   # Muy relevante para LATAM
-    elif latam_hits == 1:
-        p += 6    # Algo de conexión regional
+    tiene_senal_regional = any(kw in txt for kw in señales_regionales_latam)
+    if tiene_senal_regional:
+        p += 5
+
+    latam_hits = 1 if (tiene_pais_latam or tiene_senal_regional) else 0
+
+    # ── V17.9.0: Bono editorial por TEMA prioritario (criterio "editor jefe") ──
+    # Además del bono geográfico, algunos temas son prioritarios para la línea
+    # editorial de VerdadHoy independientemente del país.
+    temas_prioritarios_puntaje = {
+        "economia":       ["economía", "economia", "inflación", "inflacion", "dólar", "dolar",
+                            "mercados", "pib", "recesión", "recesion", "aranceles"],
+        "tecnologia":     ["inteligencia artificial", "tecnología", "tecnologia", "startup",
+                            "fintech", "ciberseguridad"],
+        "politica":       ["elecciones", "presidente", "gobierno", "congreso", "senado"],
+        "salud":          ["salud", "vacuna", "hospital", "oms", "enfermedad"],
+        "medio_ambiente": ["amazonía", "amazonia", "cambio climático", "cambio climatico",
+                            "glaciares", "medio ambiente"],
+        "deportes":       ["fútbol", "futbol", "mundial", "libertadores", "eliminatorias"],
+    }
+    for kws in temas_prioritarios_puntaje.values():
+        if any(kw in txt for kw in kws):
+            p += 2
+            break  # solo se suma una vez, no por cada tema que matchee
 
     # ── V17.6: Penalización noticias exclusivamente de EE.UU./Europa/Asia ──
     # Solo si NO tienen conexión con LATAM
@@ -1690,6 +1839,11 @@ def calcular_puntaje(titulo, desc):
         no_latam_hits = sum(1 for kw in keywords_no_latam if kw in txt)
         if no_latam_hits >= 1:
             p -= 4   # Penaliza noticias exclusivamente extranjeras sin impacto LATAM
+
+        # ── V17.8.0: Penalización adicional — noticias domésticas de España ──
+        # (política interna, sucesos y cultura local sin ninguna conexión LATAM)
+        if es_noticia_espana_domestica(titulo, desc):
+            p -= 6
 
     return p
 
@@ -2722,13 +2876,16 @@ KEYWORDS_LATAM_PAISES = {
     'argentina':  ["argentina", "argentino", "argentina", "buenos aires", "milei",
                    "merval", "peso argentino", "rosario ar", "córdoba ar"],
     'colombia':   ["colombia", "colombiano", "bogotá", "bogota", "petro", "medellín",
-                   "medellin", "cali colombia", "cartagena colombia"],
+                   "medellin", "cali colombia", "cartagena colombia", "barranquilla"],
     'brasil':     ["brasil", "brazil", "brasileño", "lula", "sao paulo", "río de janeiro",
                    "rio de janeiro", "brasilia", "real brasileiro"],
-    'venezuela':  ["venezuela", "venezolano", "maduro", "caracas", "bolívar venezolano"],
-    'peru':       ["perú", "peru", "peruano", "lima perú", "lima peru", "boluarte"],
+    'venezuela':  ["venezuela", "venezolano", "maduro", "caracas", "bolívar venezolano",
+                   "maracaibo"],
+    'peru':       ["perú", "peru", "peruano", "lima perú", "lima peru", "boluarte",
+                   "arequipa", "cusco"],
     'ecuador':    ["ecuador", "ecuatoriano", "quito", "noboa", "guayaquil"],
-    'bolivia':    ["bolivia", "boliviano", "la paz bolivia", "arce bolivia"],
+    'bolivia':    ["bolivia", "boliviano", "la paz bolivia", "arce bolivia",
+                   "santa cruz de la sierra"],
     'uruguay':    ["uruguay", "uruguayo", "montevideo", "orsi"],
     'paraguay':   ["paraguay", "paraguayo", "asunción", "asuncion"],
     'cuba':       ["cuba", "cubano", "la habana", "havana cuba"],
@@ -2740,7 +2897,52 @@ KEYWORDS_LATAM_PAISES = {
     'costa_rica': ["costa rica", "costarricense", "san josé cr", "chaves costa rica"],
     'rep_dom':    ["república dominicana", "dominicano", "santo domingo"],
     'haiti':      ["haití", "haiti", "haitiano", "puerto príncipe"],
+    'puerto_rico':["puerto rico", "puertorriqueño", "san juan pr"],
+    'guyana':     ["guyana", "guyanés", "georgetown guyana"],
+    'surinam':    ["surinam", "surinamés", "paramaribo"],
+    'belice':     ["belice", "beliceño", "belmopán"],
 }
+
+# ── Keywords para detectar noticias 100% DOMÉSTICAS de España ──
+# (V17.8.0) El pool general usa language='es', y eso trae mucha prensa
+# española local sin ninguna relevancia para LATAM. Estas keywords sirven
+# para EXCLUIR ese ruido, no para bloquear noticias de España con impacto
+# internacional o LATAM (guerra, Champions League, Real Madrid vs equipo
+# latino, un ministro español hablando de LATAM, etc. — esas SÍ pasan porque
+# también van a tener hits en KEYWORDS_LATAM_PAISES o son de alcance global).
+KEYWORDS_ESPANA_DOMESTICO = [
+    # Política interna española
+    "ayuso", "sánchez", "pedro sanchez", "psoe", "vox", " pp ", "sumar",
+    "congreso de los diputados", "senado español", "moncloa", "casa real española",
+    "felipe vi", "junta electoral central", "defensor del pueblo",
+    # Geografía/instituciones España
+    "madrid", "barcelona", "sevilla", "valencia", "andalucía", "andalucia",
+    "cataluña", "cataluna", "país vasco", "pais vasco", "galicia españa",
+    "comunidad de madrid", "generalitat", "ayuntamiento de madrid",
+    "guardia civil", "policía nacional española",
+    # Cultura/sucesos locales España
+    "teatro real", "rtve", "el corte inglés", "renfe", "adif",
+]
+
+
+def es_noticia_espana_domestica(titulo, descripcion=""):
+    """
+    V17.8.0: Detecta noticias 100% domésticas de España (sin conexión LATAM
+    ni relevancia internacional). Se usa como filtro DURO en el pool general.
+    """
+    txt = f"{titulo} {descripcion}".lower()
+    tiene_espana = any(kw in txt for kw in KEYWORDS_ESPANA_DOMESTICO)
+    if not tiene_espana:
+        return False
+    # Si además menciona algún país/tema LATAM, NO es puramente doméstica
+    if any(kw in txt for pais_kws in KEYWORDS_LATAM_PAISES.values() for kw in pais_kws):
+        return False
+    if any(kw in txt for kw in KEYWORDS_CHILE):
+        return False
+    return True
+
+
+
 
 
 def es_noticia_chile(titulo, descripcion=""):
@@ -3015,6 +3217,8 @@ def obtener_newsapi_latam():
         'Bolivia La Paz Arce gobierno',
         'Uruguay Montevideo Orsi noticias',
         'El Salvador Bukele noticias',
+        'Guatemala Honduras Costa Rica Panamá noticias',
+        'República Dominicana Cuba Puerto Rico noticias',
         'América Latina economía política',
         'Centroamérica migración crisis',
     ]
@@ -3147,7 +3351,7 @@ def publicar_bloque_latam_chile():
                     publicar_pinterest(titulo, contenido_ok[:490], url_wp, None, 'latinoamerica')
                 break
     else:
-        log("🇨🇱 Chile: cuota diaria alcanzada (12/12)", 'info')
+        log(f"🇨🇱 Chile: cuota diaria alcanzada ({MAX_POSTS_WP_DIA_CHILE}/{MAX_POSTS_WP_DIA_CHILE})", 'info')
 
     # ── 2) Intentar publicar 1 artículo de LATAM (sin Chile) ─
     if puede_publicar_latam_region():
@@ -3226,7 +3430,7 @@ def publicar_bloque_latam_chile():
                     publicar_pinterest(titulo, contenido_ok[:490], url_wp, None, 'latinoamerica')
                 break
     else:
-        log("🌎 LATAM: cuota diaria alcanzada (22/22)", 'info')
+        log(f"🌎 LATAM: cuota diaria alcanzada ({MAX_POSTS_WP_DIA_LATAM}/{MAX_POSTS_WP_DIA_LATAM})", 'info')
 
     estado_latam = cargar_estado_latam()
     log(f"\n📊 LATAM hoy → Chile: {estado_latam.get('chile',0)}/{MAX_POSTS_WP_DIA_CHILE} | "
@@ -3293,6 +3497,9 @@ def obtener_newsapi():
                     if not t or '[Removed]' in t or not img:
                         continue
                     d = a.get('description', '')
+                    # V17.8.0: descartar ruido doméstico de España (sin impacto LATAM)
+                    if es_noticia_espana_domestica(t, d):
+                        continue
                     noticias.append({
                         'titulo':      limpiar_texto(t),
                         'descripcion': limpiar_texto(d),
@@ -3313,12 +3520,17 @@ def obtener_newsdata():
     # V17: Se agregan 'entertainment' y 'sports' que estaban ausentes
     categorias = ['world', 'politics', 'business', 'technology', 'science',
                   'health', 'entertainment', 'sports']
+    # V17.8.0: 'country' acota directamente a 5 países LATAM (máx. permitido
+    # en plan free/basic de NewsData.io) en vez de depender solo del idioma,
+    # que traía mucho ruido de España.
+    PAISES_NEWSDATA = 'cl,ar,mx,co,pe'
     noticias = []
     for cat in categorias:
         try:
             r = requests.get(
                 'https://newsdata.io/api/1/news',
                 params={'apikey': NEWSDATA_API_KEY, 'language': 'es',
+                        'country': PAISES_NEWSDATA,
                         'category': cat, 'size': 10, 'image': 1},
                 timeout=15
             ).json()
@@ -3329,6 +3541,9 @@ def obtener_newsdata():
                     if not t or not img:
                         continue
                     d = a.get('description') or ''
+                    # V17.8.0: filtro adicional por si igual llega ruido de España
+                    if es_noticia_espana_domestica(t, d):
+                        continue
                     noticias.append({
                         'titulo':      limpiar_texto(t),
                         'descripcion': limpiar_texto(d),
@@ -3346,13 +3561,26 @@ def obtener_newsdata():
 def obtener_gnews():
     if not GNEWS_API_KEY:
         return []
-    topicos = ['world', 'nation', 'business', 'technology', 'sports', 'health', 'science', 'entertainment']
+    # V17.8.0: cada tópico ahora fija un país LATAM (antes usaba el país por
+    # defecto de la API, que no es ninguno de LATAM) — mismo número de
+    # llamadas, pero apuntando directo a la región.
+    topicos_paises = [
+        ('world',         'mx'),
+        ('nation',        'cl'),
+        ('business',      'ar'),
+        ('technology',    'co'),
+        ('sports',        'mx'),
+        ('health',        'cl'),
+        ('science',       'ar'),
+        ('entertainment', 'co'),
+    ]
     noticias = []
-    for topic in topicos:
+    for topic, pais in topicos_paises:
         try:
             r = requests.get(
                 'https://gnews.io/api/v4/top-headlines',
-                params={'apikey': GNEWS_API_KEY, 'lang': 'es', 'max': 10, 'topic': topic},
+                params={'apikey': GNEWS_API_KEY, 'lang': 'es', 'max': 10,
+                        'topic': topic, 'country': pais},
                 timeout=15
             ).json()
             for a in r.get('articles', []):
@@ -3361,6 +3589,9 @@ def obtener_gnews():
                 if not t or not img:
                     continue
                 d = a.get('description') or ''
+                # V17.8.0: descartar ruido doméstico de España
+                if es_noticia_espana_domestica(t, d):
+                    continue
                 noticias.append({
                     'titulo':      limpiar_texto(t),
                     'descripcion': limpiar_texto(d),
@@ -3371,7 +3602,7 @@ def obtener_gnews():
                     'puntaje':     calcular_puntaje(t, d),
                 })
         except Exception as e:
-            log(f"GNews error ({topic}): {e}", 'advertencia')
+            log(f"GNews error ({topic}/{pais}): {e}", 'advertencia')
     log(f"GNews: {len(noticias)} noticias con imagen", 'info')
     return noticias
 
@@ -3403,7 +3634,7 @@ def obtener_rss():
         ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada', 'El País Internacional'),
         ('https://www.dw.com/es/ultimas-noticias/s-30689792/rss',      'Deutsche Welle ES'),
         ('https://feeds.france24.com/es/',                             'France 24 ES'),
-        ('https://www.efe.com/efe/espana/1/rss',                       'EFE'),
+        ('https://www.efe.com/efe/espana/1/rss',                       'EFE'),  # ⚠️ V17.8.0: esta URL apunta a la sección ESPAÑA de EFE (nota el "/espana/" en la ruta). El filtro es_noticia_espana_domestica() descarta lo puramente local, pero si tienen a mano el RSS de la sección América/Internacional de EFE, conviene reemplazar esta URL.
         # ── Deportes — fútbol LATAM y mundial ──────────────────────────────────
         ('https://www.espn.com.mx/rss/deportes.xml',                   'ESPN Deportes'),
         ('https://e00-marca.uecdn.es/rss/portada.xml',                 'Marca'),
@@ -3448,6 +3679,9 @@ def obtener_rss():
                             img = enc.get('href') or enc.get('url')
                             break
                 # RSS: aceptar sin imagen (se intenta obtener después)
+                # V17.8.0: descartar ruido doméstico de España
+                if es_noticia_espana_domestica(t, d):
+                    continue
                 noticias.append({
                     'titulo':      limpiar_texto(t),
                     'descripcion': limpiar_texto(d),
@@ -3985,9 +4219,9 @@ def procesar_pending_videos():
 def main():
     print("\n" + "=" * 60)
     print(f"🌍 BOT DE NOTICIAS - {VERSION_BOT}")
-    print("   WP: 24 arts/día, 1 cada 60 min — SEO focus")
+    print("   WP: 6 arts/día, flujo general — SEO focus")
     print("   FB: imagen+texto desde verdadhoy.com (horario pico, independiente de WP)")
-    print("   LATAM-FIRST: Chile 6/día + LATAM 8/día adicionales")
+    print("   LATAM-FIRST: Chile 3/día + LATAM 3/día adicionales (V17.9.1 — total 12/día)")
     print("   RETENCIÓN: Box resumen + blockquote + pregunta cierre (target >2min)")
     print(f"   MODO: {'🌎 LATAM+CHILE' if MODO_LATAM else '🌐 GENERAL'}")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")

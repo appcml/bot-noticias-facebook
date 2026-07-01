@@ -1,7 +1,73 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.9.6
+Bot de Noticias Internacionales - V17.9.9
+CAMBIOS EN V17.9.9 (Confirmación de slugs + eliminada región "América del Norte"):
+  - CONFIRMADO: Cic revisó Entradas → Categorías en WordPress y los 8 slugs
+    adivinados en V17.9.8 eran todos correctos (africa, america-del-norte,
+    asia, europa, medio-oriente, mundo, oceania, latinoamerica, internacional).
+  - CAMBIO: se elimina "América del Norte" como región propia — tenía 0
+    artículos y muy bajo volumen esperado (las noticias de EE.UU./Canadá que
+    importan a la audiencia ya van directo a "Política" o "Economía"; lo
+    poco que quedaba para esta subcategoría era casi siempre desastre/crimen
+    puntual). Decisión de Cic tras evaluar el trade-off.
+  - Esas noticias ahora caen en "Mundo" (categoría ya existente, con tráfico
+    real) en vez de crear/mantener una subcategoría vacía en el menú.
+  - ACCIÓN MANUAL PENDIENTE PARA TI: borrar la categoría "América del Norte"
+    (slug america-del-norte) desde WordPress → Entradas → Categorías — el
+    bot ya no la usa, pero WordPress no la borra solo.
+  - Europa, Asia, África, Medio Oriente, Oceanía y Latinoamérica no cambian.
+
+CAMBIOS EN V17.9.8 (Distribución completa por las subcategorías reales del
+menú "Internacional": Europa, Asia, África, América del Norte, Medio
+Oriente, Oceanía, Latinoamérica, Mundo):
+  - CONTEXTO: el menú real de verdadhoy.com tiene "Internacional" como
+    categoría padre con 8 hijas (Europa/Asia/África/América del Norte/
+    Medio Oriente/Oceanía/Latinoamérica/Mundo). El bot solo conocía el slug
+    plano 'internacional' y nunca distribuía por región — todo lo que no
+    era LATAM cataba en el mismo cajón.
+  - NUEVO: KEYWORDS_REGIONES + detectar_region_internacional() — detecta,
+    por conteo de coincidencias de país/ciudad/líder, si una noticia
+    "paraguas" (desastre, guerra, crimen, religion, educacion, general,
+    mundo) pertenece a Europa, Asia, África, América del Norte, Medio
+    Oriente u Oceanía. Si no hay ninguna coincidencia clara, cae en "Mundo"
+    (fallback seguro para temas multilaterales: ONU, cambio climático
+    global, etc.). LATAM se sigue resolviendo primero (V17.9.7) con las
+    listas KEYWORDS_CHILE/KEYWORDS_LATAM_PAISES ya existentes.
+  - La región/país detectado pasa a ser la categoría PRINCIPAL, con
+    "Internacional" como categoría SECUNDARIA (el artículo sigue apareciendo
+    también en el listado general de Internacional).
+  - RED DE SEGURIDAD: si el slug de una región no existe en WordPress (ver
+    REGION_SLUG_WP — son mi mejor estimación de cómo WordPress genera esos
+    slugs, ej. "América del Norte" → "america-del-norte"), el artículo cae
+    en 'internacional' en vez de quedar sin categoría.
+  - ⚠️ ACCIÓN PENDIENTE PARA TI: verifica en WordPress (Entradas → Categorías)
+    los slugs REALES de Europa, Asia, África, América del Norte, Medio
+    Oriente y Oceanía, y compáralos con REGION_SLUG_WP más abajo en este
+    archivo. Si alguno no coincide, dime el slug correcto y lo corrijo.
+  - Categorías temáticas (política, economía, tecnología, deportes,
+    entretenimiento, ciencia-y-salud, medio-ambiente) NO cambian — siguen
+    siendo su propio nivel del menú principal, esto solo afecta a la rama
+    de "Internacional".
+
+CAMBIOS EN V17.9.7 (Desastres/guerra/crimen en LATAM → categoría Latinoamérica):
+  - CASO REAL: "Terremotos en Venezuela" se publicó en la categoría
+    "Internacional" en vez de "Latinoamérica". No era un bug de clasificación
+    de la IA — es el diseño original: CATEGORIA_WP mapea 'desastre' siempre
+    a 'internacional' (correcto para un terremoto en Japón o Turquía, pero
+    para un sitio LATAM-first, un desastre en Venezuela/Chile/México se
+    pierde en el cajón genérico de Internacional en vez de reforzar la
+    sección regional).
+  - FIX: en publicar_en_wordpress(), si la categoría es 'desastre', 'guerra'
+    o 'crimen' Y el artículo menciona un país de LATAM (usando las mismas
+    listas KEYWORDS_CHILE / KEYWORDS_LATAM_PAISES del bloque LATAM), la
+    categoría PRINCIPAL pasa a ser "Latinoamérica", y "Internacional" queda
+    como categoría SECUNDARIA — el artículo sigue apareciendo en ambas
+    secciones, pero prioriza la que más le importa a la audiencia del sitio.
+  - Un desastre/guerra/crimen fuera de LATAM (Japón, Medio Oriente, etc.)
+    sigue yendo a "Internacional" sin cambios — el criterio es puramente
+    geográfico (país detectado por keyword), no cambia nada más.
+
 CAMBIOS EN V17.9.6 (FIX: se coló un artículo de apuestas — riesgo AdSense):
   - CASO REAL: se publicó "Cuotas para el Mundial 2026" (cuotas de casas de
     apuestas, favoritos, "casa de apuestas" en el cuerpo) sin ser detectado
@@ -555,7 +621,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.9.6"
+VERSION_BOT = "V17.9.9"
 
 import requests
 import feedparser
@@ -2896,9 +2962,50 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         log(f"⚠️ Categoría '{categoria_final}' inválida — usando '{tema}'", 'advertencia')
         categoria_final = tema if tema in CATEGORIA_WP else 'general'
 
-    slug_cat   = CATEGORIA_WP.get(categoria_final, 'internacional')
-    cat_id     = obtener_id_categoria_wp(slug_cat)
+    # V17.9.8: "desastre", "guerra", "crimen", "religion", "educacion",
+    # "general" y "mundo" son categorías temáticas "paraguas" que antes
+    # SIEMPRE caían en el slug plano 'internacional'. Ahora:
+    #   1) si la noticia es de un país LATAM → categoría principal
+    #      "Latinoamérica" (con "Internacional" como secundaria, V17.9.7)
+    #   2) si no, se detecta la región real (Europa/Asia/África/América del
+    #      Norte/Medio Oriente/Oceanía) y esa pasa a ser la categoría
+    #      principal (con "Internacional" como secundaria); si no hay región
+    #      específica clara, cae en "Mundo".
+    CATEGORIAS_INTERNACIONAL_PARAGUAS = {'desastre', 'guerra', 'crimen', 'religion', 'educacion', 'general', 'mundo'}
+    slug_cat_secundario = None
+    if categoria_final in CATEGORIAS_INTERNACIONAL_PARAGUAS:
+        _categoria_original = categoria_final
+        _texto_chk = f"{titulo} {contenido_html}".lower()
+        _es_latam = (
+            any(kw in _texto_chk for kw in KEYWORDS_CHILE) or
+            any(kw in _texto_chk for _kws in KEYWORDS_LATAM_PAISES.values() for kw in _kws)
+        )
+        if _es_latam:
+            slug_cat = CATEGORIA_WP['latinoamerica']
+            slug_cat_secundario = 'internacional'
+            log(f"   🌎 Reasignado a 'Latinoamérica' (era '{_categoria_original}', país LATAM detectado)", 'info')
+        else:
+            _region = detectar_region_internacional(titulo, contenido_html)
+            slug_cat = REGION_SLUG_WP.get(_region, 'internacional')
+            slug_cat_secundario = 'internacional' if slug_cat != 'internacional' else None
+            log(f"   🌍 Región '{_region}' → categoría '{slug_cat}' (era '{_categoria_original}')", 'info')
+    else:
+        slug_cat = CATEGORIA_WP.get(categoria_final, 'internacional')
+
+    cat_id = obtener_id_categoria_wp(slug_cat)
+    if not cat_id and slug_cat != 'internacional':
+        # V17.9.8: si el slug de la subcategoría no existe en WordPress (el
+        # slug real no coincide con REGION_SLUG_WP), no dejar el artículo
+        # sin categoría — usar 'internacional' como red de seguridad.
+        log(f"⚠️ Categoría WP '{slug_cat}' no encontrada — usando 'internacional' de respaldo. "
+            f"Verifica el slug real de esa categoría y avísame para corregir REGION_SLUG_WP.", 'advertencia')
+        cat_id = obtener_id_categoria_wp('internacional')
+        slug_cat_secundario = None  # ya es internacional, no duplicar
     categorias = [cat_id] if cat_id else []
+    if slug_cat_secundario:
+        cat_id_sec = obtener_id_categoria_wp(slug_cat_secundario)
+        if cat_id_sec and cat_id_sec not in categorias:
+            categorias.append(cat_id_sec)
 
     post_data = {
         'title':          titulo_final,
@@ -3084,6 +3191,94 @@ KEYWORDS_LATAM_PAISES = {
     'surinam':    ["surinam", "surinamés", "paramaribo"],
     'belice':     ["belice", "beliceño", "belmopán"],
 }
+
+# ── V17.9.8/9.9: Subcategorías reales de "Internacional" en el menú ──────
+# El menú de verdadhoy.com tiene: Europa, Asia, África, Medio Oriente,
+# Oceanía, Latinoamérica, Mundo (todas hijas de "Internacional"). Antes,
+# TODO lo que no era LATAM caía en el mismo cajón "internacional" sin
+# distinguir región. Estas listas permiten repartir correctamente.
+# ("América del Norte" existió como región hasta V17.9.8 — se eliminó en
+# V17.9.9 por bajo volumen; ver nota más abajo.)
+KEYWORDS_REGIONES = {
+    'europa': [
+        "españa", "espana", "francia", "alemania", "italia", "reino unido",
+        "inglaterra", "escocia", "gales", "irlanda", "portugal", "países bajos",
+        "paises bajos", "holanda", "bélgica", "belgica", "suiza", "austria",
+        "polonia", "ucrania", "rusia", "kremlin", "rumania", "hungría", "hungria",
+        "grecia", "suecia", "noruega", "dinamarca", "finlandia", "chequia",
+        "república checa", "republica checa", "croacia", "serbia", "bulgaria",
+        "bielorrusia", "moldavia", "bruselas", "unión europea", "union europea",
+        " ue ", "otan", "vaticano", "madrid", "parís", "paris", "berlín", "berlin",
+        "londres", "roma milán", "putin", "zelenski", "sánchez españa",
+    ],
+    'asia': [
+        "china", "japón", "japon", "corea del sur", "corea del norte", "india",
+        "pakistán", "pakistan", "bangladés", "bangladesh", "indonesia",
+        "filipinas", "vietnam", "tailandia", "malasia", "singapur", "taiwán",
+        "taiwan", "mongolia", "kazajistán", "kazajistan", "pekín", "pekin",
+        "beijing", "tokio", "seúl", "seul", "nueva delhi", "shanghái", "shanghai",
+        "xi jinping", "kim jong",
+    ],
+    'africa': [
+        "nigeria", "sudáfrica", "sudafrica", "egipto", "kenia", "etiopía",
+        "etiopia", "marruecos", "argelia", "túnez", "tunez", "libia", "sudán",
+        "sudan", "congo", "angola", "mozambique", "ghana", "senegal",
+        "costa de marfil", "ruanda", "somalia", "zimbabue", "tanzania",
+        "uganda", "el cairo", "lagos nigeria", "johannesburgo", "nairobi",
+        "unión africana", "union africana",
+    ],
+    # V17.9.9: "América del Norte" eliminada como región propia (a pedido de
+    # Cic) — con 0 artículos y volumen tan bajo de noticias EE.UU./Canadá que
+    # no son ya política/economía, se veía como una sección vacía en el menú.
+    # Ahora esas noticias caen en "Mundo" por defecto (fallback normal de
+    # detectar_region_internacional cuando no hay otra región más específica).
+    'medio_oriente': [
+        "israel", "palestina", "gaza", "cisjordania", "hamás", "hamas",
+        "hezbolá", "hezbola", "irán", "iran", "teherán", "teheran", "irak",
+        "bagdad", "siria", "damasco", "líbano", "libano", "beirut",
+        "arabia saudita", "riad", "yemen", "jordania", "amán", "aman",
+        "qatar", "catar", "emiratos árabes", "emiratos arabes", "dubái",
+        "dubai", "kuwait", "omán", "oman", "turquía", "turquia", "ankara",
+        "estambul", "netanyahu", "jomeiní", "jomeini",
+    ],
+    'oceania': [
+        "australia", "nueva zelanda", "fiyi", "papúa nueva guinea",
+        "papua nueva guinea", "canberra", "sídney", "sidney", "wellington",
+        "auckland", "melbourne",
+    ],
+}
+
+# Slugs REALES en WordPress (confirmados por Cic el 01/07/2026 — coinciden
+# exactamente con lo que WordPress generó)
+REGION_SLUG_WP = {
+    'europa':             'europa',
+    'asia':               'asia',
+    'africa':             'africa',
+    'medio_oriente':      'medio-oriente',
+    'oceania':            'oceania',
+    'mundo':              'mundo',
+}
+
+
+def detectar_region_internacional(titulo, descripcion=""):
+    """
+    V17.9.8: Para noticias que caen en categorías "paraguas" (desastre,
+    guerra, crimen, religion, educacion, general, mundo) y NO son de LATAM,
+    determina a qué subcategoría de "Internacional" pertenecen, contando
+    cuántas keywords de cada región aparecen en el texto. La región con más
+    coincidencias gana; si no hay ninguna, cae en 'mundo' (fallback seguro
+    para temas multilaterales sin país protagonista claro: ONU, cambio
+    climático global, IA a nivel mundial, etc.)
+    """
+    txt = f"{titulo} {descripcion}".lower()
+    puntajes = {
+        region: sum(1 for kw in kws if kw in txt)
+        for region, kws in KEYWORDS_REGIONES.items()
+    }
+    mejor_region, mejor_puntaje = max(puntajes.items(), key=lambda x: x[1])
+    if mejor_puntaje == 0:
+        return 'mundo'
+    return mejor_region
 
 # ── Keywords para detectar noticias 100% DOMÉSTICAS de España ──
 # (V17.8.0) El pool general usa language='es', y eso trae mucha prensa

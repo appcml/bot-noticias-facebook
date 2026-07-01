@@ -1,7 +1,36 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias Internacionales - V17.9.2
+Bot de Noticias Internacionales - V17.9.3
+CAMBIOS EN V17.9.3 (FIX CRÍTICO: eliminado el fallback sin IA que publicaba
+contenido pobre — ver caso real "Senado se prepara para rechazar AC..."):
+  - DIAGNÓSTICO: la nota sobre Chile publicada en verdadhoy.com no pasó por la
+    IA. reescribir_noticia_v9() falló (probable error de API/créditos/rate
+    limit — hay que revisar logs de esa ejecución puntual para confirmar la
+    causa exacta) y publicar_en_wordpress() cayó al bloque `else` de
+    emergencia, que tomaba las 2-3 oraciones originales, las repetía en el
+    box "Puntos clave" Y en el cuerpo del artículo, sin H2, sin desarrollo,
+    sin ningún valor editorial. Se publicó igual porque ese fallback solo
+    exigía un mínimo de 3 oraciones.
+  - FIX CRÍTICO: se ELIMINA por completo el fallback sin IA. Si
+    reescribir_noticia_v9() falla, publicar_en_wordpress() ahora retorna None
+    y esa noticia se descarta — main() y publicar_bloque_latam_chile() ya
+    estaban preparados para probar la siguiente candidata en ese caso, así
+    que este cambio no requirió tocar la lógica de los llamadores.
+    Filosofía: mejor publicar MENOS artículos (o ninguno, en el peor caso)
+    que publicar contenido sin valor editorial que arriesgue AdSense otra vez.
+  - FIX: umbrales mínimos de contenido subidos en las 3 fuentes (general,
+    Chile, LATAM): contenido web 300→500 chars, solo-descripción 200→400,
+    combinado web+desc 150→250. Una fuente de 200 caracteres alcanzaba para
+    "pasar" el filtro pero no da material suficiente para que la IA escriba
+    un artículo real — subir el umbral reduce cuántas veces se intenta con
+    material demasiado escaso en primer lugar.
+  - IMPORTANTE: esto NO explica por qué la IA falló esa vez en particular.
+    Para diagnosticar la causa exacta (créditos, rate limit, modelo caído)
+    hay que revisar el log de esa ejecución en GitHub Actions — el bot ya
+    imprime el diagnóstico (💳 sin créditos / ⏳ rate limit / 🔑 API key /
+    🤖 modelo no disponible) desde V17.6.9, solo falta mirarlo.
+
 CAMBIOS EN V17.9.2 (Ajuste de timing tras revisar el .yml real):
   - DESCUBRIMIENTO CLAVE: el workflow de GitHub Actions NUNCA seteaba la
     variable MODO_LATAM. Resultado: publicar_bloque_latam_chile() jamás se
@@ -452,7 +481,7 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.9.2"
+VERSION_BOT = "V17.9.3"
 
 import requests
 import feedparser
@@ -2548,40 +2577,30 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
             if tag_id:
                 tags_ids.append(tag_id)
     else:
-        titulo_final = titulo
-        # V17.4 FIX: Fallback mejorado — estructura mínima legible con al menos 3 párrafos
-        # Si no hay IA, al menos publicar contenido limpio y completo, no texto crudo cortado
-        texto_limpio = contenido[:4000].strip()
-        oraciones = [o.strip() for o in re.split(r'(?<=[.!?])\s+', texto_limpio) if len(o.strip()) > 30]
+        # V17.9.3 FIX CRÍTICO: se elimina el fallback "sin IA".
+        # PROBLEMA DETECTADO: cuando reescribir_noticia_v9() fallaba (créditos
+        # agotados, rate limit, error de API, JSON cortado), el bot publicaba
+        # el contenido crudo de la fuente casi sin tocar: mismas 2-3 oraciones
+        # repetidas en el box resumen Y en el cuerpo del artículo, sin H2, sin
+        # desarrollo, sin ningún valor editorial. Eso es exactamente el tipo
+        # de "contenido de bajo valor" que AdSense ya penalizó una vez.
+        # SOLUCIÓN: si la IA no responde, esta noticia se descarta (return None)
+        # y el llamador (main() o publicar_bloque_latam_chile()) prueba con la
+        # siguiente candidata de la lista, en vez de publicar algo pobre.
+        # Prioridad: publicar MENOS artículos pero todos con la calidad del
+        # Editor Jefe > publicar más artículos rellenando con contenido crudo.
+        log("❌ IA no disponible para esta noticia — se descarta (NO se publica sin IA)", 'error')
+        return None
 
-        if len(oraciones) < 3:
-            # Contenido demasiado escaso — no publicar
-            log("⚠️ Fallback: contenido insuficiente para artículo digno (<3 oraciones)", 'advertencia')
-            return None
-
-        # Agrupar en párrafos de ~60-80 palabras
-        parrafos_html = []
-        parrafo_actual = []
-        palabras = 0
-        for oracion in oraciones:
-            parrafo_actual.append(oracion)
-            palabras += len(oracion.split())
-            if palabras >= 65:
-                parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
-                parrafo_actual = []
-                palabras = 0
-        if parrafo_actual:
-            parrafos_html.append(f'<p>{" ".join(parrafo_actual)}</p>')
-
-        # Máximo 12 párrafos en fallback para no publicar paredes de texto
-        cuerpo_fallback = '\n'.join(parrafos_html[:12])
-        # V17.6.6: Inyectar box resumen también en fallback (sin IA)
-        box_fallback = _generar_box_fallback(titulo_final, texto_limpio)
-        contenido_formateado = box_fallback + cuerpo_fallback
-        contenido_formateado += insertar_enlaces_internos("")
-        log("📦 Fallback: box resumen inyectado sin IA", 'info')
-        meta_desc   = ""
-        frase_clave = ""
+    # Bloque histórico (deshabilitado desde V17.9.3, se deja comentado como
+    # referencia de por qué NO se debe reactivar sin más validación):
+    #     titulo_final = titulo
+    #     texto_limpio = contenido[:4000].strip()
+    #     oraciones = [...]
+    #     if len(oraciones) < 3: return None
+    #     ... agrupaba oraciones en párrafos y las publicaba tal cual ...
+    # Este bloque permitía que una noticia con solo 3 oraciones cortas
+    # (el mínimo que exigía) se publicara completa sin ningún desarrollo.
 
     # Schema JSON-LD — V14.1: campos completos para Rich Results y Google Discover
     fecha_schema = datetime.now().strftime('%Y-%m-%dT%H:%M:%S+00:00')
@@ -3329,9 +3348,11 @@ def publicar_bloque_latam_chile():
                 log(f"   🚫 SPAM Chile: '{kw_spam}' — descartando", 'advertencia')
                 continue
 
+            # V17.9.3: umbrales subidos (300→500 / 200→400 / 150→250) — ver
+            # nota completa en el flujo general, mismo motivo.
             cont_web, _ = extraer_contenido(url)
-            contenido_ok = cont_web if (cont_web and len(cont_web) >= 300) else (desc if len(desc) >= 200 else None)
-            if not contenido_ok and cont_web and len(cont_web) >= 150:
+            contenido_ok = cont_web if (cont_web and len(cont_web) >= 500) else (desc if len(desc) >= 400 else None)
+            if not contenido_ok and cont_web and len(cont_web) >= 250:
                 contenido_ok = cont_web + ' ' + desc if desc else cont_web
             if not contenido_ok:
                 continue
@@ -3408,9 +3429,11 @@ def publicar_bloque_latam_chile():
             if nt.get('puntaje', 0) < 2:
                 continue
 
+            # V17.9.3: umbrales subidos (300→500 / 200→400 / 150→250) — ver
+            # nota completa en el flujo general, mismo motivo.
             cont_web, _ = extraer_contenido(url)
-            contenido_ok = cont_web if (cont_web and len(cont_web) >= 300) else (desc if len(desc) >= 200 else None)
-            if not contenido_ok and cont_web and len(cont_web) >= 150:
+            contenido_ok = cont_web if (cont_web and len(cont_web) >= 500) else (desc if len(desc) >= 400 else None)
+            if not contenido_ok and cont_web and len(cont_web) >= 250:
                 contenido_ok = cont_web + ' ' + desc if desc else cont_web
             if not contenido_ok:
                 continue
@@ -4340,16 +4363,21 @@ def main():
                     continue
 
                 # Contenido
+                # V17.9.3: umbrales subidos — 150-300 chars (2-3 oraciones) era
+                # suficiente para "pasar" pero NO alcanza para que la IA escriba
+                # un artículo con valor editorial real. Con fuentes tan cortas,
+                # si la IA fallaba, el bot terminaba publicando esas 2-3 oraciones
+                # casi textuales (ver fix del fallback sin IA, más abajo).
                 cont_web, _ = extraer_contenido(url)
-                if cont_web and len(cont_web) >= 300:
+                if cont_web and len(cont_web) >= 500:
                     contenido_ok = cont_web
-                elif desc and len(desc) >= 200:
+                elif desc and len(desc) >= 400:
                     contenido_ok = desc
-                elif cont_web and len(cont_web) >= 150:
-                    # V17.4: Combinar web + desc para llegar a mínimo aceptable
+                elif cont_web and len(cont_web) >= 250:
+                    # Combinar web + desc para llegar a un mínimo real de sustancia
                     contenido_ok = cont_web + ' ' + desc if desc else cont_web
                 else:
-                    log("   ❌ Contenido insuficiente (<150 chars)", 'advertencia')
+                    log("   ❌ Contenido insuficiente (<250 chars) — no hay material para un artículo real", 'advertencia')
                     continue
 
                 # Imagen — OBLIGATORIA

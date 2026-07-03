@@ -1,9 +1,5 @@
 {
   "urls": [
-    "https://www.qore.com/ai/modelos-de-ia-locales-pueden-competir-con-la-nube/",
-    "https://www.qore.com/medio-ambiente/consumidores-ricos-causan-billones-en-danos-al-planeta/",
-    "https://www.cope.es/programas/poniendo-las-calles/noticias/ana-torroja-he-abierto-puertas-llevaban-cerradas-20260619_3387513.html",
-    "https://www.infolibre.es/politica/sanchez-no-cierra-puerta-adelantar-elecciones-si-no-aprueban-presupuestos_1_2211464.html",
     "https://www.diariolibre.com/mundo/medio-oriente/2026/06/19/trafico-maritimo-en-ormuz-muestra-signos-de-recuperacion/3572548",
     "https://www.superdeporte.es/futbol/2026/06/19/cambiar-fuente-victor-munoz-jugador-mundial-131592959.html",
     "https://www.diariolibre.com/mundo/america-latina/2026/06/19/cuba-aprueba-su-mayor-paquete-reformas-economicas/3572708",
@@ -141,13 +137,11 @@
     "https://www.cooperativa.cl/noticias/pais/dd-hh/gobierno-cierra-la-unidad-que-investiga-adopciones-ilegales-y-causa/2026-07-02/185955.html",
     "https://efectococuyo.com/internacionales/programa-mundial-de-alimentos-busca-asistir-a-500-000-venezolanos-tras-sismos/",
     "https://www.qore.com/energia/renovables-ahorran-480000-mdd-en-combustibles-fosiles/",
-    "https://www.excelsior.com.mx/nacional/infraestructura-y-bienestar-plan-oriente-transforma-calidad-vida-10-millones-mexiquenses"
+    "https://www.excelsior.com.mx/nacional/infraestructura-y-bienestar-plan-oriente-transforma-calidad-vida-10-millones-mexiquenses",
+    "https://www.cooperativa.cl/noticias/mundo/venezuela/militarizacion-y-filas-por-comida-asi-esta-venezuela-a-nueve-dias-de/2026-07-03/141154.html",
+    "https://rpp.pe/futbol/mundial-2026/colombia-vs-ghana-en-directo-sigue-la-transmision-minuto-a-minuto-del-partido-por-los-16avos-de-final-de-mundial-2026-live-3491"
   ],
   "hashes": [
-    "0d1695a23a57cd1bffa32b577da2266f",
-    "d79e79dbdbc56a1b63356c31d3463f64",
-    "f4f3bb259deedf6145f478ea37ba3c2a",
-    "2db2addfe0871f3e7e7c60df7f8fe2ad",
     "c1ed935339b3c3150b9ba9debd9e15b7",
     "368f82836c7dd20e45b8f3c88cc7dcea",
     "1367eb9663187aa7ecc0d6d95e165314",
@@ -285,13 +279,11 @@
     "7c0eeb2087b188bef1a3ce552b5e64e5",
     "c01a0b7c9294813d2d9d010aa0e1540f",
     "f49b9907787a96de39f3b48a0abdadce",
-    "8135930a42666142ed82b9a85324503c"
+    "8135930a42666142ed82b9a85324503c",
+    "f158dcafd8c3e5be6ce096b7a37c144a",
+    "a59bbcdb98b685a8efca7c47b42e812d"
   ],
   "timestamps": [
-    "2026-06-19T15:52:13.503422",
-    "2026-06-19T17:54:00.105039",
-    "2026-06-19T19:08:26.414394",
-    "2026-06-19T19:17:28.226576",
     "2026-06-19T21:07:45.921007",
     "2026-06-19T22:31:06.370698",
     "2026-06-20T00:07:26.715024",
@@ -429,13 +421,11 @@
     "2026-07-03T05:58:50.146625",
     "2026-07-03T05:59:16.766991",
     "2026-07-03T11:29:58.561108",
-    "2026-07-03T15:33:19.023490"
+    "2026-07-03T15:33:19.023490",
+    "2026-07-03T19:37:04.077393",
+    "2026-07-03T19:37:36.213289"
   ],
   "titulos": [
-    "Modelos de IA locales pueden competir con la nube.",
-    "Consumidores ricos causan billones en daños al planeta.",
-    "Ana Torroja: \"He abierto puertas que llevaban mucho tiempo cerradas\".",
-    "Sánchez no cierra la puerta a adelantar elecciones si no se aprueban los presupuestos.",
     "Tráfico marítimo en Ormuz muestra signos de recuperación.",
     "¿Puede cambiar De la Fuente a Víctor Muñoz si se confirma su lesión que le impida jugar en el Mundial 2026?",
     "Cuba aprueba su mayor paquete reformas económicas.",
@@ -573,13 +563,11 @@
     "Gobierno cierra la unidad que investiga adopciones ilegales y causa indignación en víctimas.",
     "Programa Mundial de Alimentos busca asistir a 500.000 venezolanos tras sismos.",
     "Renovables ahorran 480,000 mdd en combustibles fósiles.",
-    "Infraestructura y bienestar: Plan Oriente transforma calidad de vida de 10 millones de mexiquenses."
+    "Infraestructura y bienestar: Plan Oriente transforma calidad de vida de 10 millones de mexiquenses.",
+    "Militarización y filas por comida: Así está Venezuela a nueve días de los terremotos.",
+    "Colombia vs Ghana EN DIRECTO: sigue la transmisión del partido por los 16avos de final de Mundial 2026."
   ],
   "descripciones": [
-    "✨︎ Resumen (TL;DR): Modelos pequeños de IA ejecutados localmente en computadoras pueden responder con precisión al 88.7% de las consultas cotidianas. Un sistema híbrido inteligente podría reducir el consumo de energía en un 80.4% y los costos de procesamiento en un 73.8% . El rápido avance de estos sistemas locales amenaza el modelo de negocio ultra costoso de las grandes granjas de servidores en la nube. Un estudio de la Universidad de Stanford demostró que los modelos de lenguaje pequeños ejecutados en computadoras de escritorio igualan el rendimiento de los grandes sistemas de IA ba",
-    "✨︎ Resumen (TL;DR): El consumo del 10% de la población más rica genera un impacto ecológico valuado entre 1.7 y 5.7 billones de dólares al año. La pérdida de biodiversidad y el cambio climático representan hasta el 56% y 45% del costo de este daño respectivamente. En Estados Unidos se registra el mayor impacto individual , con un daño promedio por persona de hasta 63,000 dólares anuales. El 10% de los consumidores con mayor nivel de gasto en causa daños ambientales estimados entre 1.7 y 5.7 billones de dólares anuales . Investigadores de la Universidad de Leiden y la Universidad de",
-    "Ana Torroja ha presentado en 'Poniendo las Calles', de Cadena COPE, con Carlos Moreno, 'El Pulpo', su nuevo y esperado álbum, 'Se ha acabado el show'. Se trata de su trabajo más personal hasta la fecha, un disco en el que, por primera vez en sus más de cuatro décadas de carrera, se ha encargado de componer íntegramente todas las canciones. La artista ha confesado que este proceso creativo ha sido una experiencia liberadora. \"Es verdad que en algunas ocasiones esa honestidad me hizo sentir vulnerable, pero en esta ocasión me ha hecho libre\", ha explicado. Según Torroja, escribir las diez",
-    "El presidente del Gobierno, Pedro Sánchez , no ha cerrado este jueves la puerta a adelantar las elecciones generales en caso de que no se aprueben unos nuevos presupuestos, al asegurar que si se tienen que tomar decisiones en caso de que no salgan adelante, se tomarán . En declaraciones a los periodistas a su llegada a la reunión del Consejo Europeo, Sánchez ha apelado a la responsabilidad de los grupos parlamentarios para aprobar las nuevas cuentas del Estado , que ha garantizado que presentará el Gobierno. Los periodistas le han planteado si después de que el PNV y Coalición Canaria h",
     "El tráfico en el estrecho de Ormuz muestra signos de recuperación después de que durante la jornada del jueves se alcanzara un repunte diario con el cruce de 25 buques, informaron este viernes portales especializados, coincidiendo con la entrada en vigor del memorando de entendimiento entre Estados Unidos e Irán que reactiva esta vía marítima. Sin embargo, la incertidumbre aún reina ante el calendario de reapertura en el estrecho, por donde pasaba el 20 % del tráfico mundial de petróleo y gas natural licuado , especialmente por las minas marinas y la cancelación de las conversaciones",
     "No empezó España de la mejor manera al cosechar un paupérrimo empate contra Cabo Verde. Hubo ocasiones de sobra para golear, pero la mala puntería de los españoles y el buen trabajo de Vozinha, evitaron darle vida al marcador. El caso es que la mayoría de críticas le llovieron a Luis de la Fuente por colocar a Gavi como interior izquierdo, cuajando un pésimo partido. Las lesiones y molestias de varios jugadores exteriores condicionaron el once, en cualquier caso. No empezó España de la mejor manera al cosechar un paupérrimo empate contra Cabo Verde. Hubo ocasiones de sobra para golear,",
     "Las autoridades cubanas han presentado y aprobado en un tiempo récord, apenas una semana, el mayor paquete de reformas económicas en al menos 15 años, pendiente ahora de su capacidad para confrontar la profunda crisis que sufre la isla y las exigencias de Washington. En siete días, el presidente de Cuba, Miguel Díaz-Canel , anunció por sorpresa las medidas, el pleno del Comité Central del Partido Comunista (PCC, único legal) las respaldó y una sesión extraordinaria de la Asamblea Nacional del Poder Popular (ANPP, legislativo unicameral) las ratificó. RELACIONADAS América Latina Eco",
@@ -717,13 +705,11 @@
     "La decisión por parte del Gobierno de José Antonio Kast de cerrar la unidad especial encargada de investigar las adopciones ilegales durante la dictadura chilena ha provocado una \"profunda indignación\" en la principal organización de víctimas del país, que la describe como \"un balde de agua fría que dificulta el camino a la verdad\". \"No esperábamos esta decisión, teníamos la idea de que esto iba a seguir, teníamos noticias de que había disposición y hasta se nos habló la semana pasada que se iba a trabajar en la implementación. Nos indigna profundamente\", dijo la fundadora y presidenta de la F",
     "PMA está entregando canastas de alimentos en zonas afectadas. PMA está entregando canastas de alimentos en zonas afectadas. El Programa Mundial de Alimentos (PMA) busca asistir a medio millón de personas en Venezuela durante un período de tres meses, luego de los terremotos de magnitud 7,2 y 7,5 ocurridos hace ocho días que han dejado hasta el momento 2.295 fallecidos, 11.267 heridos y un número aún por determinar de desaparecidos. “En este momento, el objet",
     "✨︎ Resumen (TL;DR): Las energías limpias evitaron un gasto de 480,000 millones de dólares en combustibles fósiles a nivel mundial durante 2025 . Más del 90% de la nueva capacidad de generación verde superó en precio a las alternativas de combustibles tradicionales más baratas. El costo de financiamiento se convirtió en el principal obstáculo para el despliegue de infraestructura verde en economías emergentes. La Agencia Internacional de Energías Renovables (IRENA) reveló que los proyectos de energía limpia construidos en 2025 generaron un ahorro global de 480,000 millones de dóla",
-    "El Plan es resultado del trabajo coordinado entre el Gobierno de México, encabezado por Claudia Sheinbaum Pardo, y el Gobierno del Estado de México, a cargo de Delfina Gómez Álvarez. A un año de su lanzamiento oficial, el Plan Integral de la Zona Oriente del Estado de México ha consolidado una inversión total de 75 mil 786 millones de pesos, distribuidos en 121 programas y acciones sociales y urbanas encaminadas a transformar las condiciones de vida de 10 millones de mexiquenses. Este proyecto representa un esfuerzo de coordinación metropolitana sin precedentes entre el Gobier"
+    "El Plan es resultado del trabajo coordinado entre el Gobierno de México, encabezado por Claudia Sheinbaum Pardo, y el Gobierno del Estado de México, a cargo de Delfina Gómez Álvarez. A un año de su lanzamiento oficial, el Plan Integral de la Zona Oriente del Estado de México ha consolidado una inversión total de 75 mil 786 millones de pesos, distribuidos en 121 programas y acciones sociales y urbanas encaminadas a transformar las condiciones de vida de 10 millones de mexiquenses. Este proyecto representa un esfuerzo de coordinación metropolitana sin precedentes entre el Gobier",
+    "El estado venezolano de La Guaira está más militarizado de lo habitual este viernes, cuando se cumplen nueve días del doble terremoto, y también seis meses desde que EE.UU. capturó a Nicolás Maduro y a su esposa, la diputada Cilia Flores, durante una operación en Caracas. En La Guaira, se ven largas filas de personas que esperan su turno para recibir comida, mientras continúan la remoción de escombros y las labores de búsqueda, a pesar de que la probabilidad de encontrar a más personas con vida disminuye con el paso de las horas. En este contexto, la presidenta encargada de Venezuela, Delcy Ro",
+    "Colombia vs Ghana EN VIVO: juegan por los 16avos de final del Mundial 2026. Sigue la trasmisión del cotejo desde el Estadio Kansas City. Colombia empató 0-0 ante Portugal en el último encuentro de la fase de grupos. Antes de este partido, venció a Uzbekistán (3-1) y a RD Congo (1-0), resultados que le sirvieron avanzar como líderes del Grupo K. En cambio, Ghana pasó como uno de los ocho mejores terceros del Mundial 2026. En su debut en esta Copa del Mundo, el equipo africano le ganó a Panamá (1-0) e igualó ante Inglaterra (0-0). Y"
   ],
   "hashes_contenido": [
-    "b154692efa7f13e94410b18e5aae9bae",
-    "561376f4afa5ea047ebc00e73849bf14",
-    "ec70e12ec5b84a203c449835e813be77",
-    "14ac04dc4a35a57ef28696bc89e19230",
     "01f25309a24c832e3fed13e4c6e05120",
     "c223dd1edffaade56a8a067891fd8036",
     "9687a0aded08879fbb2bd59aa5507ea4",
@@ -861,11 +847,11 @@
     "323b0a4cbc1d5159ba39100838abe8cd",
     "535ed584d4a32c851ddf3cf39308a369",
     "dbe09c17076e66b02f6b0d850d9724ae",
-    "ddff838a690336703bdbe74e537fdc61"
+    "ddff838a690336703bdbe74e537fdc61",
+    "699cac982231aa5a57a9f4babdbfc501",
+    "33f072daf3f40d2f88b3b62c932ccbc6"
   ],
   "hashes_permanentes": [
-    "a12affeb532f7b002b58c6ffdf8a260a",
-    "666dfe6d4ba6ddb37adf24faab8c97c3",
     "129e3c695172862630aaa93a92b43023",
     "b230b9e41a150939aa47df253de916a0",
     "5f41d474d0f42aad0814d4841a3a6b5f",
@@ -1363,18 +1349,16 @@
     "7c0eeb2087b188bef1a3ce552b5e64e5",
     "c01a0b7c9294813d2d9d010aa0e1540f",
     "f49b9907787a96de39f3b48a0abdadce",
-    "8135930a42666142ed82b9a85324503c"
+    "8135930a42666142ed82b9a85324503c",
+    "f158dcafd8c3e5be6ce096b7a37c144a",
+    "a59bbcdb98b685a8efca7c47b42e812d"
   ],
   "estadisticas": {
-    "total_publicadas": 693,
+    "total_publicadas": 695,
     "total_fb": 201,
-    "total_wp": 587
+    "total_wp": 589
   },
   "urls_normalizadas": [
-    "qore.com/ai/modelos-de-ia-locales-pueden-competir-con-la-nube",
-    "qore.com/medio-ambiente/consumidores-ricos-causan-billones-en-danos-al-planeta",
-    "cope.es/programas/poniendo-las-calles/noticias/ana-torroja-he-abierto-puertas-llevaban-cerradas-20260619_3387513",
-    "infolibre.es/politica/sanchez-no-cierra-puerta-adelantar-elecciones-si-no-aprueban-presupuestos_1_2211464",
     "diariolibre.com/mundo/medio-oriente/2026/06/19/trafico-maritimo-en-ormuz-muestra-signos-de-recuperacion/3572548",
     "superdeporte.es/futbol/2026/06/19/cambiar-fuente-victor-munoz-jugador-mundial-131592959",
     "diariolibre.com/mundo/america-latina/2026/06/19/cuba-aprueba-su-mayor-paquete-reformas-economicas/3572708",
@@ -1512,7 +1496,9 @@
     "cooperativa.cl/noticias/pais/dd-hh/gobierno-cierra-la-unidad-que-investiga-adopciones-ilegales-y-causa/2026-07-02/185955",
     "efectococuyo.com/internacionales/programa-mundial-de-alimentos-busca-asistir-a-500-000-venezolanos-tras-sismos",
     "qore.com/energia/renovables-ahorran-480000-mdd-en-combustibles-fosiles",
-    "excelsior.com.mx/nacional/infraestructura-y-bienestar-plan-oriente-transforma-calidad-vida-10-millones-mexiquenses"
+    "excelsior.com.mx/nacional/infraestructura-y-bienestar-plan-oriente-transforma-calidad-vida-10-millones-mexiquenses",
+    "cooperativa.cl/noticias/mundo/venezuela/militarizacion-y-filas-por-comida-asi-esta-venezuela-a-nueve-dias-de/2026-07-03/141154",
+    "rpp.pe/futbol/mundial-2026/colombia-vs-ghana-en-directo-sigue-la-transmision-minuto-a-minuto-del-partido-por-los-16avos-de-final-de-mundial-2026-live-3491"
   ],
   "urls_fb_publicadas": [
     "785",

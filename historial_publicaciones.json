@@ -1361,7 +1361,7 @@
   ],
   "estadisticas": {
     "total_publicadas": 744,
-    "total_fb": 209,
+    "total_fb": 210,
     "total_wp": 638
   },
   "urls_normalizadas": [
@@ -1508,8 +1508,6 @@
     "diariocordoba.com/deportes/2026/07/08/cuartos-final-mundial-cuadro-completo-emparejamientos-cruces-fechas-horarios-analisis-132240434"
   ],
   "urls_fb_publicadas": [
-    "870",
-    "https://verdadhoy.com/donald-trump-habla-con-hezbola-e-israel-para-que-cesen-ataques-en-libano/",
     "884",
     "https://verdadhoy.com/putin-inicia-fase-v-2-de-guerra-que-significa-esto/",
     "888",
@@ -1707,6 +1705,8 @@
     "1821",
     "https://verdadhoy.com/fondo-quimal-2026/",
     "1868",
-    "https://verdadhoy.com/lluvias-record-en-corral/"
+    "https://verdadhoy.com/lluvias-record-en-corral/",
+    "1848",
+    "https://verdadhoy.com/calendario-mundial-2026-partidos-semana/"
   ]
 }

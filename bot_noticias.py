@@ -1391,12 +1391,90 @@ def es_brand_safe(categoria):
 # ──────────────────────────────────────────────────────────
 # REESCRITURA CON IA (SEO avanzado)
 # ──────────────────────────────────────────────────────────
-def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
+PALABRAS_TRANSICION = [
+    'sin embargo', 'además', 'por otro lado', 'en consecuencia', 'a su vez',
+    'no obstante', 'por ejemplo', 'en primer lugar', 'finalmente', 'asimismo',
+    'por lo tanto', 'en efecto', 'por su parte', 'en tanto', 'de hecho',
+    'en este sentido', 'como resultado', 'en cambio', 'cabe destacar',
+    'mientras tanto', 'por consiguiente', 'en última instancia', 'en tal caso',
+]
+INICIOS_META_PROHIBIDOS = ('descubre', 'conoce', 'entérate', 'entera', 'sabías')
+
+def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo=''):
+    """
+    V17.9.12: Verificación EN CÓDIGO (no solo en el prompt) de las reglas de
+    calidad que se venían comprobando a mano en la revisión editorial manual.
+    El prompt del Editor Jefe ya le pide todo esto a la IA con una sección de
+    "autovalidación", pero esa autovalidación depende de que el modelo la
+    cumpla por su cuenta — CASO REAL: "Cuartos de final del Mundial 2026" se
+    publicó con 248 palabras (mínimo pedido: 550), meta descripción de 71
+    caracteres empezando con "Descubre" (prohibido), sin blockquote y con
+    solo 2 conectores de transición (mínimo pedido: 5). El prompt lo pedía
+    todo correctamente, pero nadie lo comprobó antes de publicar.
+
+    Devuelve (es_valido: bool, problemas: list[str]).
+    Los problemas se redactan en el mismo lenguaje que usaría un editor
+    humano, para poder reenviarlos directo a la IA como feedback de reintento.
+    """
+    problemas = []
+
+    texto_plano = re.sub(r'<[^>]+>', ' ', contenido_html or '')
+    texto_plano = re.sub(r'\s+', ' ', texto_plano).strip()
+    n_palabras = len(texto_plano.split())
+
+    if n_palabras < 500:
+        problemas.append(
+            f"El artículo tiene solo {n_palabras} palabras — el mínimo exigido es 550. "
+            "Desarrolla más cada sección con datos concretos, no rellenes con frases genéricas."
+        )
+
+    if '<blockquote' not in (contenido_html or ''):
+        problemas.append(
+            "Falta el elemento 'Dato destacado' (bloque <blockquote>) — es obligatorio. "
+            "Incluye una cita textual o el dato estadístico más impactante del artículo."
+        )
+
+    n_h2 = len(re.findall(r'<h2', contenido_html or '', flags=re.IGNORECASE))
+    if n_h2 < 4:
+        problemas.append(
+            f"El artículo tiene solo {n_h2} subtítulos H2 — el mínimo exigido es 4, "
+            "cada uno con un ángulo distinto del tema."
+        )
+
+    texto_lower = texto_plano.lower()
+    n_transiciones = sum(1 for palabra in PALABRAS_TRANSICION if palabra in texto_lower)
+    if n_transiciones < 5:
+        problemas.append(
+            f"Solo se detectaron {n_transiciones} palabras de transición — el mínimo es 5 "
+            "(sin embargo, además, por otro lado, en consecuencia, asimismo, por ejemplo, etc.)."
+        )
+
+    meta_desc = meta_desc or ''
+    len_meta = len(meta_desc)
+    if len_meta < 130 or len_meta > 160:
+        problemas.append(
+            f"La meta descripción tiene {len_meta} caracteres — debe estar entre 140 y 155. "
+            "Ajústala sin cortar palabras a la mitad."
+        )
+    if meta_desc.strip().lower().startswith(INICIOS_META_PROHIBIDOS):
+        problemas.append(
+            "La meta descripción empieza con una palabra prohibida "
+            "('descubre', 'conoce', 'entérate'...). Empieza con el dato o el hecho real."
+        )
+
+    return (len(problemas) == 0, problemas)
+
+def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general', feedback_correccion=None):
     """
     V16: La IA lee el contenido completo y decide la categoría correcta.
     La categoria_sugerida es solo una pista inicial — la IA puede y debe corregirla.
     Devuelve dict con: titulo_seo, meta_descripcion, contenido_html,
                        keyword_principal, keywords_secundarias, categoria
+
+    V17.9.12: feedback_correccion (lista de strings o None) — cuando el
+    primer intento de esta noticia no pasó validar_calidad_articulo(), se
+    reenvía aquí con los problemas detectados para que la IA corrija
+    puntualmente esos fallos en el reintento, en vez de regenerar a ciegas.
     """
     api_key = GROQ_API_KEY or OPENROUTER_API_KEY or OPENAI_API_KEY
     if not api_key:
@@ -1415,6 +1493,22 @@ def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general'):
     ]
     emoji_box, texto_box = random.choice(TITULOS_BOX_RESUMEN)
     titulo_box_resumen = f"{emoji_box} {texto_box}"
+
+    # V17.9.12: si este es un reintento tras fallar validar_calidad_articulo(),
+    # se le muestra a la IA EXACTAMENTE qué falló en el intento anterior para
+    # que lo corrija de forma puntual, en vez de simplemente "intentarlo de
+    # nuevo" sin contexto (lo cual suele repetir los mismos errores).
+    if feedback_correccion:
+        problemas_txt = '\n'.join(f'  - {p}' for p in feedback_correccion)
+        bloque_feedback_correccion = f"""⚠️ CORRECCIÓN OBLIGATORIA — este es un reintento.
+Tu borrador anterior de esta misma noticia NO pasó el control de calidad por
+estos motivos concretos:
+{problemas_txt}
+Corrige específicamente estos puntos en esta nueva versión. No repitas los
+mismos errores.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+    else:
+        bloque_feedback_correccion = ""
 
     prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español para América Latina.
 Tu tarea: clasificar correctamente esta noticia y redactarla como un artículo periodístico ORIGINAL con valor editorial propio.
@@ -1682,6 +1776,8 @@ es un paso interno.
   14. No hay frases ni estructura de párrafo copiadas del artículo original.
   15. El texto suena a periodista humano, no a resumen automático de IA.
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{bloque_feedback_correccion}
 RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
 {{"titulo_seo": "...", "meta_descripcion": "...", "contenido_html": "<div style=...>[BOX]</div><p>...</p>...[ENLACES_INTERNOS]", "keyword_principal": "...", "keywords_secundarias": ["kw2","kw3","kw4","kw5"], "categoria": "latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general"}}"""
 
@@ -2762,6 +2858,43 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
 
     # IA reescritura SEO
     resultado_ia = reescribir_noticia_v9(titulo, contenido, tema)
+
+    # V17.9.12: validar en código (no solo confiar en la autovalidación del
+    # prompt) — si falla, se le da a la IA UN reintento con el feedback
+    # concreto de qué corregir. Si el reintento también falla, se descarta
+    # la noticia (igual que cuando la IA no responde en absoluto) para que
+    # el llamador pruebe con la siguiente candidata, en vez de publicar un
+    # artículo de baja calidad como "Cuartos de final del Mundial 2026"
+    # (248 palabras, meta de 71 caracteres, sin blockquote, 2 transiciones).
+    if resultado_ia:
+        es_valido, problemas = validar_calidad_articulo(
+            resultado_ia.get('contenido_html', ''),
+            resultado_ia.get('meta_descripcion', ''),
+            resultado_ia.get('titulo_seo', ''),
+        )
+        if not es_valido:
+            log(f"⚠️ Artículo no pasó control de calidad ({len(problemas)} problema(s)) — reintentando con feedback:", 'advertencia')
+            for p in problemas:
+                log(f"   - {p}", 'advertencia')
+            resultado_reintento = reescribir_noticia_v9(titulo, contenido, tema, feedback_correccion=problemas)
+            if resultado_reintento:
+                es_valido_2, problemas_2 = validar_calidad_articulo(
+                    resultado_reintento.get('contenido_html', ''),
+                    resultado_reintento.get('meta_descripcion', ''),
+                    resultado_reintento.get('titulo_seo', ''),
+                )
+                if es_valido_2:
+                    log("✅ Reintento corrigió los problemas — usando esta versión", 'exito')
+                    resultado_ia = resultado_reintento
+                else:
+                    log(f"❌ El reintento tampoco pasó el control de calidad ({len(problemas_2)} problema(s)) — se descarta esta noticia", 'error')
+                    for p in problemas_2:
+                        log(f"   - {p}", 'error')
+                    return None
+            else:
+                log("❌ IA no disponible para el reintento — se descarta esta noticia", 'error')
+                return None
+
     alt_text_imagen = titulo[:125]
     tags_ids = []
 

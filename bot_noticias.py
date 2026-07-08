@@ -1785,19 +1785,22 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
         """
         V17.9.4: request a la API de IA aislado en su propia función para poder
         reutilizarlo tanto para el proveedor principal como para el fallback.
-        Devuelve (resp_json, None) si la llamada fue exitosa, o (None, motivo)
-        si falló — motivo en {'credito','rate_limit','auth','modelo','otro'}.
+        Devuelve (resp_json, None, None) si la llamada fue exitosa, o
+        (None, motivo, espera_seg) si falló — motivo en
+        {'credito','rate_limit','auth','modelo','otro'}. espera_seg es el
+        número de segundos que el proveedor sugiere esperar antes de
+        reintentar (V17.9.13), o None si no aplica/no se pudo determinar.
         """
         try:
             resp = requests.post(url_api, headers=headers, json=payload, timeout=55)
         except Exception as e:
             log(f"❌ IA: error de red llamando a {url_api}: {e}", 'error')
-            return None, 'otro'
+            return None, 'otro', None
         try:
             resp_json = resp.json()
         except Exception:
             log(f"❌ IA: respuesta no es JSON válido (HTTP {resp.status_code}): {resp.text[:200]}", 'error')
-            return None, 'otro'
+            return None, 'otro', None
 
         if "choices" not in resp_json:
             err = resp_json.get("error", {})
@@ -1811,18 +1814,30 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
             msg_lower = str(msg).lower()
             if "insufficient" in msg_lower or "quota" in msg_lower or "credit" in msg_lower or "balance" in msg_lower:
                 log("   💳 CAUSA PROBABLE: Sin créditos/saldo en la API.", 'error')
-                return None, 'credito'
+                return None, 'credito', None
             elif "rate limit" in msg_lower or code == 429:
                 log("   ⏳ CAUSA PROBABLE: Rate limit alcanzado.", 'advertencia')
-                return None, 'rate_limit'
+                # V17.9.13: Groq indica en el propio mensaje cuánto esperar
+                # ("Please try again in 32.1s") — lo extraemos para poder
+                # esperar ESE tiempo y reintentar con el mismo proveedor
+                # gratuito en vez de saltar directo a proveedores de pago
+                # que probablemente también fallen por falta de crédito.
+                espera_seg = None
+                m = re.search(r'try again in ([\d.]+)\s*s', msg_lower)
+                if m:
+                    try:
+                        espera_seg = float(m.group(1))
+                    except ValueError:
+                        espera_seg = None
+                return None, 'rate_limit', espera_seg
             elif ("invalid" in msg_lower and "key" in msg_lower) or code == 401:
                 log("   🔑 CAUSA PROBABLE: API key inválida o expirada. Verifica los GitHub Secrets.", 'error')
-                return None, 'auth'
+                return None, 'auth', None
             elif "model" in msg_lower:
                 log(f"   🤖 CAUSA PROBABLE: Modelo '{modelo}' no disponible o nombre incorrecto.", 'error')
-                return None, 'modelo'
-            return None, 'otro'
-        return resp_json, None
+                return None, 'modelo', None
+            return None, 'otro', None
+        return resp_json, None, None
 
     try:
         # V17.9.5: Groq como proveedor GRATUITO principal. Se arma una lista
@@ -1864,7 +1879,24 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
                          "temperature": 0.35, "max_tokens": 3500}
             if i > 0:
                 log(f"   🔁 Reintentando con {nombre}...", 'advertencia')
-            resp_json, motivo = _llamar_api_ia(url_i, headers_i, modelo_i, payload_i)
+            resp_json, motivo, espera_seg = _llamar_api_ia(url_i, headers_i, modelo_i, payload_i)
+
+            # V17.9.13: si el rate limit es temporal y el propio proveedor
+            # indicó cuánto esperar, esperamos ESE tiempo y reintentamos con
+            # el MISMO proveedor gratuito (Groq) una vez, en vez de saltar
+            # directo a proveedores de pago que probablemente fallen igual
+            # por falta de crédito. CASO REAL: Groq devolvía "try again in
+            # 32.1s" y el bot pasaba de inmediato a OpenRouter/OpenAI, que
+            # fallaban por falta de saldo — desperdiciando la oportunidad de
+            # simplemente esperar y usar el proveedor gratis.
+            if resp_json is None and motivo == 'rate_limit' and espera_seg is not None and espera_seg <= 45:
+                espera_real = espera_seg + 2  # margen de seguridad
+                log(f"   ⏳ Esperando {espera_real:.0f}s por rate limit de {nombre} antes de reintentar (gratis)...", 'advertencia')
+                time.sleep(espera_real)
+                resp_json, motivo, espera_seg = _llamar_api_ia(url_i, headers_i, modelo_i, payload_i)
+                if resp_json is not None:
+                    log(f"   ✅ {nombre} respondió tras esperar el rate limit", 'exito')
+
             if resp_json is not None:
                 url_api, headers, modelo, payload = url_i, headers_i, modelo_i, payload_i
                 if i > 0:

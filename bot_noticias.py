@@ -771,6 +771,25 @@ MAX_POSTS_WP_DIA_CHILE  = 3    # Chile: 3 artículos/día (V17.9.1: antes 8)
 MAX_POSTS_WP_DIA_LATAM  = 3    # LATAM sin Chile: 3 artículos/día (V17.9.1: antes 12)
 MAX_POSTS_WP_DIA_TOTAL  = 12   # Total máximo global (6 + 3 + 3)
 
+# V17.9.13: Reintento de calidad — DESACTIVADO por defecto.
+# CONTEXTO: con el plan gratuito de Groq (12,000 tokens/min Y 100,000
+# tokens/día), cada llamada a la IA ya cuesta 6,000-9,500 tokens solo de
+# prompt. El reintento de validar_calidad_articulo() duplicaba el gasto en
+# cada artículo que fallaba el primer intento — y en la práctica, casi
+# nunca lo salvaba (ej. "Toyota": 345 palabras → reintento 386, seguía
+# fallando). Resultado real: se agotaba el cupo DIARIO mucho antes de
+# publicar los 12 artículos/día esperados, sin ninguna mejora real de
+# calidad a cambio.
+# Con el flag en False: un artículo que falla validar_calidad_articulo() se
+# descarta directo (sin segunda llamada a la IA) — mismo criterio que
+# cuando la IA no responde en absoluto. Esto NO relaja el control de
+# calidad (los artículos malos se siguen descartando igual), solo deja de
+# gastar tokens en un reintento que rara vez funcionaba.
+# Si en el futuro se sube a un plan pagado de Groq (Dev Tier, que levanta
+# ambos límites TPM y TPD) o se agrega más cupo de otro proveedor, poner
+# esto en True para reactivar el reintento con feedback.
+REINTENTAR_CALIDAD_IA   = False
+
 # Anti-duplicados
 UMBRAL_SIMILITUD_TITULO    = 0.72
 UMBRAL_SIMILITUD_CONTENIDO = 0.62
@@ -2891,13 +2910,15 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     # IA reescritura SEO
     resultado_ia = reescribir_noticia_v9(titulo, contenido, tema)
 
-    # V17.9.12: validar en código (no solo confiar en la autovalidación del
-    # prompt) — si falla, se le da a la IA UN reintento con el feedback
-    # concreto de qué corregir. Si el reintento también falla, se descarta
-    # la noticia (igual que cuando la IA no responde en absoluto) para que
-    # el llamador pruebe con la siguiente candidata, en vez de publicar un
-    # artículo de baja calidad como "Cuartos de final del Mundial 2026"
-    # (248 palabras, meta de 71 caracteres, sin blockquote, 2 transiciones).
+    # V17.9.12/13: validar en código (no solo confiar en la autovalidación
+    # del prompt). Si falla y REINTENTAR_CALIDAD_IA está activo, se le da a
+    # la IA UN reintento con el feedback concreto de qué corregir. Con el
+    # plan gratuito de Groq esto duplicaba el gasto de tokens y casi nunca
+    # salvaba el artículo (ver changelog V17.9.13), así que por defecto está
+    # desactivado: un artículo que falla se descarta directo, sin gastar una
+    # segunda llamada — mismo criterio que cuando la IA no responde en
+    # absoluto. El control de calidad sigue siendo igual de estricto; solo
+    # cambia si se le da a la IA una segunda oportunidad o no.
     if resultado_ia:
         es_valido, problemas = validar_calidad_articulo(
             resultado_ia.get('contenido_html', ''),
@@ -2905,6 +2926,12 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
             resultado_ia.get('titulo_seo', ''),
         )
         if not es_valido:
+            if not REINTENTAR_CALIDAD_IA:
+                log(f"❌ Artículo no pasó control de calidad ({len(problemas)} problema(s)) — se descarta (reintento desactivado, ver REINTENTAR_CALIDAD_IA)", 'error')
+                for p in problemas:
+                    log(f"   - {p}", 'error')
+                return None
+
             log(f"⚠️ Artículo no pasó control de calidad ({len(problemas)} problema(s)) — reintentando con feedback:", 'advertencia')
             for p in problemas:
                 log(f"   - {p}", 'advertencia')

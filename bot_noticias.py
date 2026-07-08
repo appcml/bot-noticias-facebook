@@ -2671,8 +2671,18 @@ def obtener_crear_tag_wp(nombre_tag):
         log(f"⚠️ Error gestionando tag '{nombre_tag}': {e}", 'debug')
     return None
 
-def subir_imagen_wp(imagen_path, titulo, alt_text=""):
-    """Sube imagen a WordPress y asigna alt_text."""
+def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descripcion=""):
+    """
+    Sube imagen a WordPress y asigna los 4 campos de metadatos que antes se
+    completaban a mano en cada artículo (texto alternativo, título, leyenda
+    y descripción) — mismo criterio que se usaba en la revisión manual:
+      - Texto alternativo: descriptivo del contenido de la foto (ya existía)
+      - Título: frase clave / tema del artículo
+      - Leyenda: contexto breve + "Fuente: Verdad Hoy" (siempre visible bajo
+        la imagen en el front-end, ayuda a SEO de imágenes y a E-E-A-T)
+      - Descripción: metadata interna más completa (no visible al público,
+        pero indexable por buscadores de imágenes)
+    """
     if not imagen_path or not os.path.exists(imagen_path):
         return None
     try:
@@ -2690,15 +2700,28 @@ def subir_imagen_wp(imagen_path, titulo, alt_text=""):
         if 'id' in r:
             media_id = r['id']
             log(f"🖼️ Imagen subida a WP — ID: {media_id}", 'exito')
+
+            titulo_media = (frase_clave or titulo)[:100]
+            leyenda_media = f"{titulo[:150]} — Fuente: Verdad Hoy"
+            descripcion_media = (
+                f"{titulo}. {meta_descripcion}".strip()[:300]
+                if meta_descripcion else titulo[:300]
+            )
+            metadatos = {
+                'title': titulo_media,
+                'caption': leyenda_media,
+                'description': descripcion_media,
+            }
             if alt_text:
-                try:
-                    requests.post(
-                        f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
-                        json={'alt_text': alt_text[:125]},
-                        auth=(WP_USER, WP_APP_PASSWORD), timeout=10
-                    )
-                except:
-                    pass
+                metadatos['alt_text'] = alt_text[:125]
+            try:
+                requests.post(
+                    f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
+                    json=metadatos,
+                    auth=(WP_USER, WP_APP_PASSWORD), timeout=10
+                )
+            except Exception as e:
+                log(f"⚠️ No se pudieron guardar metadatos completos de imagen: {e}", 'debug')
             return media_id
         else:
             log(f"⚠️ Error subiendo imagen: {r.get('message', 'desconocido')}", 'advertencia')
@@ -2872,9 +2895,18 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     meta_schema    = (meta_desc or contenido[:155]).replace('"', "'").replace('\\\\', '')
 
     # V14.1: URL de imagen — se actualiza con URL real tras subir a WP
-    imagen_schema_url  = f"{WP_URL}/wp-content/uploads/favicon_512.png"  # placeholder
+    # FIX LOGO: placeholder ÚNICO y distinto al del logo del publisher.
+    # Antes, imagen_schema_url y publisher.logo.url eran el MISMO string
+    # ("{WP_URL}/wp-content/uploads/favicon_512.png"), así que el .replace()
+    # de más abajo (que solo debía actualizar la imagen del artículo con la
+    # URL real subida a WP) también sobrescribía el logo del publisher con
+    # la foto de la noticia — bug confirmado en los artículos de Colombia y
+    # de conexión satelital, donde el "logo" del schema terminó siendo la
+    # imagen destacada del artículo en vez del logo fijo de Verdad Hoy.
+    imagen_schema_url  = "__PLACEHOLDER_IMAGEN_ARTICULO__"  # marcador único, nunca choca con el logo
     imagen_schema_w    = 1200
     imagen_schema_h    = 630
+    LOGO_URL_FIJO      = f"{WP_URL}/wp-content/uploads/favicon_512.png"  # logo real del sitio, nunca se reemplaza
 
     schema_markup = f"""
 <script type="application/ld+json">
@@ -2904,7 +2936,7 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     "url": "{WP_URL}",
     "logo": {{
       "@type": "ImageObject",
-      "url": "{WP_URL}/wp-content/uploads/favicon_512.png",
+      "url": "{LOGO_URL_FIJO}",
       "width": 512,
       "height": 512
     }}
@@ -2958,8 +2990,11 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         except:
             fecha_wp = None
 
-    # Subir imagen
-    imagen_id = subir_imagen_wp(imagen_path, titulo, alt_text=alt_text_imagen)
+    # Subir imagen (con metadatos completos: título, leyenda y descripción)
+    imagen_id = subir_imagen_wp(
+        imagen_path, titulo, alt_text=alt_text_imagen,
+        frase_clave=frase_clave, meta_descripcion=meta_desc,
+    )
     if not imagen_id:
         log("❌ No se pudo subir imagen — cancelando WP", 'error')
         return None

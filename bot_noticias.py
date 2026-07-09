@@ -733,6 +733,7 @@ WP_APP_PASSWORD    = os.getenv('WP_APP_PASSWORD', '')
 PINTEREST_TOKEN    = os.getenv('PINTEREST_TOKEN', '')
 YOUTUBE_API_KEY    = os.getenv('YOUTUBE_API_KEY', '')
 GROQ_API_KEY       = os.getenv('GROQ_API_KEY', '')       # V17.9.5: proveedor gratuito principal
+GEMINI_API_KEY      = os.getenv('GEMINI_API_KEY', '')     # V17.9.14: 2do proveedor gratuito (tier diario más generoso que Groq)
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 OPENAI_API_KEY     = os.getenv('OPENAI_API_KEY', '')
 GITHUB_TOKEN       = os.getenv('GITHUB_TOKEN', '')
@@ -1872,6 +1873,22 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
                 "https://api.groq.com/openai/v1/chat/completions",
                 {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
                 "llama-3.3-70b-versatile",
+            ))
+        if GEMINI_API_KEY:
+            # V17.9.14: Gemini como 2do proveedor GRATUITO, antes de los de pago.
+            # Google expone un endpoint 100% compatible con el formato OpenAI
+            # (mismo request/response que Groq/OpenAI), así que se integra sin
+            # tocar el resto del parseo. Su tier gratuito (modelos Flash/Flash-Lite)
+            # tiene un límite diario bastante más generoso que el de Groq (100k
+            # tokens/día) — verifica el límite vigente de tu proyecto en
+            # https://aistudio.google.com antes de confiar en un número fijo,
+            # porque Google los ajusta con frecuencia. Si "gemini-2.5-flash" deja
+            # de estar disponible o cambia de nombre, actualiza el modelo aquí.
+            proveedores.append((
+                "Gemini",
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"},
+                "gemini-2.5-flash",
             ))
         if OPENROUTER_API_KEY:
             proveedores.append((

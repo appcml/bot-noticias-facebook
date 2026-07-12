@@ -88,8 +88,9 @@ jobs:
           # ── Pinterest ─────────────────────────────────────
           PINTEREST_TOKEN:      ${{ secrets.PINTEREST_TOKEN }}
 
-          # ── IA (Groq gratis primero, luego OpenRouter / OpenAI) ──
+          # ── IA (Groq gratis primero, luego Gemini gratis, luego OpenRouter / OpenAI de pago) ──
           GROQ_API_KEY:         ${{ secrets.GROQ_API_KEY }}
+          GEMINI_API_KEY:       ${{ secrets.GEMINI_API_KEY }}
           OPENROUTER_API_KEY:   ${{ secrets.OPENROUTER_API_KEY }}
           OPENAI_API_KEY:       ${{ secrets.OPENAI_API_KEY }}
 

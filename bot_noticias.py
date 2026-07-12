@@ -1895,7 +1895,19 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
                 "OpenRouter",
                 "https://openrouter.ai/api/v1/chat/completions",
                 {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"},
-                "openai/gpt-4o-mini",
+                # V17.9.15: modelo GRATIS (sufijo :free) en vez de "openai/gpt-4o-mini"
+                # de pago. Con el modelo de pago, el bot fallaba con HTTP 402
+                # ("requires more credits") porque OPENROUTER_API_KEY no tenía saldo
+                # cargado — no era un problema de la clave, sino de estar pidiendo un
+                # modelo pagado sin fondos. Los modelos :free en OpenRouter cuestan
+                # $0, no requieren tarjeta ni crédito, y usan la MISMA API key que ya
+                # tienes. Límite: 20 solicitudes/min y 50/día (sube a 1000/día si
+                # alguna vez cargaste $10+ en la cuenta, aunque sea para otra cosa).
+                # Llama 3.3 70B es, de los modelos gratis disponibles, uno de los más
+                # estables/duraderos y con buen soporte de español. Si en el futuro
+                # deja de estar disponible, revisa la lista vigente en
+                # https://openrouter.ai/models?q=free y actualiza este string.
+                "meta-llama/llama-3.3-70b-instruct:free",
             ))
         if OPENAI_API_KEY:
             proveedores.append((

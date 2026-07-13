@@ -1868,35 +1868,22 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
         return resp_json, None, None
 
     try:
-        # V17.9.5: Groq como proveedor GRATUITO principal. Se arma una lista
-        # ordenada de proveedores disponibles (según qué API keys existan) y
-        # se prueba uno por uno — el primero que responda gana. Antes de esto
-        # solo existía OpenRouter→OpenAI; ahora Groq va primero porque no
-        # cuesta nada y usa el mismo formato "estilo OpenAI" que ya soporta
-        # _llamar_api_ia(), así que no hace falta tocar el resto del parseo.
+        # V17.9.18: reordenado a pedido del usuario — OpenAI ahora va PRIMERO.
+        # Con saldo real cargado ($10, ~$0.02 gastados en una tanda completa
+        # de artículos), OpenAI resultó más confiable que los gratuitos: Groq
+        # se queda sin cupo diario (100k tokens) a media tarde, y el modelo
+        # gratis de OpenRouter (:free) se satura por alta demanda de otros
+        # usuarios. Priorizar OpenAI evita perder tiempo en 2-3 reintentos
+        # fallidos antes de llegar a un proveedor que sí responde, a cambio
+        # de un costo mensual ínfimo (calculado en ~$0.90/mes para este volumen).
+        # Orden: OpenAI → OpenRouter (gratis) → Groq (gratis) → Gemini (gratis).
         proveedores = []
-        if GROQ_API_KEY:
+        if OPENAI_API_KEY:
             proveedores.append((
-                "Groq",
-                "https://api.groq.com/openai/v1/chat/completions",
-                {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
-                "llama-3.3-70b-versatile",
-            ))
-        if GEMINI_API_KEY:
-            # V17.9.14: Gemini como 2do proveedor GRATUITO, antes de los de pago.
-            # Google expone un endpoint 100% compatible con el formato OpenAI
-            # (mismo request/response que Groq/OpenAI), así que se integra sin
-            # tocar el resto del parseo. Su tier gratuito (modelos Flash/Flash-Lite)
-            # tiene un límite diario bastante más generoso que el de Groq (100k
-            # tokens/día) — verifica el límite vigente de tu proyecto en
-            # https://aistudio.google.com antes de confiar en un número fijo,
-            # porque Google los ajusta con frecuencia. Si "gemini-2.5-flash" deja
-            # de estar disponible o cambia de nombre, actualiza el modelo aquí.
-            proveedores.append((
-                "Gemini",
-                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"},
-                "gemini-2.5-flash",
+                "OpenAI",
+                "https://api.openai.com/v1/chat/completions",
+                {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
+                "gpt-4o-mini",
             ))
         if OPENROUTER_API_KEY:
             proveedores.append((
@@ -1917,13 +1904,56 @@ RESPONDE ÚNICAMENTE con este JSON sin markdown ni texto extra:
                 # https://openrouter.ai/models?q=free y actualiza este string.
                 "meta-llama/llama-3.3-70b-instruct:free",
             ))
-        if OPENAI_API_KEY:
+        if GROQ_API_KEY:
             proveedores.append((
-                "OpenAI",
-                "https://api.openai.com/v1/chat/completions",
-                {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-                "gpt-4o-mini",
+                "Groq",
+                "https://api.groq.com/openai/v1/chat/completions",
+                {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                "llama-3.3-70b-versatile",
             ))
+        if GEMINI_API_KEY:
+            # V17.9.14: Gemini como proveedor GRATUITO adicional. Google expone
+            # un endpoint 100% compatible con el formato OpenAI (mismo
+            # request/response que Groq/OpenAI), así que se integra sin tocar
+            # el resto del parseo. Su tier gratuito (modelos Flash/Flash-Lite)
+            # tiene un límite diario bastante más generoso que el de Groq (100k
+            # tokens/día) — verifica el límite vigente de tu proyecto en
+            # https://aistudio.google.com antes de confiar en un número fijo,
+            # porque Google los ajusta con frecuencia. Si "gemini-2.5-flash" deja
+            # de estar disponible o cambia de nombre, actualiza el modelo aquí.
+            proveedores.append((
+                "Gemini",
+                "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"},
+                "gemini-2.5-flash",
+            ))
+
+        # V17.9.16: diagnóstico — log UNA sola vez por ejecución de qué
+        # proveedores detecta el bot como disponibles (según qué API keys
+        # llegaron como variable de entorno). Existe porque en la práctica
+        # costó detectar que GEMINI_API_KEY no estaba llegando al proceso
+        # (secret mal nombrado, o falta en el workflow .yml) — sin este log,
+        # la única pista era la AUSENCIA de "Gemini" en los reintentos, algo
+        # fácil de pasar por alto en un log largo.
+        global _proveedores_ia_logueados
+        try:
+            _proveedores_ia_logueados
+        except NameError:
+            _proveedores_ia_logueados = False
+        if not _proveedores_ia_logueados:
+            nombres_disponibles = [p[0] for p in proveedores]
+            if nombres_disponibles:
+                log(f"🔑 Proveedores de IA detectados (según API keys presentes): {', '.join(nombres_disponibles)}", 'info')
+            else:
+                log("🔑 ⚠️ NINGÚN proveedor de IA detectado — ninguna API key de IA llegó como variable de entorno", 'error')
+            faltantes = []
+            if not GROQ_API_KEY:       faltantes.append("GROQ_API_KEY")
+            if not GEMINI_API_KEY:     faltantes.append("GEMINI_API_KEY")
+            if not OPENROUTER_API_KEY: faltantes.append("OPENROUTER_API_KEY")
+            if not OPENAI_API_KEY:     faltantes.append("OPENAI_API_KEY")
+            if faltantes:
+                log(f"🔑 No detectadas (revisa el secret en GitHub y el workflow .yml): {', '.join(faltantes)}", 'advertencia')
+            _proveedores_ia_logueados = True
 
         # V17.4 FIX: max_tokens subido a 3500 para evitar JSON cortado
         # El prompt ocupa ~1500-1800 tokens; necesitamos al menos 1500 para el artículo completo

@@ -1436,6 +1436,13 @@ PALABRAS_TRANSICION = [
     'por lo tanto', 'en efecto', 'por su parte', 'en tanto', 'de hecho',
     'en este sentido', 'como resultado', 'en cambio', 'cabe destacar',
     'mientras tanto', 'por consiguiente', 'en última instancia', 'en tal caso',
+    # V17.9.21: variantes adicionales — evita rechazar textos que ya están
+    # bien conectados pero con conectores distintos a la lista original.
+    'aunque', 'aun así', 'pese a', 'a pesar de', 'de esta manera', 'de este modo',
+    'en ese sentido', 'en esa línea', 'en la misma línea', 'bajo este escenario',
+    'en ese contexto', 'en este marco', 'eso sí', 'cabe mencionar', 'vale destacar',
+    'a la vez', 'al mismo tiempo', 'dado que', 'ya que', 'debido a esto',
+    'por su lado', 'de igual forma', 'de igual manera', 'en definitiva',
 ]
 INICIOS_META_PROHIBIDOS = ('descubre', 'conoce', 'entérate', 'entera', 'sabías')
 
@@ -1463,7 +1470,7 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo=''):
 
     if n_palabras < 500:
         problemas.append(
-            f"El artículo tiene solo {n_palabras} palabras — el mínimo exigido es 550. "
+            f"El artículo tiene solo {n_palabras} palabras — el mínimo exigido es 500. "
             "Desarrolla más cada sección con datos concretos, no rellenes con frases genéricas."
         )
 
@@ -1587,12 +1594,38 @@ def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general', feedb
     # se le muestra a la IA EXACTAMENTE qué falló en el intento anterior para
     # que lo corrija de forma puntual, en vez de simplemente "intentarlo de
     # nuevo" sin contexto (lo cual suele repetir los mismos errores).
+    # V17.9.21: instrucciones MUY literales en vez de repetir la regla
+    # genérica del prompt original — en la práctica, el modelo recibía "usa
+    # 5 palabras de transición" dos veces (prompt + feedback) y seguía
+    # entregando 0-2. Ahora se le pide copiar palabras EXACTAS de una lista
+    # cerrada y contar antes de responder, y se le da margen extra de
+    # palabras para que expandir no lo obligue a recortar otra sección.
     if feedback_correccion:
         problemas_txt = '\n'.join(f'  - {p}' for p in feedback_correccion)
+        hay_problema_transicion = any('transici' in p.lower() for p in feedback_correccion)
+        hay_problema_palabras = any('palabras — el mínimo' in p for p in feedback_correccion)
+        instrucciones_extra = ""
+        if hay_problema_transicion:
+            instrucciones_extra += """
+INSTRUCCIÓN LITERAL PARA TRANSICIONES: elige AL MENOS 6 frases de esta lista
+y cópialas TAL CUAL (sin cambiar la redacción) al inicio de 6 oraciones
+distintas, repartidas en distintos párrafos:
+"Sin embargo", "Además", "Por otro lado", "En consecuencia", "Asimismo",
+"Por su parte", "De hecho", "Cabe destacar", "En ese sentido", "Al mismo tiempo",
+"Aunque", "Eso sí", "Dado que", "En definitiva".
+Antes de responder, cuenta cuántas de estas frases usaste. Si son menos de 6,
+agrega más ANTES de entregar el JSON."""
+        if hay_problema_palabras:
+            instrucciones_extra += """
+INSTRUCCIÓN LITERAL PARA EXTENSIÓN: agrega una oración adicional de contexto
+o dato concreto en CADA uno de los 4 párrafos bajo los H2 (no solo en uno).
+Si usaste el contexto verificado de las fuentes web, desarrolla cada dato en
+2-3 oraciones en vez de mencionarlo de pasada en una sola línea."""
         bloque_feedback_correccion = f"""⚠️ CORRECCIÓN OBLIGATORIA — este es un reintento.
 Tu borrador anterior de esta misma noticia NO pasó el control de calidad por
 estos motivos concretos:
 {problemas_txt}
+{instrucciones_extra}
 Corrige específicamente estos puntos en esta nueva versión. No repitas los
 mismos errores.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""

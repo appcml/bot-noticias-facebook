@@ -734,6 +734,7 @@ PINTEREST_TOKEN    = os.getenv('PINTEREST_TOKEN', '')
 YOUTUBE_API_KEY    = os.getenv('YOUTUBE_API_KEY', '')
 GROQ_API_KEY       = os.getenv('GROQ_API_KEY', '')       # V17.9.5: proveedor gratuito principal
 GEMINI_API_KEY      = os.getenv('GEMINI_API_KEY', '')     # V17.9.14: 2do proveedor gratuito (tier diario más generoso que Groq)
+TAVILY_API_KEY      = os.getenv('TAVILY_API_KEY', '')     # V17.9.20: búsqueda web real para enriquecer artículos (1000 créditos/mes gratis)
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY', '')
 OPENAI_API_KEY     = os.getenv('OPENAI_API_KEY', '')
 GITHUB_TOKEN       = os.getenv('GITHUB_TOKEN', '')
@@ -789,7 +790,17 @@ MAX_POSTS_WP_DIA_TOTAL  = 12   # Total máximo global (6 + 3 + 3)
 # Si en el futuro se sube a un plan pagado de Groq (Dev Tier, que levanta
 # ambos límites TPM y TPD) o se agrega más cupo de otro proveedor, poner
 # esto en True para reactivar el reintento con feedback.
-REINTENTAR_CALIDAD_IA   = False
+# V17.9.19: REACTIVADO. Cuando esto se desactivó (ver historial abajo), el
+# proveedor principal era Groq gratis, con cupo diario muy ajustado — el
+# reintento duplicaba el gasto de un recurso escaso y casi nunca arreglaba
+# el artículo. Eso cambió: ahora OpenAI (de pago, con saldo real) es el
+# PRIMER proveedor de la cascada, cuesta centavos por tanda, y el reintento
+# con feedback específico debería tener mucho más éxito corrigiendo un
+# modelo más capaz que Llama 3.3 70B. CASO REAL que motivó reactivarlo:
+# una corrida completa (11 candidatas) generó artículos consistentemente
+# entre 330-490 palabras (bajo el mínimo de 550) y se descartaron TODAS sin
+# una sola oportunidad de corrección — 0 artículos publicados en WordPress.
+REINTENTAR_CALIDAD_IA   = True
 
 # V17.9.17: Interruptor maestro de Facebook — DESACTIVADO por solicitud del
 # usuario. Las funciones de Facebook (publicar_facebook_imagen,
@@ -1492,6 +1503,56 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo=''):
 
     return (len(problemas) == 0, problemas)
 
+def buscar_contexto_web(titulo, max_resultados=3):
+    """
+    V17.9.20: búsqueda web REAL (no inventada por la IA) para enriquecer
+    artículos con datos verificables — antecedentes, cifras, comparaciones —
+    en vez de depender solo del conocimiento paramétrico del modelo de IA,
+    que no puede verificar nada y termina rellenando con frases genéricas
+    cuando la nota scrapeada es corta.
+
+    Usa Tavily (https://tavily.com), diseñada específicamente para devolver
+    resultados listos para inyectar en un prompt de LLM. Tier gratuito: 1000
+    créditos/mes, sin tarjeta — cada búsqueda básica cuesta 1 crédito, así
+    que con ~12 artículos/día (~360/mes) hay margen de sobra.
+
+    Devuelve una lista de dicts {"title", "url", "content"} (puede ser
+    vacía si no hay TAVILY_API_KEY, si falla la búsqueda, o si no hay
+    resultados) — el llamador debe manejar el caso vacío sin romperse.
+    """
+    if not TAVILY_API_KEY:
+        return []
+    try:
+        resp = requests.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": TAVILY_API_KEY,
+                "query": titulo,
+                "search_depth": "basic",
+                "max_results": max_resultados,
+                "include_answer": False,
+            },
+            timeout=15,
+        )
+        data = resp.json()
+        resultados = data.get("results", [])
+        if not resultados:
+            log(f"🔎 Tavily: sin resultados para '{titulo[:60]}'", 'debug')
+            return []
+        log(f"🔎 Tavily: {len(resultados)} fuente(s) encontrada(s) para contexto adicional", 'info')
+        return [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("url", ""),
+                "content": (r.get("content", "") or "")[:600],  # recortado, no todo el artículo
+            }
+            for r in resultados
+        ]
+    except Exception as e:
+        log(f"⚠️ Tavily: búsqueda falló ({e}) — se continúa sin contexto adicional", 'advertencia')
+        return []
+
+
 def reescribir_noticia_v9(titulo, contenido, categoria_sugerida='general', feedback_correccion=None):
     """
     V16: La IA lee el contenido completo y decide la categoría correcta.
@@ -1538,6 +1599,28 @@ mismos errores.
     else:
         bloque_feedback_correccion = ""
 
+    # V17.9.20: búsqueda web real para dar a la IA material verificable con
+    # el que enriquecer el artículo, en vez de que solo pueda rellenar con
+    # generalidades de su conocimiento interno (sin poder verificar fechas,
+    # cifras o nombres actuales). No se busca en el reintento (feedback_correccion
+    # ya trae instrucciones puntuales) para no gastar crédito de Tavily dos
+    # veces en la misma noticia.
+    bloque_contexto_web = ""
+    if not feedback_correccion:
+        fuentes_web = buscar_contexto_web(titulo)
+        if fuentes_web:
+            fuentes_txt = "\n\n".join(
+                f"Fuente {i+1}: {f['title']}\n{f['content']}"
+                for i, f in enumerate(fuentes_web)
+            )
+            bloque_contexto_web = f"""📚 CONTEXTO ADICIONAL VERIFICADO (de fuentes reales encontradas en la web,
+úsalo para agregar valor real al artículo — cifras, antecedentes, comparaciones.
+NO inventes nada que no esté aquí ni en el contenido original; si esta
+información no aplica al ángulo del artículo, ignórala):
+{fuentes_txt}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
+
     prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español para América Latina.
 Tu tarea: clasificar correctamente esta noticia y redactarla como un artículo periodístico ORIGINAL con valor editorial propio.
 
@@ -1557,6 +1640,7 @@ Categoría sugerida por sistema: {categoria_sugerida}
 Tiempo de lectura estimado: {tiempo_lectura} min
 ═══════════════════════════════════════
 
+{bloque_contexto_web}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PASO 1 — CLASIFICACIÓN V17.6.5: Elige la categoría MÁS ESPECÍFICA que describe el tema real de la noticia.
 No uses "latinoamerica" como categoría genérica para todo.

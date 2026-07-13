@@ -791,6 +791,14 @@ MAX_POSTS_WP_DIA_TOTAL  = 12   # Total máximo global (6 + 3 + 3)
 # esto en True para reactivar el reintento con feedback.
 REINTENTAR_CALIDAD_IA   = False
 
+# V17.9.17: Interruptor maestro de Facebook — DESACTIVADO por solicitud del
+# usuario. Las funciones de Facebook (publicar_facebook_imagen,
+# construir_texto_facebook, obtener_articulo_wp_para_facebook, etc.) siguen
+# intactas en el código, simplemente no se llaman mientras esto sea False.
+# Para reactivar la publicación en Facebook en el futuro, basta con volver
+# a poner esto en True — no hace falta tocar nada más.
+PUBLICAR_EN_FACEBOOK    = False
+
 # Anti-duplicados
 UMBRAL_SIMILITUD_TITULO    = 0.72
 UMBRAL_SIMILITUD_CONTENIDO = 0.62
@@ -4964,7 +4972,13 @@ def main():
     # Decidir qué publicar
     publicar_wp = puede_publicar_wp()
     h = cargar_historial()
-    publicar_fb = puede_publicar_fb(h)
+    # V17.9.17: PUBLICAR_EN_FACEBOOK en False desactiva todo el bloque de
+    # Facebook sin tocar puede_publicar_fb() ni ninguna otra función — la
+    # lógica de límites diarios sigue intacta, solo se le agrega esta
+    # condición extra al resultado final.
+    publicar_fb = PUBLICAR_EN_FACEBOOK and puede_publicar_fb(h)
+    if not PUBLICAR_EN_FACEBOOK:
+        log("📘 Publicación en Facebook DESACTIVADA (PUBLICAR_EN_FACEBOOK=False) — esto es intencional, no un error", 'info')
 
     if not publicar_wp and not publicar_fb:
         log("⏱️ Nada que publicar — esperando próximo ciclo", 'info')

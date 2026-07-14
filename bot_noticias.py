@@ -682,7 +682,7 @@ import json
 import os
 import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
@@ -1446,31 +1446,47 @@ PALABRAS_TRANSICION = [
 ]
 INICIOS_META_PROHIBIDOS = ('descubre', 'conoce', 'entérate', 'entera', 'sabías')
 
-def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo=''):
+CATEGORIAS_EVERGREEN = {'ciencia', 'tecnologia', 'medio_ambiente', 'salud'}
+
+def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria=''):
     """
     V17.9.12: Verificación EN CÓDIGO (no solo en el prompt) de las reglas de
     calidad que se venían comprobando a mano en la revisión editorial manual.
-    El prompt del Editor Jefe ya le pide todo esto a la IA con una sección de
-    "autovalidación", pero esa autovalidación depende de que el modelo la
-    cumpla por su cuenta — CASO REAL: "Cuartos de final del Mundial 2026" se
-    publicó con 248 palabras (mínimo pedido: 550), meta descripción de 71
-    caracteres empezando con "Descubre" (prohibido), sin blockquote y con
-    solo 2 conectores de transición (mínimo pedido: 5). El prompt lo pedía
-    todo correctamente, pero nadie lo comprobó antes de publicar.
+
+    V17.9.23: doble estándar según el tipo de contenido, a pedido del
+    usuario — el mínimo de 500 palabras + 4 transiciones + meta exacta
+    tenía sentido para bajar la señal de "contenido de poco valor" de
+    AdSense, pero en la práctica estaba bloqueando casi TODA la publicación
+    de noticias de actualidad (política, deportes, sucesos), donde lo que
+    realmente importa para Google es la actualización oportuna y que haya
+    al menos un dato verificado — no la extensión ni el estilo.
+
+    - Categorías EVERGREEN (ciencia, tecnología, medio ambiente, salud):
+      compiten a largo plazo en buscadores, ahí se mantiene la exigencia
+      completa (500 palabras, 4+ transiciones, meta 120-165, H2, blockquote).
+    - Categorías de ACTUALIDAD (todo lo demás): piso básico — 350 palabras,
+      blockquote (como proxy de "al menos un dato verificado", ya que
+      buscar_contexto_web/Tavily suele alimentar ese dato ahí), y box
+      resumen (ya se genera siempre aparte). Se eliminan las exigencias de
+      conteo de transiciones y meta descripción exacta — son pulido de
+      estilo que el usuario prefiere ajustar manualmente cuando haga falta,
+      no una señal real de "poco valor" para Google.
 
     Devuelve (es_valido: bool, problemas: list[str]).
     Los problemas se redactan en el mismo lenguaje que usaría un editor
     humano, para poder reenviarlos directo a la IA como feedback de reintento.
     """
     problemas = []
+    es_evergreen = (categoria or '').strip().lower() in CATEGORIAS_EVERGREEN
+    minimo_palabras = 500 if es_evergreen else 350
 
     texto_plano = re.sub(r'<[^>]+>', ' ', contenido_html or '')
     texto_plano = re.sub(r'\s+', ' ', texto_plano).strip()
     n_palabras = len(texto_plano.split())
 
-    if n_palabras < 500:
+    if n_palabras < minimo_palabras:
         problemas.append(
-            f"El artículo tiene solo {n_palabras} palabras — el mínimo exigido es 500. "
+            f"El artículo tiene solo {n_palabras} palabras — el mínimo exigido es {minimo_palabras}. "
             "Desarrolla más cada sección con datos concretos, no rellenes con frases genéricas."
         )
 
@@ -1487,21 +1503,26 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo=''):
             "cada uno con un ángulo distinto del tema."
         )
 
-    texto_lower = texto_plano.lower()
-    n_transiciones = sum(1 for palabra in PALABRAS_TRANSICION if palabra in texto_lower)
-    if n_transiciones < 5:
-        problemas.append(
-            f"Solo se detectaron {n_transiciones} palabras de transición — el mínimo es 5 "
-            "(sin embargo, además, por otro lado, en consecuencia, asimismo, por ejemplo, etc.)."
-        )
+    # V17.9.23: transiciones y meta exacta SOLO se exigen en evergreen —
+    # en actualidad son pulido de estilo, no bloquean la publicación.
+    if es_evergreen:
+        texto_lower = texto_plano.lower()
+        n_transiciones = sum(1 for palabra in PALABRAS_TRANSICION if palabra in texto_lower)
+        if n_transiciones < 4:
+            problemas.append(
+                f"Solo se detectaron {n_transiciones} palabras de transición — el mínimo es 4 "
+                "(sin embargo, además, por otro lado, en consecuencia, asimismo, por ejemplo, etc.)."
+            )
+
+        meta_desc_chk = meta_desc or ''
+        len_meta = len(meta_desc_chk)
+        if len_meta < 120 or len_meta > 165:
+            problemas.append(
+                f"La meta descripción tiene {len_meta} caracteres — debe estar entre 130 y 160. "
+                "Ajústala sin cortar palabras a la mitad."
+            )
 
     meta_desc = meta_desc or ''
-    len_meta = len(meta_desc)
-    if len_meta < 130 or len_meta > 160:
-        problemas.append(
-            f"La meta descripción tiene {len_meta} caracteres — debe estar entre 140 y 155. "
-            "Ajústala sin cortar palabras a la mitad."
-        )
     if meta_desc.strip().lower().startswith(INICIOS_META_PROHIBIDOS):
         problemas.append(
             "La meta descripción empieza con una palabra prohibida "
@@ -2374,6 +2395,34 @@ def limpiar_texto(texto):
         t += '.'
     return t.strip()
 
+def bonus_frescura(fecha_str):
+    """
+    V17.9.23: bono de puntaje por antigüedad de la noticia, a pedido del
+    usuario — prioriza actualidad SIN descartar de plano nada por ser
+    "vieja" (a diferencia de un corte duro de 48h, que podría eliminar una
+    candidata buena por poco). Cuanto más reciente, más puntos suma; pasadas
+    las 48h el bono es 0 (ni penaliza ni favorece).
+    """
+    if not fecha_str:
+        return 0
+    try:
+        fecha_str_norm = str(fecha_str).replace('Z', '+00:00')
+        fecha_pub = datetime.fromisoformat(fecha_str_norm)
+        if fecha_pub.tzinfo is None:
+            fecha_pub = fecha_pub.replace(tzinfo=timezone.utc)
+        horas = (datetime.now(timezone.utc) - fecha_pub).total_seconds() / 3600
+        if horas < 0:
+            return 0  # fecha futura o con error de zona horaria — no se premia
+        if horas <= 6:
+            return 8
+        elif horas <= 24:
+            return 5
+        elif horas <= 48:
+            return 2
+        return 0
+    except Exception:
+        return 0
+
 def calcular_puntaje(titulo, desc):
     titulo = titulo or ""
     desc   = desc or ""
@@ -3108,6 +3157,7 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
             resultado_ia.get('contenido_html', ''),
             resultado_ia.get('meta_descripcion', ''),
             resultado_ia.get('titulo_seo', ''),
+            resultado_ia.get('categoria', ''),
         )
         if not es_valido:
             if not REINTENTAR_CALIDAD_IA:
@@ -3125,6 +3175,7 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
                     resultado_reintento.get('contenido_html', ''),
                     resultado_reintento.get('meta_descripcion', ''),
                     resultado_reintento.get('titulo_seo', ''),
+                    resultado_reintento.get('categoria', ''),
                 )
                 if es_valido_2:
                     log("✅ Reintento corrigió los problemas — usando esta versión", 'exito')
@@ -4132,6 +4183,8 @@ def publicar_bloque_latam_chile():
         # Filtrar estricto: solo Chile
         noticias_cl = [n for n in noticias_cl if es_noticia_chile(n.get('titulo',''), n.get('descripcion',''))]
         noticias_cl = deduplicar_batch(noticias_cl)
+        for n in noticias_cl:
+            n['puntaje'] = n.get('puntaje', 0) + bonus_frescura(n.get('fecha'))
         noticias_cl.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
         log(f"   Candidatas Chile: {len(noticias_cl)}", 'info')
 
@@ -4225,6 +4278,8 @@ def publicar_bloque_latam_chile():
                 n['pais'] = pais
                 filtradas.append(n)
         noticias_la = deduplicar_batch(filtradas)
+        for n in noticias_la:
+            n['puntaje'] = n.get('puntaje', 0) + bonus_frescura(n.get('fecha'))
         noticias_la.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
         log(f"   Candidatas LATAM: {len(noticias_la)}", 'info')
 
@@ -5157,6 +5212,8 @@ def main():
             log("ERROR: Ninguna fuente devolvió noticias", 'error')
         else:
             noticias = deduplicar_batch(noticias)
+            for n in noticias:
+                n['puntaje'] = n.get('puntaje', 0) + bonus_frescura(n.get('fecha'))
             noticias.sort(key=lambda x: (x.get('puntaje', 0), x.get('fecha', '')), reverse=True)
             log(f"📰 Candidatas ordenadas: {len(noticias)}", 'info')
 

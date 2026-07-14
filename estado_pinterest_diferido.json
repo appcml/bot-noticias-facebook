@@ -747,15 +747,15 @@
       "ultima_fecha": "2026-07-14T20:53:40.295610+00:00"
     },
     "2505": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "sin imagen destacada",
-      "ultima_fecha": "2026-07-14T20:53:40.295610+00:00"
+      "ultima_fecha": "2026-07-14T22:52:13.339215+00:00"
     },
     "2520": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-14T20:53:40.295610+00:00"
+      "ultima_fecha": "2026-07-14T22:52:13.339215+00:00"
     }
   },
-  "ultima_ejecucion": "2026-07-14T20:53:47.274848+00:00"
+  "ultima_ejecucion": "2026-07-14T22:52:16.703150+00:00"
 }

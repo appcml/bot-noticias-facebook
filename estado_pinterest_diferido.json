@@ -740,7 +740,12 @@
       "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
       "ultima_fecha": "2026-07-10T10:47:24.310590+00:00"
+    },
+    "2514": {
+      "intentos": 1,
+      "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
+      "ultima_fecha": "2026-07-14T13:18:30.088893+00:00"
     }
   },
-  "ultima_ejecucion": "2026-07-14T11:20:58.657489+00:00"
+  "ultima_ejecucion": "2026-07-14T13:18:36.384260+00:00"
 }

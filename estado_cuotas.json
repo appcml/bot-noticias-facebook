@@ -1,10 +1,6 @@
 {
-  "fecha": "2026-07-08",
+  "fecha": "2026-07-14",
   "conteo": {
-    "deportes": 1,
-    "latinoamerica": 1,
-    "economia": 1,
-    "guerra": 1,
-    "politica": 1
+    "guerra": 1
   }
 }

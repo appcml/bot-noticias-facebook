@@ -797,20 +797,20 @@
       "ultima_fecha": "2026-07-15T22:53:00.571224+00:00"
     },
     "2546": {
-      "intentos": 3,
+      "intentos": 4,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-16T05:16:28.398872+00:00"
+      "ultima_fecha": "2026-07-16T08:01:26.585029+00:00"
     },
     "2567": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-16T05:16:28.398872+00:00"
+      "ultima_fecha": "2026-07-16T08:01:26.585029+00:00"
     },
     "2544": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-16T05:16:28.398872+00:00"
+      "ultima_fecha": "2026-07-16T08:01:26.585029+00:00"
     }
   },
-  "ultima_ejecucion": "2026-07-16T05:16:33.061226+00:00"
+  "ultima_ejecucion": "2026-07-16T08:01:34.155432+00:00"
 }

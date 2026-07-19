@@ -1,9 +1,6 @@
 {
-  "fecha": "2026-07-18",
+  "fecha": "2026-07-19",
   "conteo": {
-    "tecnologia": 1,
-    "entretenimiento": 1,
-    "deportes": 2,
-    "guerra": 1
+    "deportes": 1
   }
 }

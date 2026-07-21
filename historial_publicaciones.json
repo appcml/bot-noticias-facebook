@@ -1,6 +1,5 @@
 {
   "urls": [
-    "https://www.diarioelheraldo.cl/noticia/analizan-proyecciones-globales-de-la-bioeconomia-y-su-implicancia-en-el-desarrollo",
     "https://www.cooperativa.cl/noticias/pais/politicas-sociales/pobreza/gobierno-instaura-plan-piloto-para-ayudar-a-personas-en-situacion-de/2026-07-07/143051.html",
     "https://noticias.perfil.com/noticias/informacion-general/encuesta-el-principal-problema-del-pais-son-los-aumentos-de-precios-y-tarifas.phtml",
     "https://la100.cienradios.com/deportes/mundial/mundial-2026-segui-en-vivo-argentina-vs-egipto/",
@@ -88,10 +87,11 @@
     "https://elintransigente.com/2026/07/mundial-2030-64-selecciones-confirma-alejandro-dominguez/",
     "https://www.cooperativa.cl/noticias/pais/tiempo/senapred-confirma-10-fallecidos-y-cuatro-desaparecidos-por-el-sistema/2026-07-20/210443.html",
     "https://efectococuyo.com/internacionales/rusia-china-y-mexico-principales-soportes-del-regimen-cubano-en-tiempos-de-crisis/",
-    "https://www.noroeste.com.mx/internacional/homan-responsabiliza-a-migrantes-muertos-por-agentes-de-ice-de-no-acatar-ordenes-EB24252574"
+    "https://www.noroeste.com.mx/internacional/homan-responsabiliza-a-migrantes-muertos-por-agentes-de-ice-de-no-acatar-ordenes-EB24252574",
+    "https://www.cooperativa.cl/noticias/pais/desastres-naturales/inundaciones/ps-critica-tono-complaciente-del-gobierno-ante-la-catastrofe/2026-07-21/105212.html",
+    "https://rpp.pe/futbol/mundial-2026/que-paso-en-el-vestuario-prensa-argentina-dio-detalles-de-lo-sucedido-en-la-final-del-mundial-2026-noticia-1698244"
   ],
   "hashes": [
-    "b46803db55703efa26b3925ca62ddc83",
     "ef93f319b5e9f3b80a8523c158a895d6",
     "a61c5377eed1ee0b1dfadc698bcbccd0",
     "1b1147c79322821f4bb78451a6705d7d",
@@ -179,10 +179,11 @@
     "314396f0d8e13ec5933a4f9393e39952",
     "2275c80798c57701c3a5b2982c2a04f1",
     "b7e36bbc1bae53ef6807842de2c144e1",
-    "dd09c1832a029eed560607d4eb7fb148"
+    "dd09c1832a029eed560607d4eb7fb148",
+    "5f159fa2880bfe86bb7651a1ca43463f",
+    "e883fc87f0f0654d3002c0dfb21b5baf"
   ],
   "timestamps": [
-    "2026-07-07T16:27:57.339498",
     "2026-07-07T20:03:25.870625",
     "2026-07-07T20:03:55.124843",
     "2026-07-08T00:02:06.939281",
@@ -270,10 +271,11 @@
     "2026-07-21T10:38:55.163766",
     "2026-07-21T11:50:47.958081",
     "2026-07-21T11:51:31.073234",
-    "2026-07-21T16:21:38.764117"
+    "2026-07-21T16:21:38.764117",
+    "2026-07-21T19:38:28.393984",
+    "2026-07-21T19:39:05.988918"
   ],
   "titulos": [
-    "Analizan proyecciones globales de la bioeconomía y su implicancia en el desarrollo.",
     "Gobierno instaura plan piloto para ayudar a personas en situación de calle y recuperar espacios públicos.",
     "Encuesta: el principal problema del país son \"los aumentos de precios y tarifas\".",
     "Mundial 2026: seguí en vivo Argentina vs Egipto.",
@@ -361,10 +363,11 @@
     "«Será con 64 selecciones»: Alejandro Domínguez confirmó el histórico cambio para el Mundial 2030.",
     "Senapred confirma 10 fallecidos y cuatro desaparecidos por el sistema frontal.",
     "Rusia, China y México, principales soportes del régimen cubano en tiempos de crisis.",
-    "Homan responsabiliza a migrantes muertos por agentes de ICE de no acatar órdenes."
+    "Homan responsabiliza a migrantes muertos por agentes de ICE de no acatar órdenes.",
+    "PS critica \"tono complaciente\" del Gobierno ante la catástrofe.",
+    "¿Qué pasó en el vestuario? Prensa argentina dio detalles de lo sucedido en la final del Mundial 2026."
   ],
   "descripciones": [
-    "En la Universidad de Talca se realizó un Seminario Internacional donde especialistas nacionales e internacionales abordaron la relevancia de planificación territorial y el fortalecimiento de las políticas públicas para impulsar un desarrollo sostenible. “Bioeconomía y Desarrollo Regional: experiencias internacionales y políticas públicas”, fue el nombre del Seminario Internacional organizado por el Departamento de Economía Agraria de la Facultad de Ciencias Agrarias de la Universidad de Talca, y que reunió a investigadores de Alemania, Argentina y Chile, quienes analizaron las tendenc",
     "El Gobierno realizó esta jornada una mesa interministerial con el fin de recuperar los espacios públicos y abordar la situación de las personas que viven en la calle, a través de modelos de atención integral y protocolos para gestión de rucos. La iniciativa se materializará de forma gradual y comenzará como un plan piloto en las comunas de Renca e Independencia, que buscará coordinar a los organismos estatales en asentamientos en espacios públicos bajo la perspectiva de una intervención social; y reorganizar la respuesta del Estado en salud, vivienda, empleo, cuidados y apoyo. Esto responde al",
     "La consultora Managment & Fit realizo un relevamiento de la economía en el mes de junio sobre la crisis de la economía y la gestión de Javier Milei. La encuesta nacional de Management & Fit correspondiente a junio de 2026 muestra un escenario de creciente preocupación económica y un deterioro en la evaluación del gobierno de Javier Milei, con la inflación consolidándose nuevamente como el principal problema del país para los argentinos, aunque con una leve disminución respecto de la medición anterior. El relevamiento fue realizado entre el 12",
     "La Albiceleste y los Faraones se enfrentan por un lugar en los cuartos de final de la Copa del Mundo. Argentina y Egipto protagonizarán uno de los cruces más esperados de los octavos de final del Mundial 2026, en un encuentro que definirá quién seguirá en carrera por el título. El conjunto dirigido por Lionel Scaloni buscará imponer su favoritismo, mientras que la selección africana intentará dar el golpe y meterse entre los ocho mejores del certamen. Con la clasificación a los cuartos de final en",
@@ -452,10 +455,11 @@
     "El presidente de la CONMEBOL lo anunció en redes sociales, horas después del Mundial 2026. The post «Será con 64 selecciones»: Alejandro Domínguez confirmó el histórico cambio para el Mundial 2030 appeared first on El Intransigente: Últimas noticias de Argentina y en tiempo real . (BUENOS AIRES).- \"¡El próximo se juega en casa! En 2030 se viene el Mundial de Uruguay, Argentina y Paraguay, Una gran oportunidad para el fútbol, para celebrar el Centenario de la Copa del Mundo con una competencia con 64 equipos\", posteó Alejandro Domínguez en su cuenta de X, y confirmó así que el Mundial 20",
     "El Servicio Nacional de Prevención y Respuesta ante Desastres (Senapred) confirmó esta noche de lunes que al menos 10 personas han fallecido y otras cuatro se encuentran desaparecidas como consecuencia del tren de sistemas frontales que está golpeando a la zona centro norte del país. El nuevo balance oficial de víctimas fatales duplica la cifra anterior (cinco), pero se acerca al número que, de manera extraoficial, habían estado comunicando autoridades locales en medio del estado de catástrofe en vigor para la Región de Coquimbo y la Provincia de Huasco (Región de Atacama). \"El balance actuali",
     "Informe internacional describe que es un \"mecanismo clave de resiliencia internacional\". Informe internacional describe que es un “mecanismo clave de resiliencia internacional”. Mientras Estados Unidos mantiene la presión política y económica sobre Cuba y la isla enfrenta una profunda crisis energética, económica y social, el régimen cubano ha intensificado durante mayo y junio de 2026 una compleja red de cooperación con gobiernos y organizaciones afines. Según el monitoreo de la orga",
-    "Los migrantes que han muerto a manos de autoridades migratorias en los últimos días en Estados Unidos hoy estarían vivos si hubieran acatado las órdenes de los agentes que les hicieron el alto, expresó este lunes el zar de la frontera de la Casa Blanca, Tom Homan. El funcionario estadounidense hizo estas declaraciones a medios en el exterior de la Casa Blanca, al ser cuestionado por las investigaciones en curso por las muertes de dos hombres en Maine y Texas por disparos del Servicio de Control de Inmigración y Aduanas (ICE). “Todo se reduce a un hecho simple: estas personas no acataron "
+    "Los migrantes que han muerto a manos de autoridades migratorias en los últimos días en Estados Unidos hoy estarían vivos si hubieran acatado las órdenes de los agentes que les hicieron el alto, expresó este lunes el zar de la frontera de la Casa Blanca, Tom Homan. El funcionario estadounidense hizo estas declaraciones a medios en el exterior de la Casa Blanca, al ser cuestionado por las investigaciones en curso por las muertes de dos hombres en Maine y Texas por disparos del Servicio de Control de Inmigración y Aduanas (ICE). “Todo se reduce a un hecho simple: estas personas no acataron ",
+    "La catástrofe provocada por el sistema frontal en el Norte Chico generó un cruce de críticas políticas en El Primer Café de Cooperativa, donde voces de la oposición cuestionaron el manejo comunicacional y la coordinación del Gobierno durante la catástrofe. La presidenta del Partido Socialista, Paulina Vodanovic, manifestó que \"me preocupa un poco el tono complaciente del Gobierno, de bajar un poco el perfil. Más allá de las declaraciones desafortunadas de algunos ministros, o de la ausencia del ministro de Defensa, que me parece del todo inexplicable\", sostuvo. Vodanovic, quien fue subsecretar",
+    "Las teorías conspirativas de por qué la selección de Lionel Messi perdió 1-0 ante España inundaron los medios de prensa argentinos. La derrota de Argentina frente a España en la final del Mundial 2026 no solo dejó el golpe deportivo de quedarse a las puertas del título. También abrió la puerta a múltiples interpretaciones sobre lo ocurrido antes y durante el partido, alimentando versiones que intentan encontrar explicaciones más allá de lo que sucedió en el campo de juego. Mientras los jugadores todavía asimilan el resultado,"
   ],
   "hashes_contenido": [
-    "1eeeb9ba1cfe6e22f16854a6990c97b2",
     "1f64ba8caa8c6b41cf1f2ff0f412d299",
     "53871011a6a3d05dfd848b08eff6effe",
     "9ffe9c2c5ed5e1b30f9078ac08a822f6",
@@ -543,11 +547,11 @@
     "6131c986d362d7f3ea61c0e4ea7c05bc",
     "44ac2db26fbcb26ac82dc5752785621c",
     "3efad0852a90ac522b337ed0d0f9f24b",
-    "125e63773a453d6a4006ecf178195b81"
+    "125e63773a453d6a4006ecf178195b81",
+    "8fedaadfe5ca88f27da3454c058b7a61",
+    "8e575a7832001fa4d87724a2aa2a6bc7"
   ],
   "hashes_permanentes": [
-    "484b2b628311a94d0f12cf4933fb82f4",
-    "a1a5e61039a2fa99c8cb84e4a7458cff",
     "18931465b48d9a64d4bb60abdd0e4d1f",
     "18b575e91498cb5e4e2770a1eef22cd1",
     "5553e1ae3d891e5febb6543f4e060632",
@@ -1045,15 +1049,16 @@
     "314396f0d8e13ec5933a4f9393e39952",
     "2275c80798c57701c3a5b2982c2a04f1",
     "b7e36bbc1bae53ef6807842de2c144e1",
-    "dd09c1832a029eed560607d4eb7fb148"
+    "dd09c1832a029eed560607d4eb7fb148",
+    "5f159fa2880bfe86bb7651a1ca43463f",
+    "e883fc87f0f0654d3002c0dfb21b5baf"
   ],
   "estadisticas": {
-    "total_publicadas": 819,
+    "total_publicadas": 821,
     "total_fb": 226,
-    "total_wp": 713
+    "total_wp": 715
   },
   "urls_normalizadas": [
-    "diarioelheraldo.cl/noticia/analizan-proyecciones-globales-de-la-bioeconomia-y-su-implicancia-en-el-desarrollo",
     "cooperativa.cl/noticias/pais/politicas-sociales/pobreza/gobierno-instaura-plan-piloto-para-ayudar-a-personas-en-situacion-de/2026-07-07/143051",
     "noticias.perfil.com/noticias/informacion-general/encuesta-el-principal-problema-del-pais-son-los-aumentos-de-precios-y-tarifas.phtml",
     "la100.cienradios.com/deportes/mundial/mundial-2026-segui-en-vivo-argentina-vs-egipto",
@@ -1141,7 +1146,9 @@
     "elintransigente.com/2026/07/mundial-2030-64-selecciones-confirma-alejandro-dominguez",
     "cooperativa.cl/noticias/pais/tiempo/senapred-confirma-10-fallecidos-y-cuatro-desaparecidos-por-el-sistema/2026-07-20/210443",
     "efectococuyo.com/internacionales/rusia-china-y-mexico-principales-soportes-del-regimen-cubano-en-tiempos-de-crisis",
-    "noroeste.com.mx/internacional/homan-responsabiliza-a-migrantes-muertos-por-agentes-de-ice-de-no-acatar-ordenes-eb24252574"
+    "noroeste.com.mx/internacional/homan-responsabiliza-a-migrantes-muertos-por-agentes-de-ice-de-no-acatar-ordenes-eb24252574",
+    "cooperativa.cl/noticias/pais/desastres-naturales/inundaciones/ps-critica-tono-complaciente-del-gobierno-ante-la-catastrofe/2026-07-21/105212",
+    "rpp.pe/futbol/mundial-2026/que-paso-en-el-vestuario-prensa-argentina-dio-detalles-de-lo-sucedido-en-la-final-del-mundial-2026-noticia-1698244"
   ],
   "urls_fb_publicadas": [
     "1001",

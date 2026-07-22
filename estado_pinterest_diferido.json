@@ -1092,40 +1092,40 @@
       "ultima_fecha": "2026-07-22T13:28:03.063787+00:00"
     },
     "2718": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-22T15:27:14.923645+00:00"
+      "ultima_fecha": "2026-07-22T17:09:59.459072+00:00"
     },
     "2710": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-22T15:27:14.923645+00:00"
+      "ultima_fecha": "2026-07-22T17:09:59.459072+00:00"
     },
     "2700": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-22T15:27:14.923645+00:00"
+      "ultima_fecha": "2026-07-22T17:09:59.459072+00:00"
     },
     "2702": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-22T15:27:14.923645+00:00"
+      "ultima_fecha": "2026-07-22T17:09:59.459072+00:00"
     },
     "2716": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-22T15:27:14.923645+00:00"
+      "ultima_fecha": "2026-07-22T17:09:59.459072+00:00"
     },
     "2706": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-22T15:27:14.923645+00:00"
+      "ultima_fecha": "2026-07-22T17:09:59.459072+00:00"
     },
     "2708": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-22T15:27:14.923645+00:00"
+      "ultima_fecha": "2026-07-22T17:09:59.459072+00:00"
     }
   },
-  "ultima_ejecucion": "2026-07-22T15:27:25.110449+00:00"
+  "ultima_ejecucion": "2026-07-22T17:10:11.174240+00:00"
 }

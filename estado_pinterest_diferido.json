@@ -1137,30 +1137,50 @@
       "ultima_fecha": "2026-07-23T10:14:13.872540+00:00"
     },
     "2724": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-23T10:14:13.872540+00:00"
+      "ultima_fecha": "2026-07-23T13:41:01.946662+00:00"
     },
     "2773": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-23T10:14:13.872540+00:00"
+      "ultima_fecha": "2026-07-23T13:41:01.946662+00:00"
     },
     "2742": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-23T10:14:13.872540+00:00"
+      "ultima_fecha": "2026-07-23T13:41:01.946662+00:00"
     },
     "2720": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-23T10:14:13.872540+00:00"
+      "ultima_fecha": "2026-07-23T13:41:01.946662+00:00"
     },
     "2722": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-23T10:14:13.872540+00:00"
+      "ultima_fecha": "2026-07-23T13:41:01.946662+00:00"
+    },
+    "2779": {
+      "intentos": 1,
+      "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
+      "ultima_fecha": "2026-07-23T13:41:01.946662+00:00"
+    },
+    "2763": {
+      "intentos": 1,
+      "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
+      "ultima_fecha": "2026-07-23T13:41:01.946662+00:00"
+    },
+    "2726": {
+      "intentos": 1,
+      "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
+      "ultima_fecha": "2026-07-23T13:41:01.946662+00:00"
+    },
+    "2728": {
+      "intentos": 1,
+      "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
+      "ultima_fecha": "2026-07-23T13:41:01.946662+00:00"
     }
   },
-  "ultima_ejecucion": "2026-07-23T10:14:22.346486+00:00"
+  "ultima_ejecucion": "2026-07-23T13:41:09.107182+00:00"
 }

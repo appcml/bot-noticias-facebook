@@ -1232,40 +1232,40 @@
       "ultima_fecha": "2026-07-25T02:03:26.612127+00:00"
     },
     "2805": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-25T06:11:17.425438+00:00"
+      "ultima_fecha": "2026-07-25T09:41:51.921477+00:00"
     },
     "2783": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-25T06:11:17.425438+00:00"
+      "ultima_fecha": "2026-07-25T09:41:51.921477+00:00"
     },
     "2785": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-25T06:11:17.425438+00:00"
+      "ultima_fecha": "2026-07-25T09:41:51.921477+00:00"
     },
     "2795": {
-      "intentos": 3,
+      "intentos": 4,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-25T06:11:17.425438+00:00"
+      "ultima_fecha": "2026-07-25T09:41:51.921477+00:00"
     },
     "2801": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-25T06:11:17.425438+00:00"
+      "ultima_fecha": "2026-07-25T09:41:51.921477+00:00"
     },
     "2791": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-25T06:11:17.425438+00:00"
+      "ultima_fecha": "2026-07-25T09:41:51.921477+00:00"
     },
     "2793": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-25T06:11:17.425438+00:00"
+      "ultima_fecha": "2026-07-25T09:41:51.921477+00:00"
     }
   },
-  "ultima_ejecucion": "2026-07-25T06:11:22.703091+00:00"
+  "ultima_ejecucion": "2026-07-25T09:42:00.876522+00:00"
 }

@@ -3109,6 +3109,18 @@ def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descr
         log(f"⚠️ Excepción subiendo imagen: {e}", 'advertencia')
     return None
 
+def limpiar_slug(texto):
+    """Genera un slug limpio sin tildes, ñ ni caracteres especiales. Máx 70 chars."""
+    import unicodedata
+    texto = unicodedata.normalize('NFKD', texto)
+    texto = texto.encode('ascii', 'ignore').decode('ascii')
+    texto = texto.lower()
+    texto = re.sub(r'[^a-z0-9\s-]', '', texto)
+    texto = re.sub(r'[\s_]+', '-', texto)
+    texto = re.sub(r'-+', '-', texto).strip('-')
+    return texto[:70]
+
+
 def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fecha_fuente=None, fuente_noticia=None):
     """Publica artículo en WordPress. Imagen OBLIGATORIA."""
     if not WP_APP_PASSWORD:
@@ -3523,6 +3535,7 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
 
     post_data = {
         'title':          titulo_final,
+        'slug':           limpiar_slug(titulo_final),
         'content':        contenido_html,
         'excerpt':        meta_desc,
         'status':         'publish',

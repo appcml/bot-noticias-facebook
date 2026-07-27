@@ -3109,18 +3109,6 @@ def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descr
         log(f"⚠️ Excepción subiendo imagen: {e}", 'advertencia')
     return None
 
-def limpiar_slug(texto):
-    """Genera un slug limpio sin tildes, ñ ni caracteres especiales. Máx 70 chars."""
-    import unicodedata
-    texto = unicodedata.normalize('NFKD', texto)
-    texto = texto.encode('ascii', 'ignore').decode('ascii')
-    texto = texto.lower()
-    texto = re.sub(r'[^a-z0-9\s-]', '', texto)
-    texto = re.sub(r'[\s_]+', '-', texto)
-    texto = re.sub(r'-+', '-', texto).strip('-')
-    return texto[:70]
-
-
 def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fecha_fuente=None, fuente_noticia=None):
     """Publica artículo en WordPress. Imagen OBLIGATORIA."""
     if not WP_APP_PASSWORD:
@@ -3535,7 +3523,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
 
     post_data = {
         'title':          titulo_final,
-        'slug':           limpiar_slug(titulo_final),
         'content':        contenido_html,
         'excerpt':        meta_desc,
         'status':         'publish',
@@ -3559,8 +3546,47 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         ).json()
 
         if 'id' in r:
-            url_articulo = r.get('link', f"{WP_URL}/?p={r['id']}")
+            post_id      = r['id']
+            url_articulo = r.get('link', f"{WP_URL}/?p={post_id}")
             log(f"✅ Publicado en WordPress: {url_articulo}", 'exito')
+
+            # ── FIX YOAST: Yoast 20+ no lee _yoast_wpseo_* desde el campo
+            # 'meta' de la API REST estándar. Hay que escribirlos via el
+            # endpoint propio de Yoast justo después de publicar el post.
+            # Sin esto, Yoast muestra "No hay frase clave definida" aunque
+            # el bot la envíe correctamente en post_data['meta'].
+            try:
+                yoast_payload = {
+                    'yoast_wpseo_focuskw':        frase_clave,
+                    'yoast_wpseo_title':          titulo_seo,
+                    'yoast_wpseo_metadesc':       meta_desc,
+                    'yoast_wpseo_meta-robots-noindex': '0',
+                }
+                r_yoast = requests.post(
+                    f"{WP_URL}/wp-json/yoast/v1/indexables",
+                    json={'object_id': post_id, 'object_type': 'post', **yoast_payload},
+                    auth=(WP_USER, WP_APP_PASSWORD), timeout=10
+                )
+                if r_yoast.status_code in (200, 201):
+                    log(f"✅ Yoast SEO guardado (focuskw: {frase_clave[:40]})", 'exito')
+                else:
+                    # Fallback: intentar via wp/v2/posts PATCH con formato alternativo
+                    r_patch = requests.post(
+                        f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
+                        json={'meta': {
+                            '_yoast_wpseo_focuskw':  frase_clave,
+                            '_yoast_wpseo_title':    titulo_seo,
+                            '_yoast_wpseo_metadesc': meta_desc,
+                        }},
+                        auth=(WP_USER, WP_APP_PASSWORD), timeout=10
+                    )
+                    if r_patch.status_code in (200, 201):
+                        log(f"✅ Yoast SEO guardado via PATCH (focuskw: {frase_clave[:40]})", 'exito')
+                    else:
+                        log(f"⚠️ Yoast SEO no confirmado (HTTP {r_patch.status_code}) — verificar manualmente", 'advertencia')
+            except Exception as e_yoast:
+                log(f"⚠️ No se pudo confirmar Yoast SEO: {e_yoast}", 'advertencia')
+
             return url_articulo
         else:
             log(f"❌ Error WP: {r.get('message', 'desconocido')}", 'error')

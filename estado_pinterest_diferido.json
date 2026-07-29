@@ -1427,15 +1427,15 @@
       "ultima_fecha": "2026-07-28T22:53:36.190526+00:00"
     },
     "2903": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-28T22:53:36.190526+00:00"
+      "ultima_fecha": "2026-07-29T01:59:12.940362+00:00"
     },
     "2912": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-28T22:53:36.190526+00:00"
+      "ultima_fecha": "2026-07-29T01:59:12.940362+00:00"
     }
   },
-  "ultima_ejecucion": "2026-07-28T22:53:48.630322+00:00"
+  "ultima_ejecucion": "2026-07-29T01:59:24.063421+00:00"
 }

@@ -1482,40 +1482,40 @@
       "ultima_fecha": "2026-07-30T11:47:02.162452+00:00"
     },
     "2937": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-30T13:43:51.390148+00:00"
+      "ultima_fecha": "2026-07-30T15:46:52.980741+00:00"
     },
     "2940": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-30T13:43:51.390148+00:00"
+      "ultima_fecha": "2026-07-30T15:46:52.980741+00:00"
     },
     "2952": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-30T13:43:51.390148+00:00"
+      "ultima_fecha": "2026-07-30T15:46:52.980741+00:00"
     },
     "2946": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-30T13:43:51.390148+00:00"
+      "ultima_fecha": "2026-07-30T15:46:52.980741+00:00"
     },
     "2949": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-30T13:43:51.390148+00:00"
+      "ultima_fecha": "2026-07-30T15:46:52.980741+00:00"
     },
     "2961": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-30T13:43:51.390148+00:00"
+      "ultima_fecha": "2026-07-30T15:46:52.980741+00:00"
     },
     "2976": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-07-30T13:43:51.390148+00:00"
+      "ultima_fecha": "2026-07-30T15:46:52.980741+00:00"
     }
   },
-  "ultima_ejecucion": "2026-07-30T13:44:03.061762+00:00"
+  "ultima_ejecucion": "2026-07-30T15:47:05.025241+00:00"
 }

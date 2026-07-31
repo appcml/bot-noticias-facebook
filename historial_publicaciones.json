@@ -1,8 +1,5 @@
 {
   "urls": [
-    "https://www.noroeste.com.mx/internacional/energia-limpia-verificable-el-reto-que-viene-IE24132318",
-    "https://www.cooperativa.cl/noticias/pais/vivienda/en-medio-de-la-lluvia-poduje-inspecciono-viviendas-en-el-olivar-y/2026-07-16/180038.html",
-    "https://www.elconfidencial.com/mundo/2026-07-12/maria-corina-machado-un-obstaculo-para-los-intereses-de-trump-en-venezuela_4387950/",
     "https://www.expreso.com.mx/noticias/mundo/nueva-escalada-entre-eu-e-iran-aleja-posibilidad-de-una-treg/260593",
     "https://www.cooperativa.cl/noticias/pais/ff-aa-y-de-orden/carabineros/sujeto-que-baleo-a-carabinero-tuvo-apoyos-para-ser-encubierto-afirma/2026-07-16/182821.html",
     "https://efectococuyo.com/internacionales/trump-analisis-cia-elecciones/",
@@ -135,12 +132,11 @@
     "https://intoleranciadiario.com/articles/deportes/2026/07/30/1055947-confirma-neymar-su-retiro-de-la-seleccion-brasilena-mi-tiempo-ya-paso.html",
     "https://www.cooperativa.cl/noticias/mundo/organismos-internacionales/onu/bachelet-se-ubica-en-el-cuarto-lugar-en-la-primera-votacion-informal/2026-07-30/142328.html",
     "https://efectococuyo.com/internacionales/delcy-rodriguez-en-portada-de-time/",
-    "https://www.eldiarioar.com/mundo/ee-uu-reanuda-ataques-iran-golpea-objetivos-guardia-revolucionaria_1_13417609.html"
+    "https://www.eldiarioar.com/mundo/ee-uu-reanuda-ataques-iran-golpea-objetivos-guardia-revolucionaria_1_13417609.html",
+    "https://www.cooperativa.cl/noticias/pais/relaciones-exteriores/venezuela/chile-anuncio-normalizacion-progresiva-de-relaciones-bilaterales-con/2026-07-30/174610.html",
+    "https://rpp.pe/mundo/latinoamerica/que-se-sabe-del-caso-contra-el-hijo-mayor-de-lula-que-sacude-brasil-a-meses-de-las-presidenciales-noticia-1699498"
   ],
   "hashes": [
-    "fa22711ae63b6f60de2a7c5807eb526a",
-    "a65f4e6f789bb03b539d65b0b41fb20f",
-    "185a59c776f9dad0306d87f37407b2f3",
     "225ee522d610a0924e7812e93da6d8de",
     "cc71690cd7129d8a78d5480fe3bfd893",
     "6213da1e72a9094b08a6a6834e65ffde",
@@ -273,12 +269,11 @@
     "f07ac1b2b136c488d5ad4d0d71321e46",
     "55abff8b8789f8109ce000064bff9bd3",
     "05cce652893a8e6879fe854ff8164cd0",
-    "d7ce5ca189431d1e117fca8d03b834ba"
+    "d7ce5ca189431d1e117fca8d03b834ba",
+    "7e28120f1d432ecca3166ea5fd4ab14a",
+    "873326cfd61940f86ad80b959662f1ef"
   ],
   "timestamps": [
-    "2026-07-16T23:57:17.943669",
-    "2026-07-17T05:18:57.170736",
-    "2026-07-17T05:19:47.334666",
     "2026-07-17T10:17:26.363493",
     "2026-07-17T11:24:42.343031",
     "2026-07-17T11:25:25.026762",
@@ -411,12 +406,11 @@
     "2026-07-30T16:25:18.078101",
     "2026-07-30T19:40:37.438159",
     "2026-07-30T19:41:30.904935",
-    "2026-07-30T23:33:03.025997"
+    "2026-07-30T23:33:03.025997",
+    "2026-07-31T05:40:30.135472",
+    "2026-07-31T05:41:11.002421"
   ],
   "titulos": [
-    "Energía limpia verificable, el reto que viene.",
-    "En medio de la lluvia, Poduje inspeccionó viviendas en El Olivar y ratificó su demolición.",
-    "Baile político en Caracas: cómo Trump cercó las opciones de María Corina, incluso en el terremoto.",
     "Nueva escalada entre EU e Irán aleja posibilidad de una treg.",
     "Sujeto que baleó a carabinero \"tuvo apoyos para ser encubierto\", afirma Arrau.",
     "Trump denuncia plan durante años para alterar elecciones en Venezuela.",
@@ -549,12 +543,11 @@
     "Confirma Neymar su retiro de la selección brasileña: “Mi tiempo ya pasó”.",
     "Bachelet se ubica en el cuarto lugar en la primera votación informal para la Secretaría General de la ONU.",
     "Delcy Rodríguez en portada de Time: “Pasó de aliada de Maduro a representante de Trump”.",
-    "EE.UU. reanuda sus ataques contra Irán y golpea objetivos de la Guardia Revolucionaria."
+    "EE.UU. reanuda sus ataques contra Irán y golpea objetivos de la Guardia Revolucionaria.",
+    "Chile anunció \"normalización progresiva\" de relaciones bilaterales con Venezuela.",
+    "¿Qué se sabe del caso contra el hijo mayor de Lula que sacude Brasil a meses de las presidenciales?"
   ],
   "descripciones": [
-    "El mes pasado, la Secretaría de Energía dio un paso en el sentido correcto. Para ampliar la capacidad de generación limpia del País y satisfacer las necesidades energéticas adjudicó 37 proyectos renovables. Hay varias novedades: nace de la nueva legislación que impulsó Sheinbaum el año pasado, por fin se detona inversión limpia en México y, además, bajo una figura público-privada con la Comisión Federal de Electricidad (CFE). Pero el reto apenas comienza. El siguiente desafío es garantizar que la energía producida pueda verificarse, rastrearse y acreditarse en beneficio de las ",
-    "El ministro de Vivienda, Iván Poduje, reafirmó este jueves la decisión de demoler las viviendas ubicadas en el sector El Olivar, en Viña del Mar, luego de realizar una inspección del lugar en el marco del sistema frontal que afecta a la zona centro sur del país. La visita del secretario de Estado tuvo como objetivo verificar el comportamiento de las construcciones durante el temporal, y evaluar los daños provocados por las intensas lluvias y el fuerte viento. El titular del Minvu subrayó que las condiciones climáticas confirmaron las deficiencias detectadas con anterioridad y confirmó que las ",
-    "María Corina Machado intentó volver a Venezuela después del doble terremoto, pero la Casa Blanca habría ordenado que diera marcha atrás para evitar una crisis política en. María Corina Machado estaba (casi) de vuelta. Después del doble terremoto que azotó la líder opositora venezolana se subió a un avión para regresar a su país por primera vez desde que huyó en diciembre. Pero, de manera repentina, su avión tuvo que dar la vuelta. La versión oficial, que explicó ella misma en redes sociales, es que el Gobierno de la presidenta interina Delcy Rodríguez cerró el espac",
     "Estados Unidos lanzó este jueves una nueva oleada de bombardeos contra infraestructura estratégica de Irán , mientras Teherán respondió con ataques contra instalaciones y aliados de Washington en el Golfo Pérsico, en una nueva escalada que aleja cualquier posibilidad de restablecer la tregua alcanzada en junio. El Comando Central de Estados Unidos ( Centcom ) informó que las operaciones, realizadas por sexta noche consecutiva, tuvieron como objetivo degradar la capacidad militar iraní. Entre los blancos estuvieron el aeropuerto de Iranshahr, instalaciones ferroviarias, torres de teleco",
     "El ministro de Seguridad Pública, Martín Arrau, y el general director de Carabineros, Marcelo Araya, informaron este jueves que el cabo Marco Cosme se mantiene en riesgo vital en el Hospital Base de Valdivia, tras ser baleado en el rostro en medio de la captura de un presunto homicida de Eugenio Nain, cometido en 2020. \"Estuvimos conversando en primer lugar con la familia del cabo, con su señora, su madre, su padrastro, acompañándolos y dándoles todo el apoyo de los chilenos; no solo del Gobierno, que respalda a sus Carabineros, sobre todo cuando están en un estado tan crítico, tan grave\", exp",
     "Informe de la CIA advierte que no hay evidencia definitiva de fraude electrónico a gran escala y concluye que ni el Gobierno venezolano ni el sistema de automatización de resultados electorales Smartmatic podían alterar elecciones fuera de Venezuela. Informe de la CIA advierte que no hay evidencia definitiva de fraude electrónico a gran escala y concluye que ni el Gobierno venezolano ni el sistema de automatización de resultados electorales Smartmatic podían alterar elecciones fuera de Venezuela. El presidente de Estados Unidos, Donald Trump, aseguró este jueves que documentos desclasificados ",
@@ -687,12 +680,11 @@
     "El delantero ya había insinuado que había disputado su último partido con Brasil después de la derrota por 2-1 ante Noruega en los octavos de final del Mundial 2026. Neymar confirmó su retiro de la selección brasileña, al admitir que ya no siente la misma motivación para continuar en el fútbol internacional. El delantero de 34 años, máximo goleador histórico de Brasil con 80 tantos en 130 partidos, aseguró que no tiene arrepentimientos sobre sus 16 años de carrera internacional. \"Creo que mi tiempo con la selección ya pasó\", dijo a periodistas. \"Hice historia",
     "El proceso para elegir a la persona que liderará la Secretaría General de la Organización de las Naciones Unidas (ONU) a partir del próximo año entró este jueves en una fase decisiva de deliberación en Nueva York, instancia en que la expresidenta Michelle Bachelet se ubicó en el cuarto lugar. Los 15 países miembros del Consejo de Seguridad iniciaron la primera ronda de encuestas informales de carácter secreto. El objetivo de este sondeo preliminar es medir el nivel de respaldo a las distintas candidaturas, entre las que destaca la de la dos veces mandataria (2006-2010, 2014-2018). La postulaci",
     "La interina asegura que no ha entregado la soberanía de Venezuela. La interina asegura que no ha entregado la soberanía de Venezuela. La revista Time dedicó su nueva portada a la situación política de Venezuela, destacando una entrevista exclusiva con Delcy Rodríguez, quien funge como gobernante interina del país. El reportaje, titulado “The Venezuela Experiment: Inside Donald Trump’s unlikely alliance with Delcy Rodríguez” (“El experimento de Venezuela: Dentro d",
-    "El Comando Central del Ejército estadounidense justifica los nuevos ataques a intereses militares como una respuesta al intento de lanzamiento de misiles contra tropas norteamericanas en Oriente Medio. El Comando Central de Estados Unidos (CENTCOM) anunció este miércoles que llevó a cabo una nueva oleada de ataques contra decenas de objetivos militares en Irán, en respuesta a un intento de lanzamiento de misiles contra tropas estadounidenses desplegadas en Oriente Medio. Los bombardeos alcanzaron objetivos de la Guardia Revolucionaria Islámica de Irán (IRGC), incluidos centros de mando "
+    "El Comando Central del Ejército estadounidense justifica los nuevos ataques a intereses militares como una respuesta al intento de lanzamiento de misiles contra tropas norteamericanas en Oriente Medio. El Comando Central de Estados Unidos (CENTCOM) anunció este miércoles que llevó a cabo una nueva oleada de ataques contra decenas de objetivos militares en Irán, en respuesta a un intento de lanzamiento de misiles contra tropas estadounidenses desplegadas en Oriente Medio. Los bombardeos alcanzaron objetivos de la Guardia Revolucionaria Islámica de Irán (IRGC), incluidos centros de mando ",
+    "El Presidente José Antonio Kast y el canciller Francisco Pérez Mackenna confirmaron este jueves la apertura de una hoja de ruta para la normalización progresiva de relaciones bilaterales entre Chile y Venezuela. A través de un comunicado, Cancillería confirmó que \"en una primera etapa, ambos países han acordado reactivar las relaciones consulares, como paso inicial hacia la reanudación plena de los vínculos bilaterales y con el propósito de asegurar la protección y los servicios consulares en favor de sus connacionales que residen en ambos países hermanos\". \"Esta iniciativa conjunta se sustent",
+    "El magistrado Andre Mendonca autorizó a la Policía federal a investigar a Fábio Luis Lula da Silva, hijo del presidente Luiz Inácio Lula da Silva, por sospechas de que ayudó indebidamente a un lobista en tratos con el Ministerio de Salud. Un juez del Tribunal Supremo de Brasil autorizó a la Policía Federal investigar a Fábio Luís Lula da Silva, conocido como Lulinha e hijo mayor del actual jefe de Estado, Luiz Inácio Lula da Silva, por un caso de tráfico de influencias. André Mendonça acató una petición de la Policía para esclarecer la actuación de Lulinha en las gestiones para obtener un perm"
   ],
   "hashes_contenido": [
-    "07174cbc64614d1a8b9985488b666ab6",
-    "45e3e3f60c3fa402dde999e15b49b91b",
-    "5f773a43be24fbce7c6eb87fcb27b844",
     "47aeef35febd8700487f72672c25299f",
     "e164ea66037904119ef59885ec0b6ebe",
     "fbf12dd2b7b2928ba784d7229f8e8429",
@@ -825,11 +817,11 @@
     "c3583b39b734d66b09817455490211b8",
     "5d05d608b0ab2d5e9c4c749621d7428e",
     "d00a8d783408515beb2d00c6832d92a9",
-    "45b1ca4dda953f630395bec052b86979"
+    "45b1ca4dda953f630395bec052b86979",
+    "ff55b0cd55f17cab4e20e88f0eaba035",
+    "bef5a1c152f300f5321050279926e632"
   ],
   "hashes_permanentes": [
-    "df596b4a3febda940f65ca4db5eeb96e",
-    "fbcd1633b67d047219ef5bf64f5e50db",
     "2f26912959de2d20815328784161bef6",
     "96253f8b9249060481a2516d2b53fdda",
     "5fb669bed5efab5d4e4d1cc5cc76927f",
@@ -1327,17 +1319,16 @@
     "f07ac1b2b136c488d5ad4d0d71321e46",
     "55abff8b8789f8109ce000064bff9bd3",
     "05cce652893a8e6879fe854ff8164cd0",
-    "d7ce5ca189431d1e117fca8d03b834ba"
+    "d7ce5ca189431d1e117fca8d03b834ba",
+    "7e28120f1d432ecca3166ea5fd4ab14a",
+    "873326cfd61940f86ad80b959662f1ef"
   ],
   "estadisticas": {
-    "total_publicadas": 908,
+    "total_publicadas": 910,
     "total_fb": 226,
-    "total_wp": 802
+    "total_wp": 804
   },
   "urls_normalizadas": [
-    "noroeste.com.mx/internacional/energia-limpia-verificable-el-reto-que-viene-ie24132318",
-    "cooperativa.cl/noticias/pais/vivienda/en-medio-de-la-lluvia-poduje-inspecciono-viviendas-en-el-olivar-y/2026-07-16/180038",
-    "elconfidencial.com/mundo/2026-07-12/maria-corina-machado-un-obstaculo-para-los-intereses-de-trump-en-venezuela_4387950",
     "expreso.com.mx/noticias/mundo/nueva-escalada-entre-eu-e-iran-aleja-posibilidad-de-una-treg/260593",
     "cooperativa.cl/noticias/pais/ff-aa-y-de-orden/carabineros/sujeto-que-baleo-a-carabinero-tuvo-apoyos-para-ser-encubierto-afirma/2026-07-16/182821",
     "efectococuyo.com/internacionales/trump-analisis-cia-elecciones",
@@ -1470,7 +1461,9 @@
     "intoleranciadiario.com/articles/deportes/2026/07/30/1055947-confirma-neymar-su-retiro-de-la-seleccion-brasilena-mi-tiempo-ya-paso",
     "cooperativa.cl/noticias/mundo/organismos-internacionales/onu/bachelet-se-ubica-en-el-cuarto-lugar-en-la-primera-votacion-informal/2026-07-30/142328",
     "efectococuyo.com/internacionales/delcy-rodriguez-en-portada-de-time",
-    "eldiarioar.com/mundo/ee-uu-reanuda-ataques-iran-golpea-objetivos-guardia-revolucionaria_1_13417609"
+    "eldiarioar.com/mundo/ee-uu-reanuda-ataques-iran-golpea-objetivos-guardia-revolucionaria_1_13417609",
+    "cooperativa.cl/noticias/pais/relaciones-exteriores/venezuela/chile-anuncio-normalizacion-progresiva-de-relaciones-bilaterales-con/2026-07-30/174610",
+    "rpp.pe/mundo/latinoamerica/que-se-sabe-del-caso-contra-el-hijo-mayor-de-lula-que-sacude-brasil-a-meses-de-las-presidenciales-noticia-1699498"
   ],
   "urls_fb_publicadas": [
     "1001",

@@ -1627,40 +1627,40 @@
       "ultima_fecha": "2026-08-02T11:12:38.057258+00:00"
     },
     "3095": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T13:06:17.271474+00:00"
+      "ultima_fecha": "2026-08-02T14:56:37.494000+00:00"
     },
     "3059": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T13:06:17.271474+00:00"
+      "ultima_fecha": "2026-08-02T14:56:37.494000+00:00"
     },
     "3062": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T13:06:17.271474+00:00"
+      "ultima_fecha": "2026-08-02T14:56:37.494000+00:00"
     },
     "3074": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T13:06:17.271474+00:00"
+      "ultima_fecha": "2026-08-02T14:56:37.494000+00:00"
     },
     "3068": {
-      "intentos": 3,
+      "intentos": 4,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T13:06:17.271474+00:00"
+      "ultima_fecha": "2026-08-02T14:56:37.494000+00:00"
     },
     "3071": {
-      "intentos": 3,
+      "intentos": 4,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T13:06:17.271474+00:00"
+      "ultima_fecha": "2026-08-02T14:56:37.494000+00:00"
     },
     "3086": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T13:06:17.271474+00:00"
+      "ultima_fecha": "2026-08-02T14:56:37.494000+00:00"
     }
   },
-  "ultima_ejecucion": "2026-08-02T13:06:29.131347+00:00"
+  "ultima_ejecucion": "2026-08-02T14:56:49.788149+00:00"
 }

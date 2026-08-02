@@ -1617,35 +1617,45 @@
       "ultima_fecha": "2026-08-02T02:06:47.685034+00:00"
     },
     "3083": {
-      "intentos": 4,
+      "intentos": 5,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T06:27:49.443301+00:00"
+      "ultima_fecha": "2026-08-02T09:50:35.753263+00:00"
     },
     "3065": {
-      "intentos": 3,
+      "intentos": 4,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T06:27:49.443301+00:00"
+      "ultima_fecha": "2026-08-02T09:50:35.753263+00:00"
     },
     "3095": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T06:27:49.443301+00:00"
+      "ultima_fecha": "2026-08-02T09:50:35.753263+00:00"
     },
     "3059": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T06:27:49.443301+00:00"
+      "ultima_fecha": "2026-08-02T09:50:35.753263+00:00"
     },
     "3062": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T06:27:49.443301+00:00"
+      "ultima_fecha": "2026-08-02T09:50:35.753263+00:00"
     },
     "3074": {
+      "intentos": 2,
+      "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
+      "ultima_fecha": "2026-08-02T09:50:35.753263+00:00"
+    },
+    "3068": {
       "intentos": 1,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-02T06:27:49.443301+00:00"
+      "ultima_fecha": "2026-08-02T09:50:35.753263+00:00"
+    },
+    "3071": {
+      "intentos": 1,
+      "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
+      "ultima_fecha": "2026-08-02T09:50:35.753263+00:00"
     }
   },
-  "ultima_ejecucion": "2026-08-02T06:28:00.824849+00:00"
+  "ultima_ejecucion": "2026-08-02T09:50:48.357574+00:00"
 }

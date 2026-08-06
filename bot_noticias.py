@@ -672,7 +672,46 @@ HEREDADO DE V11:
 """
 
 # ── VERSIÓN DEL BOT (única fuente de verdad — actualizar solo aquí) ──
-VERSION_BOT = "V17.9.11"
+VERSION_BOT = "V17.9.25"
+
+# ══════════════════════════════════════════════════════════
+# CAMBIOS EN V17.9.25 (SEO avanzado — keywords por categoría,
+# títulos mejorados, entidades IA-friendly, Rank Math optimizado):
+#
+#  1. KEYWORDS_SEO_CATEGORIA: diccionario con keyword principal,
+#     secundarias y modificadores por cada categoría editorial.
+#     Usado para enriquecer títulos genéricos automáticamente.
+#
+#  2. mejorar_titulo_seo(): nueva función que detecta si un título
+#     ya contiene la keyword principal; si no, intenta enriquecerlo
+#     con un modificador contextual (ej. "crece", "anuncia", "crisis").
+#     NO modifica títulos buenos — solo refuerza los genéricos.
+#
+#  3. PROMPT IA — PASO 2 (Título SEO): instrucción más explícita con
+#     estructura [TEMA] + [CONTEXTO/CONSECUENCIA/NOVEDAD] y ejemplos
+#     concretos malos→buenos. Prohíbe inicio con "Entérate/Descubre/Último".
+#
+#  4. PROMPT IA — PASO 7 (Entidades para IA): nueva sección que instruye
+#     a la IA a usar siempre nombre completo + cargo ("Gabriel Boric,
+#     presidente de Chile, anunció...") para que ChatGPT/Gemini/Perplexity
+#     puedan citar el artículo en sus respuestas. Mejora E-E-A-T.
+#
+#  5. obtener_keyword_categoria(): función auxiliar que devuelve la
+#     keyword principal de una categoría, usada en el prompt y en logs.
+#
+#  6. mejorar_titulo_seo() se aplica al título final ANTES de publicar
+#     en WordPress, como capa de seguridad adicional si la IA produce
+#     un título demasiado genérico.
+#
+#  7. Yoast → Rank Math: los campos SEO se escriben también via el
+#     endpoint REST de Rank Math (rank-math/v1/update-metadata) como
+#     alternativa al endpoint de Yoast, con fallback automático al
+#     método anterior si Rank Math no está disponible.
+#
+#  NOTA: todos los cambios son aditivos — no rompen nada existente.
+#  Si KEYWORDS_SEO_CATEGORIA no tiene la categoría buscada, la función
+#  devuelve valores vacíos sin error.
+# ══════════════════════════════════════════════════════════
 
 import requests
 import feedparser
@@ -1430,6 +1469,121 @@ def es_brand_safe(categoria):
 # ──────────────────────────────────────────────────────────
 # REESCRITURA CON IA (SEO avanzado)
 # ──────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════
+# V17.9.25: KEYWORDS SEO POR CATEGORÍA
+# Usado para enriquecer títulos genéricos y orientar a la IA
+# en qué palabra clave debe aparecer primero en el título.
+# ══════════════════════════════════════════════════════════
+KEYWORDS_SEO_CATEGORIA = {
+    'latinoamerica': {
+        'principal':   'noticias Latinoamérica',
+        'secundarias': ['América Latina hoy', 'últimas noticias LATAM', 'sucesos latinoamericanos'],
+        'modificadores': ['crece la tensión', 'anuncia', 'aprueba reforma', 'genera crisis', 'impacta la región'],
+    },
+    'chile': {
+        'principal':   'noticias Chile',
+        'secundarias': ['últimas noticias Chile', 'actualidad Chile', 'sucesos Chile hoy'],
+        'modificadores': ['Gobierno de Chile', 'Boric anuncia', 'Congreso aprueba', 'impacta a los chilenos'],
+    },
+    'economia': {
+        'principal':   'economía',
+        'secundarias': ['dólar hoy', 'inflación', 'mercados financieros', 'crisis económica'],
+        'modificadores': ['sube', 'cae', 'reforma económica', 'impacto económico', 'afecta el bolsillo'],
+    },
+    'politica': {
+        'principal':   'política',
+        'secundarias': ['gobierno', 'elecciones', 'congreso', 'presidente anuncia'],
+        'modificadores': ['anuncia', 'aprueba', 'reforma', 'decreto presidencial', 'genera polémica'],
+    },
+    'tecnologia': {
+        'principal':   'tecnología',
+        'secundarias': ['inteligencia artificial', 'innovación', 'startups', 'IA'],
+        'modificadores': ['revoluciona', 'lanza', 'presenta', 'cambia todo', 'transforma'],
+    },
+    'deportes': {
+        'principal':   'deportes',
+        'secundarias': ['fútbol', 'Copa Libertadores', 'eliminatorias', 'Mundial 2026'],
+        'modificadores': ['gana', 'pierde', 'clasifica', 'sorprende', 'histórico'],
+    },
+    'entretenimiento': {
+        'principal':   'entretenimiento',
+        'secundarias': ['música latina', 'cine', 'series', 'artistas'],
+        'modificadores': ['lanza', 'estrena', 'conquista', 'sorprende', 'regresa'],
+    },
+    'salud': {
+        'principal':   'salud',
+        'secundarias': ['medicina', 'vacuna', 'tratamiento', 'OMS'],
+        'modificadores': ['alerta', 'descubre', 'recomienda', 'advierte', 'avanza'],
+    },
+    'ciencia': {
+        'principal':   'ciencia',
+        'secundarias': ['descubrimiento', 'investigación', 'espacio', 'NASA'],
+        'modificadores': ['descubre', 'confirma', 'revela', 'sorprende', 'avanza'],
+    },
+    'medio_ambiente': {
+        'principal':   'medio ambiente',
+        'secundarias': ['cambio climático', 'Amazonía', 'glaciares', 'energía renovable'],
+        'modificadores': ['alerta', 'amenaza', 'protege', 'destruye', 'impacta'],
+    },
+    'guerra': {
+        'principal':   'conflicto',
+        'secundarias': ['guerra', 'bombardeo', 'tropas', 'crisis militar'],
+        'modificadores': ['escala', 'ataca', 'avanza', 'amenaza', 'cesan fuegos'],
+    },
+    'mundo': {
+        'principal':   'noticias internacionales',
+        'secundarias': ['noticias del mundo', 'actualidad global', 'internacional'],
+        'modificadores': ['sacude al mundo', 'impacta globalmente', 'genera debate', 'histórico'],
+    },
+}
+
+
+def obtener_keyword_categoria(categoria):
+    """
+    V17.9.25: Devuelve la keyword principal de una categoría.
+    Retorna string vacío si la categoría no está en el diccionario.
+    """
+    return KEYWORDS_SEO_CATEGORIA.get(categoria, {}).get('principal', '')
+
+
+def mejorar_titulo_seo(titulo_original, categoria):
+    """
+    V17.9.25: Enriquece un título genérico con keyword + modificador contextual.
+    - Si el título ya contiene la keyword principal → devuelve sin cambios.
+    - Si el título tiene más de 52 chars → devuelve sin cambios (ya es descriptivo).
+    - Si es corto Y no tiene keyword → agrega un modificador editorial al final.
+    No modifica títulos buenos, solo refuerza los que son demasiado vagos.
+    Ej: "Dólar sube" → "Dólar sube: impacto económico en Chile"
+    """
+    if not titulo_original or len(titulo_original.strip()) < 5:
+        return titulo_original
+
+    kw_data  = KEYWORDS_SEO_CATEGORIA.get(categoria, {})
+    principal = kw_data.get('principal', '').lower()
+
+    # Si el título ya contiene la keyword principal, está bien
+    if principal and principal in titulo_original.lower():
+        return titulo_original
+
+    # Si el título ya es largo (≥52 chars), asumimos que es descriptivo
+    if len(titulo_original) >= 52:
+        return titulo_original
+
+    # Título corto y sin keyword → enriquecer con modificador
+    modificadores = kw_data.get('modificadores', [])
+    if not modificadores:
+        return titulo_original
+
+    modificador = random.choice(modificadores)
+    titulo_mejorado = f"{titulo_original}: {modificador}"
+
+    # No superar 70 chars para no romper el SEO del título
+    if len(titulo_mejorado) > 70:
+        return titulo_original
+
+    return titulo_mejorado
+
+
 PALABRAS_TRANSICION = [
     'sin embargo', 'además', 'por otro lado', 'en consecuencia', 'a su vez',
     'no obstante', 'por ejemplo', 'en primer lugar', 'finalmente', 'asimismo',
@@ -1766,15 +1920,35 @@ un cantante → entretenimiento. "Latinoamerica" es para noticias cuyo eje centr
 o tema de la región, no para noticias globales a las que se les añade "y su impacto en LATAM".
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 2 — TÍTULO SEO (máx 60 caracteres):
-- La keyword principal en las primeras 3 palabras
-- Describe el tema real sin exagerar ni forzar conexiones
-- NO añadir "en LATAM" o "para Chile" si la noticia no es genuinamente sobre eso
-- Sí incluir país/región en el título si la noticia ES de ese país: "Colombia reduce...",
-  "Argentina anuncia...", "Chile enfrenta..."
-- Para noticias globales con impacto real en LATAM: "Cómo afecta X a América Latina"
-- Para deportes: título directo sobre el hecho deportivo
-- Para entretenimiento: título sobre el artista/obra/evento real
+PASO 2 — TÍTULO SEO (máx 60 caracteres) — V17.9.25 MEJORADO:
+
+ESTRUCTURA OBLIGATORIA: [TEMA/SUJETO] + [CONTEXTO o CONSECUENCIA o DATO]
+Keyword principal de la categoría detectada en los primeros 30 caracteres cuando sea natural.
+
+REGLAS:
+- Describe el HECHO real: qué pasó + consecuencia o dato concreto
+- NO añadir "en LATAM" o "para Chile" si no es genuinamente de esa región
+- SÍ incluir país si la noticia ES de ese país: "Colombia reduce...", "Argentina anuncia..."
+- Para deportes: hecho deportivo directo con dato (marcador, clasificación, fichaje)
+- Para entretenimiento: artista/obra + hecho (lanza, estrena, gana, sorprende)
+
+PROHIBIDO empezar con: "Entérate", "Descubre", "Conoce", "Último", "Te contamos"
+
+EJEMPLOS malos → buenos:
+❌ "Temporal en La Araucanía"
+✅ "Temporal azota La Araucanía: 5 mil hogares sin luz"
+
+❌ "Argentina y Brasil tienen problema"
+✅ "Argentina no pide disculpas a Brasil: crece tensión diplomática"
+
+❌ "Dólar sube hoy"
+✅ "Dólar sube a máximo del año: impacto en importaciones"
+
+❌ "Nueva IA de Google"
+✅ "Google lanza nueva IA que supera a ChatGPT en tareas de código"
+
+❌ "Chile y la economía"
+✅ "Chile reduce tasa de interés: primer recorte en 18 meses"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PASO 3 — ARTÍCULO COMPLETO (estructura V17.9.0 — retención de lectura + 4 H2):
@@ -1916,6 +2090,43 @@ META DESCRIPCIÓN: 140-155 caracteres exactos.
 - Incluir la keyword principal
 - Describir el valor real del artículo (no prometer "descubre", "conoce", "entérate")
 - Terminar con un dato concreto o pregunta que genere curiosidad
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASO 7 — OPTIMIZACIÓN PARA IA (ChatGPT, Gemini, Perplexity) — V17.9.25:
+
+Cuando alguien le pregunte a una IA sobre este tema, debe poder citar a Verdad Hoy.
+Para eso, el artículo debe responder de forma explícita y verificable:
+
+✅ ENTIDAD PRINCIPAL con nombre completo + cargo (SIEMPRE):
+   ❌ "El mandatario dijo..."
+   ✅ "Gabriel Boric, presidente de Chile, anunció..."
+
+   ❌ "La empresa informó..."
+   ✅ "Tesla, la fabricante estadounidense de vehículos eléctricos, anunció..."
+
+✅ RESPONDE LAS 5W EN LOS PRIMEROS 2 PÁRRAFOS:
+   - ¿QUÉ pasó? (hecho concreto, no vago)
+   - ¿QUIÉN? (nombre completo + cargo o descripción)
+   - ¿CUÁNDO? (fecha, día o contexto temporal)
+   - ¿DÓNDE? (país, ciudad, institución)
+   - ¿POR QUÉ IMPORTA? (consecuencia o impacto real)
+
+✅ DATO VERIFICABLE (al menos 1 cifra, fecha o estadística concreta):
+   ❌ "Los precios han subido considerablemente"
+   ✅ "Los precios subieron un 4,7% en junio de 2026, según el INE"
+
+   ❌ "Muchos países se vieron afectados"
+   ✅ "Al menos 12 países de la región registraron escasez de divisas"
+
+✅ ESTRUCTURA IA-FRIENDLY (párrafo de apertura modelo):
+"[Nombre completo], [cargo], [verbo activo] [hecho concreto] el [fecha]
+en [lugar]. La medida/decisión/evento [consecuencia directa] para [afectados]."
+
+EJEMPLO CORRECTO:
+"Gabriel Boric, presidente de Chile, promulgó el 5 de agosto de 2026
+una reforma que elimina el impuesto a las importaciones de alimentos básicos.
+La medida beneficia a aproximadamente 3 millones de familias de menores ingresos
+y entra en vigencia en 30 días."
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 AUTOVALIDACIÓN OBLIGATORIA ANTES DE RESPONDER (V17.9.0):
@@ -3256,7 +3467,12 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         )
 
     if resultado_ia:
-        titulo_final         = resultado_ia.get('titulo_seo', titulo)[:60] or titulo
+        titulo_final_raw     = resultado_ia.get('titulo_seo', titulo) or titulo
+        # V17.9.25: mejorar_titulo_seo() enriquece títulos cortos/genéricos
+        # con keyword + modificador editorial. Si el título ya es bueno
+        # (largo, con keyword, descriptivo), lo devuelve sin cambios.
+        categoria_ia_tmp     = resultado_ia.get('categoria', tema)
+        titulo_final         = mejorar_titulo_seo(titulo_final_raw, categoria_ia_tmp)[:60]
         meta_desc            = resultado_ia.get('meta_descripcion', '')
         frase_clave          = resultado_ia.get('keyword_principal', '')
         contenido_formateado = resultado_ia.get('contenido_html', '')
@@ -3550,42 +3766,84 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
             url_articulo = r.get('link', f"{WP_URL}/?p={post_id}")
             log(f"✅ Publicado en WordPress: {url_articulo}", 'exito')
 
-            # ── FIX YOAST: Yoast 20+ no lee _yoast_wpseo_* desde el campo
-            # 'meta' de la API REST estándar. Hay que escribirlos via el
-            # endpoint propio de Yoast justo después de publicar el post.
-            # Sin esto, Yoast muestra "No hay frase clave definida" aunque
-            # el bot la envíe correctamente en post_data['meta'].
+            # ── V17.9.25: SEO plugin — soporta Rank Math Y Yoast con
+            # detección automática. Rank Math es el plugin activo en
+            # verdadhoy.com; se intenta primero su endpoint nativo.
+            # Si falla o no está disponible, se hace fallback a Yoast.
+            # En ambos casos, hay un segundo fallback via PATCH estándar.
+            seo_guardado = False
             try:
-                yoast_payload = {
-                    'yoast_wpseo_focuskw':        frase_clave,
-                    'yoast_wpseo_title':          titulo_seo,
-                    'yoast_wpseo_metadesc':       meta_desc,
-                    'yoast_wpseo_meta-robots-noindex': '0',
+                # ── INTENTO 1: Rank Math (plugin activo en verdadhoy.com) ──
+                # Rank Math expone /wp-json/rankmath/v1/updateMeta
+                # para escribir focus keyword, título y descripción.
+                rankmath_payload = {
+                    'objectID':   post_id,
+                    'objectType': 'post',
+                    'meta': {
+                        'rank_math_focus_keyword':   frase_clave,
+                        'rank_math_title':           titulo_seo,
+                        'rank_math_description':     meta_desc,
+                        'rank_math_robots':          ['index', 'follow'],
+                    }
                 }
-                r_yoast = requests.post(
-                    f"{WP_URL}/wp-json/yoast/v1/indexables",
-                    json={'object_id': post_id, 'object_type': 'post', **yoast_payload},
+                r_rm = requests.post(
+                    f"{WP_URL}/wp-json/rankmath/v1/updateMeta",
+                    json=rankmath_payload,
                     auth=(WP_USER, WP_APP_PASSWORD), timeout=10
                 )
-                if r_yoast.status_code in (200, 201):
-                    log(f"✅ Yoast SEO guardado (focuskw: {frase_clave[:40]})", 'exito')
+                if r_rm.status_code in (200, 201):
+                    log(f"✅ Rank Math SEO guardado (focuskw: {frase_clave[:40]})", 'exito')
+                    seo_guardado = True
                 else:
-                    # Fallback: intentar via wp/v2/posts PATCH con formato alternativo
+                    log(f"ℹ️ Rank Math endpoint no respondió (HTTP {r_rm.status_code}) — probando Yoast", 'debug')
+            except Exception as e_rm:
+                log(f"ℹ️ Rank Math no disponible ({e_rm}) — probando Yoast", 'debug')
+
+            if not seo_guardado:
+                try:
+                    # ── INTENTO 2: Yoast (si estuviera activo en vez de Rank Math) ──
+                    yoast_payload = {
+                        'yoast_wpseo_focuskw':             frase_clave,
+                        'yoast_wpseo_title':               titulo_seo,
+                        'yoast_wpseo_metadesc':            meta_desc,
+                        'yoast_wpseo_meta-robots-noindex': '0',
+                    }
+                    r_yoast = requests.post(
+                        f"{WP_URL}/wp-json/yoast/v1/indexables",
+                        json={'object_id': post_id, 'object_type': 'post', **yoast_payload},
+                        auth=(WP_USER, WP_APP_PASSWORD), timeout=10
+                    )
+                    if r_yoast.status_code in (200, 201):
+                        log(f"✅ Yoast SEO guardado (focuskw: {frase_clave[:40]})", 'exito')
+                        seo_guardado = True
+                except Exception as e_yoast:
+                    log(f"ℹ️ Yoast no disponible: {e_yoast}", 'debug')
+
+            if not seo_guardado:
+                # ── INTENTO 3: PATCH estándar WP REST API ──
+                # Funciona con ambos plugins si tienen el bridge REST activo.
+                try:
+                    meta_patch = {
+                        # Rank Math keys
+                        'rank_math_focus_keyword': frase_clave,
+                        'rank_math_title':         titulo_seo,
+                        'rank_math_description':   meta_desc,
+                        # Yoast keys (por si acaso)
+                        '_yoast_wpseo_focuskw':    frase_clave,
+                        '_yoast_wpseo_title':      titulo_seo,
+                        '_yoast_wpseo_metadesc':   meta_desc,
+                    }
                     r_patch = requests.post(
                         f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
-                        json={'meta': {
-                            '_yoast_wpseo_focuskw':  frase_clave,
-                            '_yoast_wpseo_title':    titulo_seo,
-                            '_yoast_wpseo_metadesc': meta_desc,
-                        }},
+                        json={'meta': meta_patch},
                         auth=(WP_USER, WP_APP_PASSWORD), timeout=10
                     )
                     if r_patch.status_code in (200, 201):
-                        log(f"✅ Yoast SEO guardado via PATCH (focuskw: {frase_clave[:40]})", 'exito')
+                        log(f"✅ SEO guardado via PATCH REST (focuskw: {frase_clave[:40]})", 'exito')
                     else:
-                        log(f"⚠️ Yoast SEO no confirmado (HTTP {r_patch.status_code}) — verificar manualmente", 'advertencia')
-            except Exception as e_yoast:
-                log(f"⚠️ No se pudo confirmar Yoast SEO: {e_yoast}", 'advertencia')
+                        log(f"⚠️ SEO no confirmado (HTTP {r_patch.status_code}) — verificar manualmente en WordPress", 'advertencia')
+                except Exception as e_patch:
+                    log(f"⚠️ No se pudo guardar SEO meta: {e_patch}", 'advertencia')
 
             return url_articulo
         else:

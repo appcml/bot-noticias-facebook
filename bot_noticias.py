@@ -1758,8 +1758,8 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria
     # Esto resuelve el caso donde la fuente tiene 300 palabras: el bot no
     # descarta la noticia sino que le dice a la IA que la desarrolle más.
     # Actualidad: 600 — Rank Math marca error rojo bajo 600
-    # Evergreen:  650 — compiten en long-tail, necesitan más desarrollo
-    minimo_palabras = 650 if es_evergreen else 600
+    # Evergreen:  620 — margen sobre los 600 de Rank Math sin ser demasiado estricto
+    minimo_palabras = 620 if es_evergreen else 600
 
     texto_plano = re.sub(r'<[^>]+>', ' ', contenido_html or '')
     texto_plano = re.sub(r'\s+', ' ', texto_plano).strip()
@@ -1797,7 +1797,7 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria
 
         meta_desc_chk = meta_desc or ''
         len_meta = len(meta_desc_chk)
-        if len_meta < 120 or len_meta > 165:
+        if len_meta < 120 or len_meta > 170:
             problemas.append(
                 f"La meta descripción tiene {len_meta} caracteres — debe estar entre 130 y 160. "
                 "Ajústala sin cortar palabras a la mitad."

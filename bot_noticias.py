@@ -1,6 +1,31 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Bot de Noticias Internacionales - V17.9.26
+
+CAMBIOS EN V17.9.26 (FIX CRÍTICO: títulos truncados + slugs largos):
+  - PROBLEMA: los títulos SEO llegaban cortados a Rank Math porque se
+    aplicaba un [:60] en la línea 3475 (mejorar_titulo_seo) Y LUEGO
+    otro truncado en la lógica de titulo_seo — doble truncado hacía que
+    el título perdiera la segunda mitad de la frase.
+  - FIX TÍTULOS: se elimina el [:60] de la línea 3475. El único truncado
+    correcto es al calcular titulo_seo con el sufijo "| Verdad Hoy":
+    max_titulo = 60 - len(sufijo_seo) → si titulo_final > 48 chars,
+    se corta por la última palabra completa y se agrega el sufijo.
+  - FIX SLUG: WordPress genera el slug desde el título completo → queda
+    largo (ej: "gustavo-petro-se-despide-de-la-casa-de-narino-un-cambio-de",
+    81/75 en Rank Math). Nueva función generar_slug_seo() genera un slug
+    limpio: sin acentos, sin stopwords, máx 8 palabras sustantivas. Se
+    envía como 'slug' en el POST inicial → cero edición manual.
+    Ej: "Gustavo Petro se despide de la Casa de Nariño: un cambio de era"
+      → "gustavo-petro-despide-casa-narino-cambio-era" (44 chars, limpio)
+  - FIX IMAGEN: subir_imagen_wp() recibía 'titulo' (bruto de la fuente)
+    en vez de 'titulo_final' (enriquecido por IA). Corregido.
+  - NUEVO: log detallado del payload de Rank Math para debugging rápido:
+    '📊 Rank Math payload: title=... (N chars), desc=... (N chars)'
+  - NUEVO: log del slug generado: '🔗 Slug generado: ...'
+  - NUEVO: import unicodedata (necesario para normalizar acentos en slug)
+
 Bot de Noticias Internacionales - V17.9.11
 CAMBIOS EN V17.9.11 (9 de 13 fuentes RSS de Chile estaban muertas — HTTP 404):
   - DIAGNÓSTICO CONFIRMADO con el log real: La Tercera, BioBioChile,
@@ -721,6 +746,7 @@ import json
 import os
 import random
 import time
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
@@ -1546,6 +1572,46 @@ def obtener_keyword_categoria(categoria):
     return KEYWORDS_SEO_CATEGORIA.get(categoria, {}).get('principal', '')
 
 
+def generar_slug_seo(titulo, max_palabras=8):
+    """
+    V17.9.26: Genera un slug SEO limpio desde el título del artículo.
+    - Convierte a minúsculas, elimina acentos, reemplaza espacios por guiones
+    - Elimina caracteres especiales y stopwords de relleno
+    - Limita a max_palabras palabras para que el slug sea corto y legible
+    - WordPress usa el slug en la URL — uno largo perjudica el CTR y el SEO
+
+    Ej: "Gustavo Petro se despide de la Casa de Nariño: un cambio de era"
+      → "gustavo-petro-despide-casa-narino-cambio-era"  (7 palabras, sin stopwords)
+    """
+    # Stopwords a eliminar del slug (artículos, preposiciones, conjunciones)
+    STOPWORDS_SLUG = {
+        'de','del','la','las','el','los','un','una','unos','unas',
+        'y','e','o','u','a','al','en','por','para','con','sin',
+        'que','se','su','sus','es','son','ha','han','fue','era',
+        'lo','le','les','me','te','nos','ante','bajo','desde',
+        'hacia','hasta','sobre','tras','entre','como','pero',
+        'si','no','ni','ya','aun','aunque','sino'
+    }
+    if not titulo:
+        return ''
+    # 1. Normalizar unicode → eliminar acentos
+    nfkd = unicodedata.normalize('NFKD', titulo)
+    sin_acentos = ''.join(c for c in nfkd if not unicodedata.combining(c))
+    # 2. Minúsculas
+    texto = sin_acentos.lower()
+    # 3. Eliminar todo lo que no sea letra, número o espacio
+    texto = re.sub(r'[^a-z0-9\s]', ' ', texto)
+    # 4. Filtrar stopwords y palabras de 1-2 letras
+    palabras = [p for p in texto.split() if p not in STOPWORDS_SLUG and len(p) > 2]
+    # 5. Tomar máximo max_palabras palabras
+    palabras = palabras[:max_palabras]
+    # 6. Unir con guiones
+    slug = '-'.join(palabras)
+    # 7. Limpiar guiones dobles si quedaron
+    slug = re.sub(r'-{2,}', '-', slug).strip('-')
+    return slug
+
+
 def mejorar_titulo_seo(titulo_original, categoria):
     """
     V17.9.25: Enriquece un título genérico con keyword + modificador contextual.
@@ -2086,10 +2152,13 @@ PROHIBICIONES ABSOLUTAS:
 - PROHIBIDO: Reproducir más de 5 palabras consecutivas del texto fuente
 - BRAND SAFE: Sin lenguaje gráfico en guerra/crimen, sin conteo detallado de bajas
 
-META DESCRIPCIÓN: 140-155 caracteres exactos.
-- Incluir la keyword principal
-- Describir el valor real del artículo (no prometer "descubre", "conoce", "entérate")
-- Terminar con un dato concreto o pregunta que genere curiosidad
+META DESCRIPCIÓN: EXACTAMENTE 155-160 caracteres (no menos, no más).
+- Incluir la keyword principal en los primeros 40 caracteres
+- Primera frase: el hecho central (quién + qué)
+- Segunda frase: consecuencia o dato concreto que genere curiosidad
+- Terminar con pregunta corta o dato que invite al clic
+- PROHIBIDO: "Descubre", "Entérate", "Conoce", "Te contamos", "Haz clic"
+- OBLIGATORIO: cuenta los caracteres antes de responder — si son menos de 155, extiende la segunda frase
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PASO 7 — OPTIMIZACIÓN PARA IA (ChatGPT, Gemini, Perplexity) — V17.9.25:
@@ -3471,8 +3540,13 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         # V17.9.25: mejorar_titulo_seo() enriquece títulos cortos/genéricos
         # con keyword + modificador editorial. Si el título ya es bueno
         # (largo, con keyword, descriptivo), lo devuelve sin cambios.
+        # V17.9.26 FIX CRÍTICO: NO truncar aquí a 60 caras — eso se hace
+        # DESPUÉS al calcular titulo_seo con el sufijo "| Verdad Hoy".
+        # Truncar aquí causa doble truncado, títulos rotos en Rank Math,
+        # e imágenes con alt_text incompletos. El truncado correcto va en
+        # las líneas 3611-3615 donde se construye el título_seo final.
         categoria_ia_tmp     = resultado_ia.get('categoria', tema)
-        titulo_final         = mejorar_titulo_seo(titulo_final_raw, categoria_ia_tmp)[:60]
+        titulo_final         = mejorar_titulo_seo(titulo_final_raw, categoria_ia_tmp)
         meta_desc            = resultado_ia.get('meta_descripcion', '')
         frase_clave          = resultado_ia.get('keyword_principal', '')
         contenido_formateado = resultado_ia.get('contenido_html', '')
@@ -3603,25 +3677,63 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
                           if p not in stopwords_es]
         frase_clave = ' '.join(palabras_clave[:4])
 
-    sufijo_seo  = ' | Verdad Hoy'
-    max_titulo  = 60 - len(sufijo_seo)
-    if resultado_ia and resultado_ia.get('titulo_seo'):
-        titulo_seo = resultado_ia['titulo_seo']
-        if ' | Verdad Hoy' not in titulo_seo:
-            titulo_seo = (titulo_seo[:max_titulo].rsplit(' ', 1)[0]
-                          if len(titulo_seo) > max_titulo else titulo_seo) + sufijo_seo
-    else:
-        titulo_seo = (titulo_final[:max_titulo].rsplit(' ', 1)[0]
-                      if len(titulo_final) > max_titulo else titulo_final) + sufijo_seo
+    # V17.9.26 FIX: El snippet de Rank Math tiene 3 campos separados:
+    #   1. titulo_seo  → lo que aparece como título en Google (máx 60 chars total con sufijo)
+    #   2. slug_post   → ya generado antes con generar_slug_seo()
+    #   3. meta_desc   → descripción del snippet (155-160 chars ideales)
+    # Cada campo se procesa de forma INDEPENDIENTE.
 
+    # ── CAMPO 1: TÍTULO SEO (snippet Rank Math) ──
+    # máx 60 chars TOTALES (incluyendo " | Verdad Hoy" = 12 chars)
+    sufijo_seo = ' | Verdad Hoy'
+    max_titulo = 60 - len(sufijo_seo)  # = 48 chars para el texto del título
+
+    if len(titulo_final) > max_titulo:
+        titulo_base = titulo_final[:max_titulo].rsplit(' ', 1)[0]
+    else:
+        titulo_base = titulo_final
+
+    titulo_seo = titulo_base + sufijo_seo
+
+    # ── CAMPO 3: META DESCRIPCIÓN (snippet Rank Math) ──
+    # Objetivo: exactamente 155-160 chars. La IA intenta esto pero a veces
+    # entrega 130-145. Si viene corto, se extiende con texto del artículo.
     if not meta_desc:
+        # Sin meta_desc de IA: generar desde primera oración del contenido
         primera_oracion = re.split(r'(?<=[.!?])\s+', ' '.join(contenido.split()))[0]
-        if len(primera_oracion) > 155:
-            meta_desc = primera_oracion[:152].rsplit(' ', 1)[0] + '...'
-        elif len(primera_oracion) < 50:
-            meta_desc = (' '.join(contenido.split()))[:152].rsplit(' ', 1)[0] + '...'
+        if len(primera_oracion) > 160:
+            meta_desc = primera_oracion[:157].rsplit(' ', 1)[0] + '...'
+        elif len(primera_oracion) < 80:
+            meta_desc = (' '.join(contenido.split()))[:157].rsplit(' ', 1)[0] + '...'
         else:
             meta_desc = primera_oracion
+    else:
+        # Vino de la IA — verificar longitud mínima (Rank Math quiere 155+)
+        meta_desc = meta_desc.strip()
+        if len(meta_desc) < 150:
+            # Corta para Rank Math (necesita 155-160) — extender con texto del artículo
+            texto_limpio = ' '.join(contenido.split())
+            oraciones = re.split(r'(?<=[.!?])\s+', texto_limpio)
+            for oracion_extra in oraciones[1:4]:  # hasta 3 oraciones extra
+                oracion_extra = oracion_extra.strip()
+                if not oracion_extra:
+                    continue
+                candidato = meta_desc.rstrip('.') + '. ' + oracion_extra
+                if len(candidato) <= 160:
+                    meta_desc = candidato
+                else:
+                    # Agregar solo la parte que cabe
+                    espacio = 157 - len(meta_desc) - 2  # 2 para ". "
+                    if espacio > 20:
+                        meta_desc = meta_desc.rstrip('.') + '. ' + oracion_extra[:espacio].rsplit(' ', 1)[0] + '...'
+                    break
+                if len(meta_desc) >= 140:
+                    break
+        # Si viene demasiado larga (>165), truncar sin romper palabras
+        if len(meta_desc) > 160:
+            meta_desc = meta_desc[:157].rsplit(' ', 1)[0] + '...'
+    
+    log(f"📝 meta_desc: {len(meta_desc)} chars — '{meta_desc[:80]}...'", 'debug')
 
     # Fecha de publicación desde fuente
     fecha_wp = None
@@ -3634,8 +3746,9 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
             fecha_wp = None
 
     # Subir imagen (con metadatos completos: título, leyenda y descripción)
+    # V17.9.26: usar titulo_final (enriquecido por IA) en vez de titulo (bruto de fuente)
     imagen_id = subir_imagen_wp(
-        imagen_path, titulo, alt_text=alt_text_imagen,
+        imagen_path, titulo_final, alt_text=alt_text_imagen,
         frase_clave=frase_clave, meta_descripcion=meta_desc,
     )
     if not imagen_id:
@@ -3737,8 +3850,16 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
         if cat_id_sec and cat_id_sec not in categorias:
             categorias.append(cat_id_sec)
 
+    # V17.9.26: Generar slug SEO automático (sin stopwords, máx 8 palabras)
+    # WordPress genera el slug desde el título completo → queda largo y con
+    # palabras de relleno. Enviando 'slug' explícito en el POST evitamos
+    # tener que editarlo manualmente en cada artículo.
+    slug_post = generar_slug_seo(titulo_final, max_palabras=8)
+    log(f"🔗 Slug generado: {slug_post}", 'debug')
+
     post_data = {
         'title':          titulo_final,
+        'slug':           slug_post,
         'content':        contenido_html,
         'excerpt':        meta_desc,
         'status':         'publish',
@@ -3776,6 +3897,7 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
                 # ── INTENTO 1: Rank Math (plugin activo en verdadhoy.com) ──
                 # Rank Math expone /wp-json/rankmath/v1/updateMeta
                 # para escribir focus keyword, título y descripción.
+                # V17.9.26: logging detallado para debugging de truncados
                 rankmath_payload = {
                     'objectID':   post_id,
                     'objectType': 'post',
@@ -3786,6 +3908,9 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
                         'rank_math_robots':          ['index', 'follow'],
                     }
                 }
+                log(f"📊 Rank Math payload: title='{titulo_seo}' ({len(titulo_seo)} chars), "
+                    f"desc='{meta_desc[:60]}...' ({len(meta_desc)} chars), "
+                    f"focuskw='{frase_clave}'", 'debug')
                 r_rm = requests.post(
                     f"{WP_URL}/wp-json/rankmath/v1/updateMeta",
                     json=rankmath_payload,

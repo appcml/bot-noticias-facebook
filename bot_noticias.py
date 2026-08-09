@@ -1,6 +1,41 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Bot de Noticias Internacionales - V17.9.29
+
+CAMBIOS EN V17.9.29 (IA expande con conocimiento propio cuando la fuente es corta):
+  - PROBLEMA RAÍZ IDENTIFICADO: cuando la fuente tenía 300 palabras, la IA
+    parafraseaba esas 300 palabras y entregaba 400-500. No rechazaba, solo
+    quedaba corto. La solución no es rechazar más — es que la IA entienda
+    que debe CREAR contenido de 650 palabras independiente del tamaño de la fuente.
+  - FIX PROMPT: nueva sección "REGLA CRÍTICA DE EXTENSIÓN" al inicio del prompt
+    (antes del contenido) que explica: fuente de 300 palabras → artículo de 650.
+    Cinco técnicas concretas de expansión: antecedente histórico, cifras de
+    contexto, impacto LATAM, reacciones, próximos pasos.
+  - FIX REINTENTO PALABRAS: cuando el validador detecta <600 palabras y activa
+    el reintento, el feedback ahora da 4 instrucciones literales específicas:
+    añadir párrafo de antecedente, párrafo de cifras, párrafo de impacto LATAM,
+    y desarrollar cada dato del contexto web en 2-3 oraciones.
+  - LÓGICA: el validador sigue exigiendo 600/650 palabras PERO el fallo activa
+    REINTENTO (REINTENTAR_CALIDAD_IA=True), no descarte. Así noticias con fuentes
+    cortas siempre tienen una segunda oportunidad de llegar a 600 palabras.
+
+Bot de Noticias Internacionales - V17.9.28
+
+CAMBIOS EN V17.9.28 (enlace externo dofollow + power word validada + imagen keyword exacta + 600 palabras):
+  - FIX ENLACE EXTERNO: Rank Math exige al menos 1 enlace saliente dofollow.
+    La línea de fuente al pie del artículo ahora genera un <a href="{fuente_url}"
+    target="_blank" rel="noopener">{nombre_medio}</a> real en vez de texto plano.
+    Así cada artículo tiene siempre 1 enlace externo dofollow a la fuente original.
+  - FIX POWER WORD VALIDADOR: la power word ya se pedía en el prompt pero la IA
+    la omitía a veces. Ahora el validador en código comprueba si el titulo_seo
+    contiene al menos una de ~40 power words en español. Si no → reintento con
+    feedback específico antes de publicar.
+  - FIX PALABRAS VALIDADOR: mínimo subido a 600 (actualidad) y 650 (evergreen).
+    Antes aceptaba desde 350 en actualidad — por eso artículos de 512 palabras
+    pasaban y Rank Math los marcaba en rojo igual.
+  - FIX IMAGEN title + alt_text: ambos = EXACTAMENTE la frase clave objetivo.
+
 Bot de Noticias Internacionales - V17.9.27
 
 CAMBIOS EN V17.9.27 (Rank Math score: power words + palabras + imagen + título completo):
@@ -1717,7 +1752,14 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria
     """
     problemas = []
     es_evergreen = (categoria or '').strip().lower() in CATEGORIAS_EVERGREEN
-    minimo_palabras = 500 if es_evergreen else 350
+    # V17.9.29: mínimos de palabras para el validador.
+    # Cuando falla → REINTENTO con feedback (REINTENTAR_CALIDAD_IA=True),
+    # NO descarte. La IA recibe instrucción de expandir con conocimiento propio.
+    # Esto resuelve el caso donde la fuente tiene 300 palabras: el bot no
+    # descarta la noticia sino que le dice a la IA que la desarrolle más.
+    # Actualidad: 600 — Rank Math marca error rojo bajo 600
+    # Evergreen:  650 — compiten en long-tail, necesitan más desarrollo
+    minimo_palabras = 650 if es_evergreen else 600
 
     texto_plano = re.sub(r'<[^>]+>', ' ', contenido_html or '')
     texto_plano = re.sub(r'\s+', ' ', texto_plano).strip()
@@ -1767,6 +1809,31 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria
             "La meta descripción empieza con una palabra prohibida "
             "('descubre', 'conoce', 'entérate'...). Empieza con el dato o el hecho real."
         )
+
+    # V17.9.28: Rank Math exige power word en el título SEO.
+    # Se verifica en código para forzar reintento si la IA la omite.
+    POWER_WORDS_ES = {
+        'clave','crucial','decisivo','decisiva','histórico','histórica',
+        'alerta','récord','record','oficial','confirmado','confirmada',
+        'sorprendente','revolucionario','revolucionaria','explosivo','explosiva',
+        'inesperado','inesperada','urgente','impactante','revelador','reveladora',
+        'inédito','inédita','definitivo','definitiva','polémico','polémica',
+        'esencial','crítico','crítica','exclusivo','exclusiva','extraordinario',
+        'extraordinaria','primero','primera','único','única','máximo','mínimo',
+        'grave','vital','histórico','nueva','nuevo','mejor','peor','mayor','menor',
+        'real','verdad','secreto','secretos','brutal','radical','total','final',
+        'absoluto','absoluta','masivo','masiva','sin precedentes','millones',
+        'millonario','millonaria','récord','logra','logró','conquista','conquista',
+    }
+    if titulo_seo:
+        titulo_lower = titulo_seo.lower()
+        tiene_power_word = any(pw in titulo_lower for pw in POWER_WORDS_ES)
+        if not tiene_power_word:
+            problemas.append(
+                f"El título SEO '{titulo_seo}' no contiene ninguna power word. "
+                "Añade al menos una: clave, crucial, decisivo, histórico, récord, oficial, "
+                "confirmado, revelador, urgente, exclusivo, sin precedentes, etc."
+            )
 
     return (len(problemas) == 0, problemas)
 
@@ -1877,10 +1944,15 @@ Antes de responder, cuenta cuántas de estas frases usaste. Si son menos de 6,
 agrega más ANTES de entregar el JSON."""
         if hay_problema_palabras:
             instrucciones_extra += """
-INSTRUCCIÓN LITERAL PARA EXTENSIÓN: agrega una oración adicional de contexto
-o dato concreto en CADA uno de los 4 párrafos bajo los H2 (no solo en uno).
-Si usaste el contexto verificado de las fuentes web, desarrolla cada dato en
-2-3 oraciones en vez de mencionarlo de pasada en una sola línea."""
+INSTRUCCIÓN LITERAL PARA EXTENSIÓN — el artículo anterior fue demasiado corto.
+La fuente original puede ser corta pero TÚ tienes conocimiento propio para expandir.
+Haz esto en CADA uno de los 4 bloques H2, en este orden:
+  1. Agrega 1 párrafo de ANTECEDENTE: ¿qué pasó antes con este tema? Historia, contexto.
+  2. Agrega 1 párrafo de CIFRAS: estadísticas, datos comparativos, magnitudes concretas.
+  3. Agrega 1 párrafo de IMPACTO LATAM: ¿cómo afecta esto a Chile u otros países de la región?
+  4. Desarrolla cada dato del contexto web en 2-3 oraciones, no solo una línea.
+Antes de entregar el JSON, cuenta las palabras del contenido_html (sin HTML).
+Si son menos de 650, agrega más párrafos hasta llegar. NO repitas frases ya escritas."""
         bloque_feedback_correccion = f"""⚠️ CORRECCIÓN OBLIGATORIA — este es un reintento.
 Tu borrador anterior de esta misma noticia NO pasó el control de calidad por
 estos motivos concretos:
@@ -1922,6 +1994,24 @@ y escribe un artículo NUEVO con análisis, contexto adicional y perspectiva pro
 El artículo debe poder existir de forma independiente al original — Google penaliza el contenido que es
 solo una reescritura. Agrega al menos un dato de contexto, una perspectiva editorial o una implicación
 práctica que el original NO menciona.
+
+⚠️ REGLA CRÍTICA DE EXTENSIÓN — LEE ESTO PRIMERO:
+El artículo fuente puede ser CORTO (100-400 palabras). Eso es normal. Tu trabajo NO es copiar
+ni parafrasear esas pocas palabras — es CREAR un artículo de 650 palabras usando:
+  1. Los DATOS CONCRETOS de la fuente (qué pasó, quién, cuándo, dónde)
+  2. Tu CONOCIMIENTO PROPIO sobre el tema (antecedentes, historia, contexto, cifras conocidas)
+  3. El CONTEXTO VERIFICADO de las fuentes web que se te entregan abajo
+  4. IMPLICACIONES REALES para América Latina y Chile
+
+Si la fuente tiene 300 palabras → tú escribes 650. Si tiene 100 palabras → tú escribes 650.
+El tamaño de la fuente NO determina el tamaño de tu artículo. Siempre 650 palabras mínimo.
+
+CÓMO EXPANDIR correctamente (no rellenes con frases vacías):
+- Antecedente histórico: ¿qué pasó antes? ¿es la primera vez? ¿cuántos años lleva este tema?
+- Cifras de contexto: estadísticas relacionadas, datos comparativos, rankings, récords
+- Impacto regional: ¿cómo afecta esto a Chile, Argentina, México u otros países de LATAM?
+- Reacciones: ¿qué dijeron expertos, gobierno, ciudadanos? (si los conoces o están en el contexto web)
+- Próximos pasos: ¿qué se espera que pase? ¿cuáles son las fechas o hitos importantes?
 
 VerdadHoy.com tiene audiencia en Chile, Argentina, México, Colombia, Perú, Brasil y toda América Latina.
 
@@ -3398,32 +3488,26 @@ def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descr
             media_id = r['id']
             log(f"🖼️ Imagen subida a WP — ID: {media_id}", 'exito')
 
-            # V17.9.26: El título de la imagen en WP debe incluir la frase clave
-            # Y el título del artículo para SEO de imágenes en Google Images.
-            # Rank Math evalúa que el título de la imagen contenga la keyword.
-            # Estructura: "[frase_clave] - [titulo]" truncado a 100 chars.
-            if frase_clave and titulo:
-                titulo_media = f"{frase_clave} - {titulo}"[:100]
-            elif frase_clave:
-                titulo_media = frase_clave[:100]
-            else:
-                titulo_media = titulo[:100]
+            # V17.9.28: title y alt_text = EXACTAMENTE la frase clave objetivo.
+            # Rank Math evalúa estos dos campos para SEO de imágenes.
+            # No mezclar con el título del artículo — solo la keyword pura.
+            kw_imagen = (frase_clave or titulo)[:125]
 
-            # Leyenda: descriptiva + fuente (visible en el front-end bajo la imagen)
+            # Leyenda: título del artículo + fuente (visible bajo la imagen)
             leyenda_media = f"{titulo[:120]} — Fuente: Verdad Hoy"
 
-            # Descripción: título completo + meta descripción (indexable por Google Images)
+            # Descripción: keyword + meta descripción (indexable, no visible)
             descripcion_media = (
-                f"{titulo}. {meta_descripcion}".strip()[:300]
-                if meta_descripcion else titulo[:300]
+                f"{frase_clave}. {meta_descripcion}".strip()[:300]
+                if meta_descripcion and frase_clave
+                else (frase_clave or titulo)[:300]
             )
             metadatos = {
-                'title': titulo_media,
-                'caption': leyenda_media,
+                'title':       kw_imagen,   # = frase clave exacta
+                'alt_text':    kw_imagen,   # = frase clave exacta
+                'caption':     leyenda_media,
                 'description': descripcion_media,
             }
-            if alt_text:
-                metadatos['alt_text'] = alt_text[:125]
             try:
                 requests.post(
                     f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
@@ -3856,12 +3940,19 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
 </p>"""
 
     # Reconstruir contenido_html con schema actualizado
+    # V17.9.28: enlace externo dofollow a la fuente original — Rank Math
+    # requiere al menos 1 enlace externo saliente. Se usa la fuente_url real
+    # del artículo original, no solo el nombre del medio como texto plano.
+    enlace_fuente_html = (
+        f'<a href="{fuente_url}" target="_blank" rel="noopener">{nombre_medio}</a>'
+        if fuente_url else nombre_medio
+    )
     contenido_html = f"""
 {barra_lectura}
 {contenido_formateado}
 
 <hr>
-<p><strong>Fuente:</strong> {nombre_medio}</p>
+<p><strong>Fuente:</strong> {enlace_fuente_html}</p>
 <p><em>Información verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
 {schema_markup}
 """

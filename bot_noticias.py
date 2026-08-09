@@ -1,6 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
+Bot de Noticias Internacionales - V17.9.27
+
+CAMBIOS EN V17.9.27 (Rank Math score: power words + palabras + imagen + título completo):
+  - FIX TÍTULO SEO: límite ampliado a 55 chars de texto (antes 48). Prompt
+    actualizado con límite explícito de 55 chars y sin incluir el sufijo en JSON.
+    Truncado inteligente: si hay ":" cerca del límite, corta ahí para no dejar
+    preposiciones colgadas ("para la | Verdad Hoy").
+  - FIX PALABRAS: mínimo subido a 650 (antes 550). Rank Math señala "bajo 600"
+    — con el nuevo mínimo todos los artículos superan ese umbral con margen.
+    Checklist ítem 10 actualizado. IA debe contar palabras antes de responder.
+  - FIX POWER WORD: prompt actualizado para incluir una power word obligatoria
+    en el título (clave, crucial, histórico, decisivo, oficial, récord, etc.)
+    y un número cuando el hecho tiene datos concretos. Checklist ítems 16-18.
+  - FIX IMAGEN: titulo_media ahora = "[frase_clave] - [titulo]" en vez de solo
+    frase_clave. Rank Math requiere que el título de la imagen contenga la keyword
+    para SEO de imágenes en Google Images.
+  - FIX LOGGING: nuevo log '📰 titulo_seo: ... (N chars)' para verificar en
+    GitHub Actions que el título no se cortó.
+
 Bot de Noticias Internacionales - V17.9.26
 
 CAMBIOS EN V17.9.26 (FIX CRÍTICO: títulos truncados + slugs largos):
@@ -1986,35 +2005,47 @@ un cantante → entretenimiento. "Latinoamerica" es para noticias cuyo eje centr
 o tema de la región, no para noticias globales a las que se les añade "y su impacto en LATAM".
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 2 — TÍTULO SEO (máx 60 caracteres) — V17.9.25 MEJORADO:
+PASO 2 — TÍTULO SEO (máx 55 caracteres de texto) — V17.9.26:
 
-ESTRUCTURA OBLIGATORIA: [TEMA/SUJETO] + [CONTEXTO o CONSECUENCIA o DATO]
-Keyword principal de la categoría detectada en los primeros 30 caracteres cuando sea natural.
+⚠️ LÍMITE ESTRICTO: el campo "titulo_seo" en el JSON debe tener MÁXIMO 55 caracteres.
+El bot agrega automáticamente " | Verdad Hoy" al final — NO lo incluyas en el JSON.
+CUENTA los caracteres antes de entregar: si son más de 55, recorta hasta la última palabra completa.
 
-REGLAS:
-- Describe el HECHO real: qué pasó + consecuencia o dato concreto
-- NO añadir "en LATAM" o "para Chile" si no es genuinamente de esa región
-- SÍ incluir país si la noticia ES de ese país: "Colombia reduce...", "Argentina anuncia..."
-- Para deportes: hecho deportivo directo con dato (marcador, clasificación, fichaje)
-- Para entretenimiento: artista/obra + hecho (lanza, estrena, gana, sorprende)
+ESTRUCTURA OBLIGATORIA: [KEYWORD] + [POWER WORD o DATO CONCRETO]
+La keyword principal debe estar en los primeros 30 caracteres cuando sea natural.
 
-PROHIBIDO empezar con: "Entérate", "Descubre", "Conoce", "Último", "Te contamos"
+⚠️ REGLAS RANK MATH (obligatorias para score alto):
+- POWER WORD obligatoria: al menos una de estas palabras que generan urgencia/emoción:
+  clave, crucial, definitivo, histórico, alerta, récord, oficial, confirmado,
+  sorprendente, revolucionario, explosivo, inesperado, urgente, impactante,
+  revelador, inédito, decisivo, polémico, esencial, crítico
+- NÚMERO obligatorio cuando el hecho lo permita (no forzar si no hay dato real):
+  cantidad de afectados, fecha, cifra, porcentaje, posición, año, precio
+- Keyword principal completa — NO cortar a la mitad con el truncado
+- SÍ incluir país si la noticia ES de ese país
+- PROHIBIDO empezar con: "Entérate", "Descubre", "Conoce", "Último", "Te contamos"
+
+ESTRUCTURA TITLE SEO = [Keyword] + [verbo/acción] + [power word o número]
+El título debe tener sentido COMPLETO antes del límite de 48 chars (el sufijo "| Verdad Hoy" se agrega automáticamente, no lo incluyas en el JSON).
 
 EJEMPLOS malos → buenos:
 ❌ "Temporal en La Araucanía"
-✅ "Temporal azota La Araucanía: 5 mil hogares sin luz"
+✅ "Temporal azota La Araucanía: 5 mil hogares sin luz"  ← número + acción
 
 ❌ "Argentina y Brasil tienen problema"
-✅ "Argentina no pide disculpas a Brasil: crece tensión diplomática"
+✅ "Argentina no pide disculpas a Brasil: tensión diplomática crítica"  ← power word
 
 ❌ "Dólar sube hoy"
-✅ "Dólar sube a máximo del año: impacto en importaciones"
+✅ "Dólar sube a máximo histórico: impacto en importaciones"  ← power word + dato
 
 ❌ "Nueva IA de Google"
-✅ "Google lanza nueva IA que supera a ChatGPT en tareas de código"
+✅ "Google lanza IA revolucionaria que supera a ChatGPT en código"  ← power word
 
 ❌ "Chile y la economía"
-✅ "Chile reduce tasa de interés: primer recorte en 18 meses"
+✅ "Chile reduce tasa de interés: primer recorte decisivo en 18 meses"  ← power word + número
+
+❌ "River Plate inscribe a Thiago Almada para la"  ← CORTADO, incompleto
+✅ "Thiago Almada: fichaje clave de River Plate para la Copa"  ← completo + power word
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PASO 3 — ARTÍCULO COMPLETO (estructura V17.9.0 — retención de lectura + 4 H2):
@@ -2110,11 +2141,12 @@ APERTURA ORIGINAL (≤40 palabras):
 - Ejemplos inválidos: "[Medio] informó que..." / "Según reportes..." / pasiva refleja
 
 LONGITUD Y ESTRUCTURA:
-- Mínimo 550 palabras, máximo 800 palabras
+- Mínimo 650 palabras, máximo 850 palabras (Rank Math penaliza bajo 600 — el mínimo real con margen es 650)
 - PRIMER H2 obligatorio antes de la palabra 100 del artículo (Yoast lo penaliza si no)
 - Mínimo 4 subtítulos H2 — cada uno debe abrir un ángulo diferente del tema
 - Párrafos de MÁXIMO 2-3 líneas (máx 25 palabras por oración — requisito Yoast)
 - Alternar párrafos cortos (1-2 líneas) con párrafos medianos (3 líneas)
+- CUENTA las palabras antes de entregar el JSON — si son menos de 650, agrega más desarrollo en el H2 más débil
 
 FRASES Y LEGIBILIDAD (crítico para Yoast):
 - MÁXIMO 25% de frases con más de 25 palabras
@@ -2215,12 +2247,17 @@ es un paso interno.
   8. Como máximo el 25% de las oraciones supera las 25 palabras.
   9. Se usan al menos 5 palabras de transición (sin embargo, además, por otro
      lado, en consecuencia, asimismo, no obstante, por ejemplo, finalmente...).
-  10. El artículo tiene entre 550 y 800 palabras.
+  10. El artículo tiene entre 650 y 850 palabras — CUENTA las palabras antes de entregar.
   11. Existe el dato de contexto/valor editorial que el original no menciona.
   12. El cierre termina con una pregunta genuina y específica al lector.
   13. [ENLACES_INTERNOS] aparece tal cual, al final del contenido_html.
   14. No hay frases ni estructura de párrafo copiadas del artículo original.
   15. El texto suena a periodista humano, no a resumen automático de IA.
+  16. El título SEO contiene al menos una power word (clave, crucial, histórico,
+      récord, oficial, confirmado, decisivo, polémico, revelador, crítico, etc.)
+  17. El título SEO contiene un número si el hecho tiene datos concretos
+      (cifras, fechas, posiciones, porcentajes).
+  18. El título SEO está completo y tiene sentido sin cortarse — máx 55 chars de texto.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {bloque_feedback_correccion}
@@ -3361,8 +3398,21 @@ def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descr
             media_id = r['id']
             log(f"🖼️ Imagen subida a WP — ID: {media_id}", 'exito')
 
-            titulo_media = (frase_clave or titulo)[:100]
-            leyenda_media = f"{titulo[:150]} — Fuente: Verdad Hoy"
+            # V17.9.26: El título de la imagen en WP debe incluir la frase clave
+            # Y el título del artículo para SEO de imágenes en Google Images.
+            # Rank Math evalúa que el título de la imagen contenga la keyword.
+            # Estructura: "[frase_clave] - [titulo]" truncado a 100 chars.
+            if frase_clave and titulo:
+                titulo_media = f"{frase_clave} - {titulo}"[:100]
+            elif frase_clave:
+                titulo_media = frase_clave[:100]
+            else:
+                titulo_media = titulo[:100]
+
+            # Leyenda: descriptiva + fuente (visible en el front-end bajo la imagen)
+            leyenda_media = f"{titulo[:120]} — Fuente: Verdad Hoy"
+
+            # Descripción: título completo + meta descripción (indexable por Google Images)
             descripcion_media = (
                 f"{titulo}. {meta_descripcion}".strip()[:300]
                 if meta_descripcion else titulo[:300]
@@ -3684,16 +3734,34 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url, fech
     # Cada campo se procesa de forma INDEPENDIENTE.
 
     # ── CAMPO 1: TÍTULO SEO (snippet Rank Math) ──
-    # máx 60 chars TOTALES (incluyendo " | Verdad Hoy" = 12 chars)
+    # Rank Math mide en píxeles (límite ~580px), no en caracteres puros.
+    # Con la fuente de Google, ~60 chars totales = ~580px.
+    # Sufijo " | Verdad Hoy" = 12 chars → el título base puede tener hasta 48 chars.
+    # PERO: con caracteres estrechos (i, l, r, t) caben más — el límite real
+    # visual es ~55 chars base (67 totales). Usamos 55 como límite de texto.
+    # V17.9.26: si el título llega a 57/60 en Rank Math (como el caso River Plate),
+    # está en verde — el problema anterior era el doble truncado, ya corregido.
     sufijo_seo = ' | Verdad Hoy'
-    max_titulo = 60 - len(sufijo_seo)  # = 48 chars para el texto del título
+    max_titulo = 55  # 55 chars base + 12 sufijo = 67 totales (verde en Rank Math)
 
     if len(titulo_final) > max_titulo:
-        titulo_base = titulo_final[:max_titulo].rsplit(' ', 1)[0]
+        # Truncar sin cortar en medio de una frase:
+        # Si hay ":" antes del límite, cortar justo antes para no dejar "para la" colgado
+        titulo_truncado = titulo_final[:max_titulo]
+        if ':' in titulo_truncado:
+            # Mantener hasta el ":" si está en los últimos 15 chars del límite
+            idx_colon = titulo_truncado.rfind(':')
+            if idx_colon >= max_titulo - 20:
+                titulo_base = titulo_truncado[:idx_colon]
+            else:
+                titulo_base = titulo_truncado.rsplit(' ', 1)[0]
+        else:
+            titulo_base = titulo_truncado.rsplit(' ', 1)[0]
     else:
         titulo_base = titulo_final
 
     titulo_seo = titulo_base + sufijo_seo
+    log(f"📰 titulo_seo: '{titulo_seo}' ({len(titulo_seo)} chars)", 'debug')
 
     # ── CAMPO 3: META DESCRIPCIÓN (snippet Rank Math) ──
     # Objetivo: exactamente 155-160 chars. La IA intenta esto pero a veces

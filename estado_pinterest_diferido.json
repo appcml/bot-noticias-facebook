@@ -2017,15 +2017,15 @@
       "ultima_fecha": "2026-08-10T05:19:30.773536+00:00"
     },
     "3410": {
-      "intentos": 3,
+      "intentos": 4,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-10T05:19:30.773536+00:00"
+      "ultima_fecha": "2026-08-10T07:17:42.210978+00:00"
     },
     "3420": {
-      "intentos": 2,
+      "intentos": 3,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-10T05:19:30.773536+00:00"
+      "ultima_fecha": "2026-08-10T07:17:42.210978+00:00"
     }
   },
-  "ultima_ejecucion": "2026-08-10T05:19:37.582286+00:00"
+  "ultima_ejecucion": "2026-08-10T07:17:48.022438+00:00"
 }

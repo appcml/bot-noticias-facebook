@@ -1,8 +1,6 @@
 {
-  "fecha": "2026-08-10",
+  "fecha": "2026-08-11",
   "conteo": {
-    "guerra": 1,
-    "medio_ambiente": 1,
-    "tecnologia": 1
+    "general": 1
   }
 }

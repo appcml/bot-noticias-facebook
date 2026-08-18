@@ -2342,10 +2342,10 @@
       "ultima_fecha": "2026-08-18T14:26:03.921315+00:00"
     },
     "3758": {
-      "intentos": 1,
+      "intentos": 2,
       "ultimo_error": "no se encontró ningún tablero en la cuenta de Pinterest",
-      "ultima_fecha": "2026-08-18T18:27:31.308582+00:00"
+      "ultima_fecha": "2026-08-18T20:15:14.123949+00:00"
     }
   },
-  "ultima_ejecucion": "2026-08-18T18:27:38.019986+00:00"
+  "ultima_ejecucion": "2026-08-18T20:15:20.123086+00:00"
 }

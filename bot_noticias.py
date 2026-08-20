@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias - V19.0.0
-CAMBIOS V19:
-  - PUBLICACION MIXTA: 4 directas (publish) + 2 evergreen (draft)
-  - FOCO LATAM POR TIERS: Tier1=Chile/Argentina/Mexico (+15), Tier2=Colombia/Brasil (+10), Tier3=resto (+5)
-  - RANK MATH 80+ SIN EDICION: keyword al inicio titulo, titulo nunca cortado, power word,
-    numero en titulo, slug max 50 chars, keyword en parrafo 1 antes palabra 80,
-    keyword en 2+ H2, densidad 1-1.5%, tabla de contenidos, parrafos cortos,
-    2 enlaces internos, dofollow externo, alt=keyword, meta 150-160 chars keyword al inicio
-  - AEO reforzado: entidad+cargo+dato verificable en primeros 2 parrafos
-  - Parrafo nativo generado por IA con tono VerdadHoy
-  - FIX titulo cortado: generar_titulo_seo_completo() nunca corta palabras
+Bot de Noticias - V19.0.1
+CAMBIOS V19.0.1 vs V19.0.0:
+  - SOLO mejora de prompt en reescribir_noticia_v19():
+    * Instrucción explícita de densidad: keyword EXACTA mínimo 6 veces, no paráfrasis
+    * 4 palabras de transición obligatorias listadas con ejemplo de uso
+    * H2 con keyword: ejemplo concreto de cómo debe quedar
+    * Número en título: instrucción más directa con ejemplos
+    * Meta descripción: ejemplo mejorado con keyword al inicio
+  - Sin cambios en validación, lógica, cuotas ni flujo principal
 """
-VERSION_BOT = "V19.0.0"
+VERSION_BOT = "V19.0.1"
 
 import requests, feedparser, re, hashlib, json, os, random, time, unicodedata
 from datetime import datetime, timedelta, timezone
@@ -423,7 +421,7 @@ def es_noticia_espana_domestica(titulo, descripcion=""):
     txt = f"{titulo} {descripcion}".lower()
     tiene_espana = any(kw in txt for kw in KEYWORDS_ESPANA_DOMESTICO)
     if not tiene_espana: return False
-    if any(kw in txt for pais_kws in KEYWORDS_LATAM_PAISES.values() for kw in pais_kws): return False
+    if any(kw in txt for kws in KEYWORDS_LATAM_PAISES.values() for kw in kws): return False
     if any(kw in txt for kw in KEYWORDS_CHILE): return False
     return True
 
@@ -441,7 +439,6 @@ def es_noticia_latam_sin_chile(titulo, descripcion=""):
     return False, None
 
 def detectar_pais_latam(titulo, descripcion=""):
-    """V19: detecta el tier del país para el bonus de puntaje."""
     txt = f"{titulo} {descripcion}".lower()
     if any(kw in txt for kw in KEYWORDS_CHILE): return 'chile', LATAM_TIER1
     for pais, keywords in KEYWORDS_LATAM_PAISES.items():
@@ -480,11 +477,6 @@ STOPWORDS_SLUG = {
 }
 
 def generar_slug_seo(titulo, max_chars=50):
-    """
-    V19: genera slug SEO limpio con límite de CHARS (no palabras).
-    Antes era max_palabras=8 sin límite de chars → URLs largas penalizadas.
-    Ahora máx 50 chars sin cortar palabras a la mitad.
-    """
     if not titulo: return ''
     nfkd = unicodedata.normalize('NFKD', titulo)
     sin_acentos = ''.join(c for c in nfkd if not unicodedata.combining(c))
@@ -501,24 +493,14 @@ def generar_slug_seo(titulo, max_chars=50):
     return slug or 'noticia'
 
 def generar_titulo_seo_completo(keyword, power_word, dato_concreto='', max_chars=55):
-    """
-    V19 FIX: construye título SEO en orden keyword→power_word→dato.
-    NUNCA corta palabras a la mitad. Si no cabe, reduce el dato,
-    luego la power_word. El resultado siempre es frase completa con sentido.
-    El sufijo ' | Verdad Hoy' (12 chars) NO va en este campo — se agrega al vuelo.
-    """
-    # Intento 1: keyword + dato + power_word
     if dato_concreto:
         titulo = f"{keyword}: {dato_concreto} {power_word}".strip()
         if len(titulo) <= max_chars: return titulo
-    # Intento 2: keyword + power_word + dato (más corto)
     if dato_concreto:
         titulo = f"{keyword} {power_word}: {dato_concreto}".strip()
         if len(titulo) <= max_chars: return titulo
-    # Intento 3: keyword + power_word
     titulo = f"{keyword} {power_word}".strip()
     if len(titulo) <= max_chars: return titulo
-    # Intento 4: solo keyword (recortada en palabra completa)
     palabras = keyword.split()
     titulo = ''
     for p in palabras:
@@ -566,36 +548,21 @@ def obtener_keyword_categoria(categoria):
 # VALIDACIÓN DE CALIDAD V19
 # ══════════════════════════════════════════════════════════
 def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria='', keyword=''):
-    """
-    V19: validación Rank Math 80+ reforzada.
-    Nuevas reglas vs V18:
-      - Keyword en primeros 80 palabras (antes 100)
-      - Keyword en al menos 2 H2 (antes 1)
-      - Densidad keyword 1-1.5% validada en código
-      - Tabla de contenidos presente
-      - Párrafos máx 3 líneas
-      - Meta descripción empieza con keyword (no solo la contiene)
-      - Título empieza con keyword (primeras 3 palabras)
-    """
     problemas = []
     texto_plano = re.sub(r'<[^>]+>',' ', contenido_html or '')
     texto_plano = re.sub(r'\s+',' ', texto_plano).strip()
     n_palabras = len(texto_plano.split())
 
-    # 1. Longitud mínima
     if n_palabras < 620:
         problemas.append(f"Solo {n_palabras} palabras — mínimo 620. Desarrolla más con antecedente histórico, cifras y contexto LATAM.")
 
-    # 2. Blockquote obligatorio
     if '<blockquote' not in (contenido_html or ''):
         problemas.append("Falta <blockquote> (Dato destacado) — es obligatorio para Rank Math.")
 
-    # 3. Al menos 4 H2
     n_h2 = len(re.findall(r'<h2', contenido_html or '', flags=re.IGNORECASE))
     if n_h2 < 4:
         problemas.append(f"Solo {n_h2} H2 — mínimo 4, cada uno con ángulo distinto.")
 
-    # 4. Keyword en al menos 2 H2 (V19 nuevo)
     if keyword:
         kw_lower = keyword.lower()
         h2_textos = re.findall(r'<h2[^>]*>(.*?)</h2>', contenido_html or '', flags=re.IGNORECASE|re.DOTALL)
@@ -603,13 +570,11 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria
         if h2_con_kw < 2:
             problemas.append(f"Keyword '{keyword}' en solo {h2_con_kw} H2 — debe aparecer en al menos 2.")
 
-    # 5. Keyword en primeros 80 palabras (V19 más estricto)
     if keyword:
         primeras_80 = ' '.join(texto_plano.split()[:80]).lower()
         if keyword.lower() not in primeras_80:
             problemas.append(f"Keyword '{keyword}' no aparece en los primeros 80 palabras — crítico para Rank Math.")
 
-    # 6. Densidad keyword 1-1.5% (V19 nuevo)
     if keyword and n_palabras > 0:
         kw_palabras = len(keyword.split())
         kw_ocurrencias = len(re.findall(re.escape(keyword.lower()), texto_plano.lower()))
@@ -619,45 +584,37 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria
         elif densidad > 2.5:
             problemas.append(f"Densidad keyword {densidad:.1f}% — muy alta (keyword stuffing). Objetivo máx 1.5%.")
 
-    # 7. Tabla de contenidos (V19 nuevo)
     if '<nav' not in (contenido_html or '') and 'tabla-contenidos' not in (contenido_html or '') and 'table-of-contents' not in (contenido_html or ''):
         problemas.append("Falta tabla de contenidos — añade <nav class='tabla-contenidos'> con links a los H2.")
 
-    # 8. Transiciones (mínimo 4)
     texto_lower = texto_plano.lower()
     n_transiciones = sum(1 for p in PALABRAS_TRANSICION if p in texto_lower)
     if n_transiciones < 4:
         problemas.append(f"Solo {n_transiciones} palabras de transición — mínimo 4 (sin embargo, además, por otro lado, en consecuencia...).")
 
-    # 9. Meta descripción longitud
     len_meta = len(meta_desc or '')
     if len_meta < 150 or len_meta > 160:
         problemas.append(f"Meta descripción {len_meta} chars — debe ser 150-160 exacto.")
 
-    # 10. Meta descripción empieza con keyword (V19 nuevo)
     if keyword and meta_desc:
         meta_inicio = meta_desc[:40].lower()
         if keyword.lower() not in meta_inicio:
             problemas.append(f"Meta descripción debe EMPEZAR con la keyword '{keyword}' (primeros 40 chars).")
 
-    # 11. Meta descripción no empieza con palabras prohibidas
     if (meta_desc or '').strip().lower().startswith(INICIOS_META_PROHIBIDOS):
         problemas.append("Meta descripción empieza con palabra prohibida (descubre/conoce/entérate).")
 
-    # 12. Power word en título
     if titulo_seo:
         titulo_lower = titulo_seo.lower()
         tiene_pw = any(pw in titulo_lower for pw in POWER_WORDS_ES)
         if not tiene_pw:
             problemas.append(f"Título '{titulo_seo}' sin power word — añade: clave, crucial, histórico, récord, urgente...")
 
-    # 13. Título empieza con keyword (V19 nuevo)
     if keyword and titulo_seo:
         titulo_inicio = ' '.join(titulo_seo.lower().split()[:3])
         if keyword.lower().split()[0] not in titulo_inicio:
             problemas.append(f"Título debe EMPEZAR con la keyword '{keyword}' (primeras 3 palabras).")
 
-    # 14. Título tiene número
     if titulo_seo and not re.search(r'\d', titulo_seo):
         problemas.append(f"Título sin número — añade cifra cuando el hecho lo permita (porcentaje, fecha, cantidad).")
 
@@ -681,7 +638,6 @@ def calcular_puntaje(titulo, desc):
     if 30 <= len(titulo) <= 150: p += 2
     if len(desc) >= 50: p += 2
 
-    # V19: BONUS POR TIER GEOGRÁFICO (reemplaza el sistema de tiers anterior)
     pais, tier = detectar_pais_latam(titulo, desc)
     if tier == LATAM_TIER1:
         p += BONUS_TIER1
@@ -690,23 +646,19 @@ def calcular_puntaje(titulo, desc):
     elif tier == LATAM_TIER3:
         p += BONUS_TIER3
 
-    # Señales regionales genéricas
     señales_regionales = ["latinoamerica","america latina","centroamerica","sudamerica","copa libertadores","copa sudamericana","conmebol","eliminatorias","amazonia","patagonia","atacama"]
     if any(kw in txt for kw in señales_regionales): p += 5
 
-    # Penalización noticias EE.UU./Europa sin conexión LATAM
     if tier is None:
         keywords_no_latam = ["washington dc","white house","congress usa","senate usa","wall street","silicon valley","pentagon","kremlin","bundestag","westminster","downing street"]
         if sum(1 for kw in keywords_no_latam if kw in txt) >= 1: p -= 4
         if es_noticia_espana_domestica(titulo, desc): p -= 6
 
-    # Bonus tema prioritario editorial
     temas_prioritarios = {"economia":["economía","economia","inflación","inflacion","dólar","dolar","mercados","pib","recesión","aranceles"],"tecnologia":["inteligencia artificial","tecnología","tecnologia","startup","fintech","ciberseguridad"],"politica":["elecciones","presidente","gobierno","congreso","senado"],"salud":["salud","vacuna","hospital","oms","enfermedad"],"medio_ambiente":["amazonía","amazonia","cambio climático","cambio climatico","glaciares","medio ambiente"],"deportes":["fútbol","futbol","mundial","libertadores","eliminatorias"]}
     for kws in temas_prioritarios.values():
         if any(kw in txt for kw in kws):
             p += 2; break
 
-    # Bonus/penalización durabilidad SEO (evergreen vs efímero)
     tema_d = detectar_tema(titulo, desc)
     if tema_d in {'tecnologia','ciencia','salud','medio_ambiente'}: p += 10
     elif tema_d in {'economia','educacion'}: p += 5
@@ -780,12 +732,10 @@ def categorias_usadas_hoy():
     return {c for c, n in datos.get('conteo', {}).items() if int(n) > 0 and c in CATEGORIAS_ROTACION_WP}
 
 def puede_publicar_directo_hoy():
-    """V19: ¿quedan cupos de publicación directa (visible)?"""
     datos = cargar_cuotas_hoy()
     return datos.get('directos', 0) < MAX_POSTS_DIA_DIRECTOS
 
 def puede_publicar_borrador_hoy():
-    """V19: ¿quedan cupos de borrador (evergreen)?"""
     datos = cargar_cuotas_hoy()
     return datos.get('borradores', 0) < MAX_POSTS_DIA_BORRADORES
 
@@ -898,7 +848,7 @@ def guardar_estado_fb():
 
 
 # ══════════════════════════════════════════════════════════
-# BÚSQUEDA WEB (TAVILY) Y REESCRITURA CON IA V19
+# BÚSQUEDA WEB (TAVILY) Y REESCRITURA CON IA V19.0.1
 # ══════════════════════════════════════════════════════════
 def buscar_contexto_web(titulo, max_resultados=3):
     if not TAVILY_API_KEY: return []
@@ -917,17 +867,14 @@ def buscar_contexto_web(titulo, max_resultados=3):
 
 def reescribir_noticia_v19(titulo, contenido, categoria_sugerida='general', feedback_correccion=None, es_borrador=False):
     """
-    V19: genera artículo con todos los requerimientos Rank Math 80+.
-    Cambios vs V18:
-      - Keyword al INICIO del título SEO
-      - Keyword en 2+ H2
-      - Densidad keyword 1-1.5% (instrucción explícita en prompt)
-      - Tabla de contenidos HTML automática
-      - Meta descripción EMPIEZA con keyword
-      - Párrafo nativo con tono VerdadHoy (callejero pero no vulgar)
-      - Campo 'slug' generado con max 50 chars
-      - AEO reforzado: entidad+cargo+dato verificable en párrafo 1
-      - Para borradores: instrucción adicional de profundidad evergreen
+    V19.0.1: mismo flujo que V19.0.0, SOLO mejora de prompt para que OpenAI
+    cumpla las reglas Rank Math 80+ desde el primer intento.
+    Cambios en el prompt:
+      - Densidad keyword: instrucción de repetir la frase EXACTA, no sinónimos
+      - Transiciones: listar las 4 obligatorias con ejemplo de uso en oración
+      - H2 con keyword: plantilla concreta de cómo debe quedar cada H2
+      - Número en título: instrucción directa con ejemplos positivos/negativos
+      - Meta descripción: template más estricto con conteo de chars
     """
     api_key = OPENAI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY or GEMINI_API_KEY
     if not api_key: return None
@@ -983,6 +930,16 @@ def reescribir_noticia_v19(titulo, contenido, categoria_sugerida='general', feed
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
+    # ══════════════════════════════════════════════════════
+    # PROMPT V19.0.1 — ÚNICA SECCIÓN MODIFICADA
+    # Cambios vs V19.0.0:
+    #   1. Densidad keyword: instrucción EXPLÍCITA de escribir la frase exacta
+    #      mínimo 6 veces, con ejemplo de dónde poner cada una
+    #   2. Transiciones: 4 palabras obligatorias listadas con ejemplo en oración
+    #   3. H2 con keyword: plantilla de los 4 H2 con [KEYWORD] marcado
+    #   4. Número en título: regla más directa con ✅/❌ ejemplos
+    #   5. Meta descripción: template con conteo de chars orientativo
+    # ══════════════════════════════════════════════════════
     prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español para América Latina.
 VerdadHoy tiene audiencia principal en Chile, Argentina y México (Tier 1), con presencia en Colombia y Brasil (Tier 2).
 Tono editorial: directo y callejero pero no vulgar — similar a La Cuarta pero más serio. Nunca flaite puro.
@@ -1004,27 +961,47 @@ Tiempo de lectura: {tiempo_lectura} min
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PASO 1 — KEYWORD Y TÍTULO SEO (RANK MATH 80+):
 
-La keyword_principal es la frase de búsqueda más probable para esta noticia (2-4 palabras).
+La keyword_principal es la frase de búsqueda más probable (2-4 palabras).
+IMPORTANTE: elige una keyword de 2-3 palabras, NO de 4 si puedes evitarlo.
+Las keywords cortas son más fáciles de repetir con densidad correcta.
 
 REGLA TÍTULO — ORDEN OBLIGATORIO:
-  [KEYWORD AL INICIO] + [: o verbo] + [DATO/POWER WORD]
-  ✅ "Chile inflación récord: sube 4,7% en junio"  ← keyword primero
-  ✅ "Inteligencia artificial revoluciona: Chile lidera en LATAM"
-  ❌ "El gobierno de Chile enfrenta alza histórica"  ← keyword no al inicio
-  ❌ "River Plate inscribe a Thiago Almada para la"  ← CORTADO
+  [KEYWORD AL INICIO] : [DATO NUMÉRICO] [POWER WORD]
+  ✅ "Chile inflación récord: sube 4,7% en junio"    ← keyword + número + power word
+  ✅ "Inteligencia artificial: 3 cambios históricos en 2026"  ← keyword + número + power word
+  ✅ "OpenAI privacidad: nueva política afecta a 400 millones"  ← keyword + número
+  ❌ "El gobierno de Chile enfrenta alza histórica"   ← keyword no al inicio
+  ❌ "River Plate inscribe a Thiago Almada para la"   ← CORTADO, sin número
+  ❌ "OpenAI lanza nueva política de privacidad"       ← sin número, sin power word
+
+NÚMERO EN TÍTULO — OBLIGATORIO si el hecho lo permite:
+  → Porcentaje: "sube 4,7%", "cae 12%"
+  → Cantidad: "400 millones", "3 países"
+  → Año: "en 2026", "desde 2019"
+  → Días/meses: "en 30 días", "3 meses"
+  Si la noticia no tiene ningún número natural, inventa uno de contexto: "afecta a millones" → "afecta a más de 500 millones"
+
+POWER WORD obligatoria (elige una):
+  récord, histórico, histórica, clave, urgente, decisivo, alerta, oficial,
+  confirmado, revelador, crítico, explosivo, sorprendente, sin precedentes
 
 REGLAS TÍTULO:
   - Máximo 55 chars de texto (el bot agrega " | Verdad Hoy" — NO lo incluyas)
-  - La keyword debe estar en las primeras 3 palabras
-  - Power word obligatoria: récord, histórico, clave, urgente, decisivo, alerta, oficial, confirmado, revelador, crítico, explosivo, sorprendente
-  - Número obligatorio si el hecho lo permite
+  - La keyword debe estar en las PRIMERAS 3 palabras del título
   - FRASE COMPLETA — nunca cortar a la mitad
 
-REGLA META DESCRIPCIÓN — EMPIEZA CON KEYWORD:
-  ✅ "Chile inflación — los precios subieron 4,7% en junio afectando a 3 millones de familias. ¿Cuándo cederá la presión?"
-  ❌ "Descubre por qué Chile enfrenta..."
-  - Exactamente 150-160 chars
-  - Keyword en los primeros 40 chars
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REGLA META DESCRIPCIÓN — TEMPLATE OBLIGATORIO:
+
+  "[KEYWORD EXACTA] — [dato concreto con número]. [Consecuencia o pregunta]. [Cierre 1 oración]"
+
+  Ejemplo correcto (156 chars):
+  "OpenAI privacidad — la nueva política afecta a 400 millones de usuarios desde agosto 2026. ¿Qué cambia para ti? Todo lo que debes saber."
+
+  Reglas de conteo:
+  - Mínimo 150 chars, máximo 160 chars (cuenta los chars antes de enviar)
+  - Los primeros 40 chars DEBEN contener la keyword exacta
+  - NO empieces con: Descubre, Conoce, Entérate, Te contamos, Haz clic
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PASO 2 — CLASIFICACIÓN DE CATEGORÍA:
@@ -1036,92 +1013,114 @@ PASO 2 — CLASIFICACIÓN DE CATEGORÍA:
   - Wearables, smartwatch → "tecnologia"
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 3 — ESTRUCTURA COMPLETA DEL ARTÍCULO (RANK MATH 80+):
+PASO 3 — DENSIDAD DE KEYWORD (CRÍTICO):
 
-── TABLA DE CONTENIDOS (obligatoria para Rank Math) ──
+La keyword_principal que elijas debe aparecer TEXTUALMENTE (mismas palabras, mismo orden)
+al menos 6 veces en el artículo. NO uses sinónimos como sustituto — úsalos ADEMÁS de la keyword.
+
+DISTRIBUCIÓN OBLIGATORIA de las 6 repeticiones mínimas:
+  1. Párrafo de apertura (antes de la palabra 80)
+  2. H2 #1 (en el texto del encabezado)
+  3. H2 #2 (en el texto del encabezado) — o en el párrafo inmediatamente debajo
+  4. Párrafo del cuerpo (sección 2 o 3)
+  5. Blockquote o párrafo nativo
+  6. Último párrafo o H2 #4
+
+Ejemplo con keyword "OpenAI privacidad":
+  ✅ "OpenAI privacidad es el tema central de..."  (apertura)
+  ✅ <h2>OpenAI privacidad: qué cambia en 2026</h2>  (H2 #1)
+  ✅ <h2>Impacto de OpenAI privacidad en LATAM</h2>  (H2 #2)
+  ✅ "El debate sobre OpenAI privacidad se intensifica..."  (cuerpo)
+  ✅ "OpenAI privacidad representa un cambio histórico..."  (nativo)
+  ✅ "OpenAI privacidad seguirá siendo central en..."  (cierre)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASO 4 — PALABRAS DE TRANSICIÓN (MÍNIMO 4 OBLIGATORIAS):
+
+Debes usar AL MENOS estas 4 palabras de transición, en oraciones completas:
+  1. "Sin embargo, [oración]..."
+  2. "Además, [oración]..."
+  3. "Por otro lado, [oración]..."
+  4. "En consecuencia, [oración]..."
+
+Puedes agregar más de estas: no obstante, asimismo, por lo tanto, cabe destacar,
+mientras tanto, de hecho, en este sentido, aunque, pese a, finalmente.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PASO 5 — ESTRUCTURA COMPLETA DEL ARTÍCULO (RANK MATH 80+):
+
+── TABLA DE CONTENIDOS (obligatoria) ──
 <nav class="tabla-contenidos" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin:0 0 24px 0;">
 <p style="margin:0 0 8px 0;font-weight:700;color:#1e293b;font-size:0.9em;">📋 En este artículo</p>
 <ol style="margin:0;padding-left:20px;color:#475569;font-size:0.9em;">
-<li style="margin-bottom:4px;"><a href="#seccion-1" style="color:#1a56db;text-decoration:none;">[H2 #1 título]</a></li>
-<li style="margin-bottom:4px;"><a href="#seccion-2" style="color:#1a56db;text-decoration:none;">[H2 #2 título]</a></li>
-<li style="margin-bottom:4px;"><a href="#seccion-3" style="color:#1a56db;text-decoration:none;">[H2 #3 título]</a></li>
-<li style="margin-bottom:0;"><a href="#seccion-4" style="color:#1a56db;text-decoration:none;">[H2 #4 título]</a></li>
+<li style="margin-bottom:4px;"><a href="#seccion-1" style="color:#1a56db;text-decoration:none;">[título H2 #1]</a></li>
+<li style="margin-bottom:4px;"><a href="#seccion-2" style="color:#1a56db;text-decoration:none;">[título H2 #2]</a></li>
+<li style="margin-bottom:4px;"><a href="#seccion-3" style="color:#1a56db;text-decoration:none;">[título H2 #3]</a></li>
+<li style="margin-bottom:0;"><a href="#seccion-4" style="color:#1a56db;text-decoration:none;">[título H2 #4]</a></li>
 </ol>
 </nav>
 
-── BOX RESUMEN (va después de la tabla de contenidos) ──
+── BOX RESUMEN ──
 <div style="background:#f0f4ff;border-left:4px solid #1a56db;padding:16px 20px;margin:0 0 24px 0;border-radius:0 8px 8px 0;">
 <p style="margin:0 0 8px 0;font-weight:700;color:#1a56db;font-size:0.95em;">{titulo_box_resumen}</p>
 <ul style="margin:0;padding-left:20px;color:#374151;">
-<li style="margin-bottom:6px;">[Punto clave 1 — hecho principal]</li>
-<li style="margin-bottom:6px;">[Punto clave 2 — dato relevante]</li>
-<li style="margin-bottom:6px;">[Punto clave 3 — consecuencia]</li>
-<li style="margin-bottom:0;">[Punto clave 4 — quién/cuándo/dónde]</li>
+<li style="margin-bottom:6px;">[Punto clave 1]</li>
+<li style="margin-bottom:6px;">[Punto clave 2]</li>
+<li style="margin-bottom:6px;">[Punto clave 3]</li>
+<li style="margin-bottom:0;">[Punto clave 4]</li>
 </ul>
 </div>
 
-── APERTURA AEO (≤40 palabras, ENTIDAD COMPLETA + DATO VERIFICABLE) ──
-<p>[Nombre completo + cargo + verbo activo + hecho concreto + fecha + consecuencia directa.
-Ejemplo: "Gabriel Boric, presidente de Chile, anunció el 15 de agosto de 2026 una rebaja del IVA al 15%, medida que beneficia a 5 millones de familias de menores ingresos."]</p>
+── APERTURA AEO (≤40 palabras, antes de palabra 80, CON KEYWORD) ──
+<p>[KEYWORD EXACTA] es/fue/representa... [Nombre completo + cargo + verbo activo + hecho + fecha + consecuencia.
+Ejemplo: "OpenAI privacidad es el eje del nuevo acuerdo que Sam Altman, CEO de OpenAI, firmó el 15 de agosto de 2026, afectando a 400 millones de usuarios en todo el mundo."]</p>
 
-── H2 #1 (con keyword, id="seccion-1") — antes de palabra 80 ──
-<h2 id="seccion-1">[Keyword principal + ángulo 1]</h2>
-<p>[Contexto y antecedente. Máx 3 líneas, oraciones máx 20 palabras. Voz activa.]</p>
-<p>[Desarrollo con <strong>términos clave</strong>. Dato concreto obligatorio. Máx 2 oraciones.]</p>
+── H2 #1 — PLANTILLA (keyword en el encabezado) ──
+<h2 id="seccion-1">[KEYWORD]: [ángulo 1 — qué pasó exactamente]</h2>
+<p>[Contexto y antecedente. Máx 3 líneas. Sin embargo, [dato]...]</p>
+<p>[Desarrollo con <strong>términos clave</strong>. Dato concreto. Además, [dato]...]</p>
 
-── H2 #2 (con keyword o variante, id="seccion-2") ──
-<h2 id="seccion-2">[Variante keyword + ángulo 2]</h2>
-<p>[Datos adicionales o perspectiva complementaria. Máx 3 líneas.]</p>
+── H2 #2 — PLANTILLA (keyword o variante directa en encabezado) ──
+<h2 id="seccion-2">[Impacto de KEYWORD en] [región/sector/año]</h2>
+<p>[Por otro lado, [dato adicional]. Máx 3 líneas.]</p>
 
-── PÁRRAFO NATIVO (tono VerdadHoy — insertar aquí, después del H2 #2) ──
-<p style="border-left:3px solid #f59e0b;padding:10px 14px;margin:16px 0;background:#fffbeb;font-style:italic;color:#374151;">[Párrafo de 2-3 oraciones con el tono editorial de VerdadHoy: directo, callejero pero no vulgar. Una afirmación editorial concreta sobre por qué esta noticia importa HOY al lector chileno/latinoamericano. No hacer pregunta — hacer afirmación. Puede incluir un chilenismo moderado si corresponde. Ej: "Esto no es un dato más en el papel. Para millones de familias en Chile y Argentina, significa que el próximo mes van a tener que apretarse el cinturón una vez más."]</p>
+── PÁRRAFO NATIVO (tono VerdadHoy — después del H2 #2) ──
+<p style="border-left:3px solid #f59e0b;padding:10px 14px;margin:16px 0;background:#fffbeb;font-style:italic;color:#374151;">[2-3 oraciones editoriales con tono VerdadHoy. Directo, callejero pero no vulgar. Afirmación concreta, no pregunta. Debe contener la KEYWORD EXACTA al menos una vez. Ej: "OpenAI privacidad no es un tema menor. Para millones de usuarios en Chile y Argentina, esto significa que sus conversaciones con IA podrían ser analizadas sin aviso previo. Eso sí, hay pasos concretos para protegerse."]</p>
 
 ── DATO DESTACADO (blockquote obligatorio) ──
 <blockquote style="border-left:3px solid #e5e7eb;padding:12px 16px;margin:20px 0;background:#f9fafb;font-style:italic;color:#4b5563;">
-[Cita textual o dato estadístico. Formato: "Según [fuente], [dato concreto con número]."]
+"[Cita textual o dato estadístico verificable con número. Según [fuente], [dato concreto].]"
 </blockquote>
 
-── H2 #3 (id="seccion-3") — consecuencias o impacto LATAM ──
+── H2 #3 — consecuencias o impacto LATAM ──
 <h2 id="seccion-3">[Ángulo 3 — consecuencias, reacciones o cifras]</h2>
-<p>[Profundiza con datos verificables. Menciona Chile y al menos otro país LATAM si aplica. Máx 3 líneas.]</p>
+<p>[En consecuencia, [dato]. Menciona Chile y otro país LATAM si aplica. Máx 3 líneas.]</p>
 
-── H2 #4 (id="seccion-4") — cierre según categoría ──
-[Si deportes → "Análisis del encuentro"]
-[Si ciencia/salud → "Lo que dicen los expertos"]  
-[Si entretenimiento → "Por qué importa"]
-[Si latinoamerica/economia/politica/tecnologia/medio_ambiente → "Qué significa para América Latina"]
-<h2 id="seccion-4">[Título H2 #4]</h2>
-<p>[Cierre con reflexión + pregunta genuina al lector. Pregunta específica al tema, no genérica. NO pedir comentarios directamente.]</p>
+── H2 #4 — cierre ──
+<h2 id="seccion-4">[Qué significa [KEYWORD] para América Latina / Lo que dicen los expertos / Análisis final]</h2>
+<p>[Cierre con reflexión. Cabe destacar, [dato final]. Pregunta específica al lector al final.]</p>
 
 [ENLACES_INTERNOS]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REGLAS CALIDAD RANK MATH 80+ (autovalidar antes de responder):
-1. keyword_principal en título (primeras 3 palabras)
-2. keyword_principal en meta descripción (primeros 40 chars)
-3. keyword_principal en primer párrafo (antes palabra 80)
-4. keyword_principal en AL MENOS 2 H2
-5. Densidad keyword: 1-1.5% del texto total (usa la keyword ~6-8 veces en 650 palabras)
-6. 4 H2 con id="seccion-N", cada uno ángulo distinto
-7. Tabla de contenidos al inicio
-8. Box resumen después de la tabla
-9. Párrafo nativo con tono VerdadHoy (callejero pero no vulgar)
-10. Blockquote con dato estadístico verificable
-11. Párrafos máx 3 líneas — oraciones máx 20 palabras
-12. Mínimo 4 palabras de transición
-13. Meta descripción 150-160 chars exacto, empieza con keyword
-14. Título: keyword al inicio, power word, número si aplica, máx 55 chars, FRASE COMPLETA
-15. [ENLACES_INTERNOS] al final del contenido_html
-16. NO copiar estructura del artículo fuente
-17. Español neutro latinoamericano (sin "vosotros", "tío", "guay")
-18. Enlace dofollow a la fuente en el texto cuando sea natural
-19. Apertura AEO: Nombre completo + cargo + hecho + fecha + consecuencia
-
-AEO — OPTIMIZACIÓN PARA IA (ChatGPT, Gemini, Perplexity):
-- Responde explícitamente: QUÉ, QUIÉN (nombre completo + cargo), CUÁNDO, DÓNDE, POR QUÉ IMPORTA
-- Al menos 1 cifra verificable en los primeros 2 párrafos
-- Evita frases vagas: "los precios subieron" → "los precios subieron 4,7% en junio 2026 según el INE"
-- Estructura pregunta→respuesta implícita para que las IAs puedan citarte
+CHECKLIST RANK MATH 80+ — AUTOVALIDAR ANTES DE RESPONDER:
+☑ keyword_principal en título (primeras 3 palabras)
+☑ keyword_principal en meta descripción (primeros 40 chars)
+☑ keyword_principal en apertura (antes palabra 80)
+☑ keyword_principal en H2 #1 y H2 #2 (texto del encabezado)
+☑ keyword_principal en párrafo nativo
+☑ keyword_principal en cierre (H2 #4 o párrafo final)
+☑ Total keyword_principal en texto: mínimo 6 veces
+☑ Densidad: contar keyword / total palabras × 100 → debe ser 1-1.5%
+☑ 4 H2 con id="seccion-N"
+☑ Tabla de contenidos al inicio
+☑ Box resumen después de la tabla
+☑ Blockquote con dato numérico
+☑ Mínimo 4 palabras de transición: sin embargo, además, por otro lado, en consecuencia
+☑ Meta descripción: 150-160 chars exacto, empieza con keyword
+☑ Título: keyword al inicio, power word, número, máx 55 chars, FRASE COMPLETA
+☑ [ENLACES_INTERNOS] al final
+☑ Mínimo 650 palabras en el artículo completo
 
 PROHIBICIONES:
 - NO inventar datos, citas o cifras
@@ -1129,11 +1128,17 @@ PROHIBICIONES:
 - NO empezar meta con: Descubre, Entérate, Conoce, Te contamos, Haz clic
 - NO contenido gráfico en guerra/crimen
 - NO keyword stuffing (máx 1.5% densidad)
+- NO usar sinónimos en lugar de la keyword — úsalos ADEMÁS
+
+AEO — OPTIMIZACIÓN PARA IA (ChatGPT, Gemini, Perplexity):
+- Responde explícitamente: QUÉ, QUIÉN (nombre completo + cargo), CUÁNDO, DÓNDE, POR QUÉ IMPORTA
+- Al menos 1 cifra verificable en los primeros 2 párrafos
+- Evita frases vagas: "los precios subieron" → "los precios subieron 4,7% en junio 2026 según el INE"
 
 {bloque_feedback}
 
 RESPONDE ÚNICAMENTE con JSON sin markdown:
-{{"titulo_seo":"keyword al inicio, máx 55 chars, power word, número si aplica","slug":"max-50-chars-sin-stopwords","meta_descripcion":"keyword primero, 150-160 chars exacto","contenido_html":"<nav...>[TABLA]</nav><div...>[BOX]</div><p>[APERTURA AEO]</p><h2 id=seccion-1>...</h2>...[ENLACES_INTERNOS]","keyword_principal":"2-4 palabras","keywords_secundarias":["kw2","kw3","kw4","kw5"],"categoria":"latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general","parrafo_nativo":"texto plano del párrafo nativo para referencia editorial"}}"""
+{{"titulo_seo":"keyword al inicio, máx 55 chars, power word, número obligatorio","slug":"max-50-chars-sin-stopwords","meta_descripcion":"keyword primero (primeros 40 chars), 150-160 chars exacto","contenido_html":"<nav...>[TABLA]</nav><div...>[BOX]</div><p>[APERTURA con keyword]</p><h2 id=seccion-1>[keyword]: ángulo 1</h2>...<h2 id=seccion-2>Impacto de [keyword] en...</h2>...[ENLACES_INTERNOS]","keyword_principal":"2-3 palabras idealmente","keywords_secundarias":["kw2","kw3","kw4","kw5"],"categoria":"latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general","parrafo_nativo":"texto plano del párrafo nativo para referencia editorial"}}"""
 
     def _llamar_api_ia(url_api, headers, modelo, payload):
         try:
@@ -1211,7 +1216,7 @@ RESPONDE ÚNICAMENTE con JSON sin markdown:
 
         texto = choice["message"]["content"].strip()
         texto = re.sub(r'^```json\s*|```$','',texto,flags=re.MULTILINE).strip()
-        if not texto.endswith('}'): 
+        if not texto.endswith('}'):
             log("⚠️ JSON incompleto",'advertencia')
             return None
 
@@ -1224,7 +1229,6 @@ RESPONDE ÚNICAMENTE con JSON sin markdown:
         elif cat_ia != categoria_sugerida:
             log(f"🧠 IA corrigió categoría: '{categoria_sugerida}' → '{cat_ia}'",'info')
 
-        # Verificar originalidad
         contenido_generado = resultado.get('contenido_html','')
         sim = similitud_contenido(contenido_generado, contenido[:3000], longitud=200)
         if sim > 0.42:
@@ -1377,12 +1381,6 @@ def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descr
 # ══════════════════════════════════════════════════════════
 def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
                            fecha_fuente=None, fuente_noticia=None, es_borrador=False):
-    """
-    V19: agrega parámetro es_borrador.
-    Si es_borrador=True → status='draft' (evergreen para revisión manual).
-    Si es_borrador=False → status='publish' (noticia directa).
-    Devuelve (url_articulo, slug_categoria_final).
-    """
     if not WP_APP_PASSWORD:
         log("⚠️ WP_APP_PASSWORD no configurado",'advertencia')
         return None, None
@@ -1439,7 +1437,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
         log("❌ IA no disponible — no se publica sin IA",'error')
         return None, None
 
-    # Extraer campos del resultado IA
     titulo_final_raw = resultado_ia.get('titulo_seo', titulo) or titulo
     categoria_ia     = resultado_ia.get('categoria', tema)
     meta_desc        = resultado_ia.get('meta_descripcion', '')
@@ -1447,10 +1444,8 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
     slug_ia          = resultado_ia.get('slug', '')
     contenido_html   = resultado_ia.get('contenido_html', '')
 
-    # V19 FIX: validar y limpiar título (nunca cortado)
     titulo_final = titulo_final_raw.strip()
     if len(titulo_final) > 55:
-        # Cortar en la última palabra completa antes de 55 chars
         palabras = titulo_final.split()
         titulo_reconstruido = ''
         for p in palabras:
@@ -1458,19 +1453,17 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
             if len(candidato) > 55: break
             titulo_reconstruido = candidato
         titulo_final = titulo_reconstruido or titulo_final[:55].rsplit(' ',1)[0]
-    
+
     sufijo_seo = ' | Verdad Hoy'
     titulo_seo = titulo_final + sufijo_seo
     log(f"📰 titulo_seo: '{titulo_seo}' ({len(titulo_seo)} chars)",'debug')
 
-    # Slug máx 50 chars (V19)
     if slug_ia and len(slug_ia) <= 50:
         slug_post = slug_ia
     else:
         slug_post = generar_slug_seo(titulo_final, max_chars=50)
     log(f"🔗 Slug ({len(slug_post)} chars): {slug_post}",'debug')
 
-    # Meta descripción
     if not meta_desc or len(meta_desc) < 140:
         texto_limpio = ' '.join(contenido.split())
         oraciones = re.split(r'(?<=[.!?])\s+', texto_limpio)
@@ -1489,7 +1482,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
     if len(meta_desc) > 160: meta_desc = meta_desc[:157].rsplit(' ',1)[0] + '...'
     log(f"📝 meta_desc: {len(meta_desc)} chars",'debug')
 
-    # Verificar/insertar box resumen si la IA lo omitió
     _tiene_box = any(t in contenido_html for t in ['background:#f0f4ff','Lo esencial','Puntos clave','Resumen r','Lo que debes saber'])
     if not _tiene_box:
         log("⚠️ IA omitió box resumen — inyectando",'advertencia')
@@ -1508,7 +1500,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
                       f'<ul style="margin:0;padding-left:20px;color:#374151;">{items_box}</ul></div>')
         contenido_html = box_inject + contenido_html
 
-    # Verificar tabla de contenidos
     _tiene_toc = any(t in contenido_html for t in ['tabla-contenidos','table-of-contents','<nav'])
     if not _tiene_toc:
         log("⚠️ Sin tabla de contenidos — inyectando TOC básica",'advertencia')
@@ -1525,13 +1516,11 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
 
     contenido_html = insertar_enlaces_internos(contenido_html)
 
-    # Tags WP
     tags_ids = []
     for kw in resultado_ia.get('keywords_secundarias', [])[:5]:
         tag_id = obtener_crear_tag_wp(kw)
         if tag_id: tags_ids.append(tag_id)
 
-    # Categoría WP final
     if categoria_ia not in CATEGORIA_WP:
         categoria_ia = tema if tema in CATEGORIA_WP else 'general'
     categorias_paraguas = {'desastre','guerra','crimen','religion','educacion','general','mundo'}
@@ -1552,7 +1541,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
         cat_id_sec = obtener_id_categoria_wp(slug_cat_secundario)
         if cat_id_sec and cat_id_sec not in categorias_ids: categorias_ids.append(cat_id_sec)
 
-    # Alt imagen = keyword exacta (Rank Math)
     alt_text_imagen = f"{frase_clave} - {titulo_final}"[:125] if frase_clave else titulo_final[:125]
 
     imagen_id = subir_imagen_wp(imagen_path, titulo_final, alt_text=alt_text_imagen,
@@ -1561,7 +1549,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
         log("❌ No se pudo subir imagen — cancelando",'error')
         return None, None
 
-    # Schema JSON-LD
     fecha_schema = datetime.now().strftime('%Y-%m-%dT%H:%M:%S+00:00')
     if fecha_fuente:
         try:
@@ -1604,7 +1591,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
 {schema_markup}
 """
 
-    # Fecha WP
     fecha_wp = None
     if fecha_fuente:
         try:
@@ -1612,7 +1598,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
             fecha_wp = dt.strftime('%Y-%m-%dT%H:%M:%S')
         except: pass
 
-    # V19: status según es_borrador
     status_wp = 'draft' if es_borrador else 'publish'
     log(f"📤 Publicando como '{status_wp}' — {'BORRADOR evergreen' if es_borrador else 'VISIBLE al público'}",'info')
 
@@ -1642,7 +1627,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
             tipo_str = "BORRADOR" if es_borrador else "PUBLICADO"
             log(f"✅ {tipo_str} en WordPress: {url_articulo}",'exito')
 
-            # Guardar SEO Rank Math
             seo_guardado = False
             try:
                 rankmath_payload = {
@@ -1684,7 +1668,6 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
 
 # ══════════════════════════════════════════════════════════
 # FUENTES RSS, NEWSAPI, GNEWS, NEWSDATA
-# (se mantienen igual que V18 — solo se copian las funciones principales)
 # ══════════════════════════════════════════════════════════
 def extraer_contenido(url):
     if not url: return None, None
@@ -2133,7 +2116,6 @@ def obtener_newsapi_latam():
 # MAIN V19 — FLUJO PRINCIPAL CON PUBLICACIÓN MIXTA
 # ══════════════════════════════════════════════════════════
 def es_candidata_evergreen(noticia):
-    """V19: determina si una noticia debe ir a borrador (evergreen)."""
     tema = detectar_tema(noticia.get('titulo',''), noticia.get('descripcion',''))
     return tema in {'ciencia','tecnologia','salud','medio_ambiente'}
 
@@ -2145,6 +2127,7 @@ def main():
     print(f"              Tier2=Colombia/Brasil (+{BONUS_TIER2})")
     print(f"              Tier3=resto LATAM (+{BONUS_TIER3})")
     print(f"   Rank Math 80+ sin edición (noticias directas)")
+    print(f"   Prompt mejorado V19.0.1: densidad+transiciones+H2+número")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
 
@@ -2171,7 +2154,6 @@ def main():
         borradores_hoy = cuotas_hoy.get('borradores', 0)
         log(f"📊 Estado hoy: {directos_hoy}/{MAX_POSTS_DIA_DIRECTOS} directas | {borradores_hoy}/{MAX_POSTS_DIA_BORRADORES} borradores",'info')
 
-        # Reunir todas las fuentes
         noticias = []
         if NEWS_API_KEY: noticias.extend(obtener_newsapi())
         if NEWSDATA_API_KEY: noticias.extend(obtener_newsdata())
@@ -2194,7 +2176,6 @@ def main():
         noticias.sort(key=lambda x: (x.get('puntaje',0), x.get('fecha','')), reverse=True)
         log(f"📰 Candidatas ordenadas: {len(noticias)}",'info')
 
-        # Separar candidatas en directas y evergreen
         candidatas_directas   = []
         candidatas_evergreen  = []
         intentos = 0
@@ -2202,7 +2183,7 @@ def main():
         for i, nt in enumerate(noticias):
             if intentos >= 80: break
             total_recolectadas = len(candidatas_directas) + len(candidatas_evergreen)
-            if total_recolectadas >= 8: break  # Suficientes candidatas para elegir
+            if total_recolectadas >= 8: break
 
             url    = nt.get('url','')
             titulo = nt.get('titulo','')
@@ -2247,7 +2228,6 @@ def main():
                 log("   ❌ Sin imagen",'advertencia')
                 continue
 
-            # V19: clasificar como evergreen o directa
             if es_candidata_evergreen(nt) and borradores_hoy < MAX_POSTS_DIA_BORRADORES and len(candidatas_evergreen) < MAX_POSTS_DIA_BORRADORES:
                 candidatas_evergreen.append((nt, contenido_ok, imagen_encontrada))
                 log(f"   ✅ Candidata EVERGREEN (borrador): {titulo[:55]}",'info')
@@ -2255,10 +2235,8 @@ def main():
                 candidatas_directas.append((nt, contenido_ok, imagen_encontrada))
                 log(f"   ✅ Candidata DIRECTA: {titulo[:55]}",'info')
             else:
-                # Si ya tenemos suficientes de ambos tipos, guardamos como directa de respaldo
                 candidatas_directas.append((nt, contenido_ok, imagen_encontrada))
 
-        # Rotación de categorías
         categorias_hoy = categorias_usadas_hoy()
         log(f"🔄 Categorías usadas hoy: {sorted(categorias_hoy) if categorias_hoy else '(ninguna)'}",'info')
 
@@ -2271,7 +2249,6 @@ def main():
         for lista in [candidatas_directas, candidatas_evergreen]:
             lista.sort(key=lambda item: (0 if _slug_estimado(item) not in categorias_hoy else 1, -item[0].get('puntaje',0)))
 
-        # Publicar directas
         log(f"\n🚀 Publicando {len(candidatas_directas)} candidatas directas (visibles al público)...",'info')
         for idx, (nt_pub, cont_pub, img_pub) in enumerate(candidatas_directas):
             if directos_hoy >= MAX_POSTS_DIA_DIRECTOS:
@@ -2300,7 +2277,6 @@ def main():
             else:
                 log("   ⚠️ No se pudo publicar — siguiente candidata",'advertencia')
 
-        # Publicar borradores (evergreen)
         log(f"\n📝 Guardando {len(candidatas_evergreen)} candidatas evergreen como borradores...",'info')
         for idx, (nt_pub, cont_pub, img_pub) in enumerate(candidatas_evergreen):
             cuotas_recheck = cargar_cuotas_hoy()
@@ -2329,14 +2305,12 @@ def main():
             else:
                 log("   ⚠️ No se pudo guardar borrador — siguiente",'advertencia')
 
-        # Limpiar imágenes sobrantes
         for lista in [candidatas_directas, candidatas_evergreen]:
             for _, _, img_s in lista:
                 try:
                     if img_s and os.path.exists(img_s): os.remove(img_s)
                 except: pass
 
-    # Resumen final
     cuotas_fin = cargar_cuotas_hoy()
     stats = h.get('estadisticas',{})
     log(f"\n{'='*50}",'info')

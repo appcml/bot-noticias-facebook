@@ -11,7 +11,7 @@ CAMBIOS V19.0.1 vs V19.0.0:
     * Meta descripción: ejemplo mejorado con keyword al inicio
   - Sin cambios en validación, lógica, cuotas ni flujo principal
 """
-VERSION_BOT = "V19.1.0"
+VERSION_BOT = "V19.1.2"
 
 import requests, feedparser, re, hashlib, json, os, random, time, unicodedata
 from datetime import datetime, timedelta, timezone
@@ -662,9 +662,11 @@ RESPONDE SOLO con el párrafo HTML, sin JSON, sin explicaciones."""
 
 def postprocesar_densidad(resultado_ia):
     """
-    V19.1.0: ajusta densidad de keyword al rango 0.8-1.5%.
-    - Si densidad > 1.5%: reemplaza ocurrencias excedentes con sinónimos
-    - Si densidad < 0.8%: no toca (el validador lo detectará si sigue bajo)
+    V19.1.2: reemplazo directo sobre el HTML crudo posicionalmente.
+    Busca todas las ocurrencias de la keyword en el HTML (case-insensitive),
+    identifica cuales NO estan dentro de tags <h2> (para preservarlas),
+    y reemplaza el exceso con sinonimos directamente en el string.
+    Esto evita el problema del regex de parrafos que no matcheaba bien.
     """
     contenido_html = resultado_ia.get('contenido_html', '')
     keyword = resultado_ia.get('keyword_principal', '').strip()
@@ -683,62 +685,70 @@ def postprocesar_densidad(resultado_ia):
     ocurrencias = len(re.findall(re.escape(kw_lower), texto.lower()))
     densidad = (ocurrencias * kw_palabras / n_palabras) * 100
 
-    if densidad <= 1.5:
+    # Umbrales dinamicos segun largo de keyword
+    if kw_palabras == 1:
+        limite_alto = 3.0
+    elif kw_palabras == 2:
+        limite_alto = 5.0
+    else:
+        limite_alto = 6.0
+
+    if ocurrencias <= 12 or densidad <= limite_alto:
         log(f"✅ Densidad OK: {densidad:.1f}% ({ocurrencias} veces)", 'info')
         return resultado_ia
 
-    # Calcular cuántas ocurrencias hay que eliminar
-    # Objetivo: densidad ~1.0% → ocurrencias_objetivo = n_palabras * 0.01 / kw_palabras
-    objetivo = max(4, int(n_palabras * 0.01 / kw_palabras))
-    sobran = ocurrencias - objetivo
-    log(f"⚠️ Densidad {densidad:.1f}% — reduciendo de {ocurrencias} a ~{objetivo} ocurrencias", 'advertencia')
+    # Objetivo: reducir a maximo 12 ocurrencias (siempre dentro del limite)
+    objetivo_ocurrs = min(12, max(4, int(n_palabras * (limite_alto * 0.7) / 100 / kw_palabras)))
+    sobran = ocurrencias - objetivo_ocurrs
+    log(f"⚠️ Densidad {densidad:.1f}% — reduciendo de {ocurrencias} a {objetivo_ocurrs} ocurrencias", 'advertencia')
 
-    # Sinónimos disponibles para esta categoría
     sinonimos = SINONIMOS_KEYWORD.get(categoria, SINONIMOS_KEYWORD['general'])
 
-    # Reemplazar en el HTML (respetando H2 — mantener keyword en encabezados)
-    # Solo reemplazar en párrafos <p>, no en <h2>
-    reemplazos_hechos = 0
+    # Encontrar todas las posiciones de la keyword en el HTML crudo
+    html_lower = contenido_html.lower()
+    posiciones = [m.start() for m in re.finditer(re.escape(kw_lower), html_lower)]
 
-    def reemplazar_en_parrafo(match_p):
-        nonlocal reemplazos_hechos
-        parrafo = match_p.group(0)
-        # Buscar ocurrencias de keyword en este párrafo (case-insensitive)
-        ocurrs_p = list(re.finditer(re.escape(kw_lower), parrafo.lower()))
-        if not ocurrs_p or reemplazos_hechos >= sobran:
-            return parrafo
-        # Reemplazar desde la segunda ocurrencia en adelante
-        # (mantener la primera para contexto)
-        parrafo_nuevo = parrafo
-        for ocurr in reversed(ocurrs_p[1:]):  # reversed para no desplazar índices
-            if reemplazos_hechos >= sobran:
-                break
-            sinonimo = sinonimos[reemplazos_hechos % len(sinonimos)]
-            inicio = ocurr.start()
-            fin = ocurr.end()
-            # Preservar capitalización original
-            original = parrafo_nuevo[inicio:fin]
-            if original[0].isupper():
-                sinonimo = sinonimo.capitalize()
-            parrafo_nuevo = parrafo_nuevo[:inicio] + sinonimo + parrafo_nuevo[fin:]
-            reemplazos_hechos += 1
-        return parrafo_nuevo
+    # Identificar cuales estan dentro de un tag H2 (preservar esas)
+    h2_rangos = [(m.start(), m.end()) for m in re.finditer(r'<h2[^>]*>.*?</h2>', contenido_html,
+                                                             flags=re.IGNORECASE | re.DOTALL)]
+    def _en_h2(pos):
+        return any(inicio <= pos <= fin for inicio, fin in h2_rangos)
 
-    contenido_html_nuevo = re.sub(
-        r'<p[^>]*>.*?</p>',
-        reemplazar_en_parrafo,
-        contenido_html,
-        flags=re.IGNORECASE | re.DOTALL
-    )
+    # Identificar cuales estan dentro de tags HTML (atributos, etc.) — no reemplazar
+    def _en_tag(pos):
+        # Buscar si hay un '<' sin '>' antes de esta posicion
+        fragmento = html_lower[max(0, pos-200):pos]
+        ultimo_lt = fragmento.rfind('<')
+        ultimo_gt = fragmento.rfind('>')
+        return ultimo_lt > ultimo_gt
 
-    resultado_ia['contenido_html'] = contenido_html_nuevo
+    # Candidatas a reemplazo: no en H2, no en tag, saltear la primera ocurrencia global
+    candidatas = [p for p in posiciones if not _en_h2(p) and not _en_tag(p)]
 
-    # Verificar resultado
-    texto_nuevo = _texto_plano(contenido_html_nuevo)
+    # Mantener la primera (apertura) — reemplazar desde la segunda en adelante
+    candidatas_reemplazar = candidatas[1:]  # saltar primera
+
+    # Reemplazar de atras hacia adelante para no desplazar indices
+    reemplazos = 0
+    html_nuevo = contenido_html
+    for pos in reversed(candidatas_reemplazar):
+        if reemplazos >= sobran:
+            break
+        sinonimo = sinonimos[reemplazos % len(sinonimos)]
+        # Preservar capitalizacion
+        original_char = html_nuevo[pos:pos+1]
+        if original_char.isupper():
+            sinonimo = sinonimo.capitalize()
+        fin = pos + len(keyword)
+        html_nuevo = html_nuevo[:pos] + sinonimo + html_nuevo[fin:]
+        reemplazos += 1
+
+    resultado_ia['contenido_html'] = html_nuevo
+
+    texto_nuevo = _texto_plano(html_nuevo)
     ocurrs_nuevo = len(re.findall(re.escape(kw_lower), texto_nuevo.lower()))
     densidad_nueva = (ocurrs_nuevo * kw_palabras / n_palabras) * 100
     log(f"✅ Densidad ajustada: {densidad_nueva:.1f}% ({ocurrs_nuevo} veces)", 'exito')
-
     return resultado_ia
 
 
@@ -763,34 +773,42 @@ def postprocesar_meta(resultado_ia):
 
     # Extender si es menor a 150
     if len(meta) < 150:
-        # Frases de extensión neutrales ordenadas de mayor a menor longitud
+        meta_base = meta.rstrip('.')
+        faltante = 150 - len(meta_base)
+        # Frases candidatas ordenadas para llenar exactamente el espacio
         extensiones = [
             ' Toda la información actualizada sobre este tema en Verdad Hoy.',
-            ' Lo que necesitas saber sobre este tema hoy.',
-            ' Análisis completo en Verdad Hoy.',
+            ' Lo que necesitas saber hoy sobre este tema en Verdad Hoy.',
+            ' Análisis completo y actualizado en Verdad Hoy.',
+            ' Detalles, análisis y contexto en Verdad Hoy.',
+            ' Lo que debes saber hoy en Verdad Hoy.',
             ' Más detalles en Verdad Hoy.',
-            ' Infórmate aquí.',
+            ' Infórmate en Verdad Hoy.',
         ]
+        meta_nueva = meta_base
         for ext in extensiones:
-            candidato = meta.rstrip('.') + ext
+            candidato = meta_base + ext
             if 150 <= len(candidato) <= 160:
-                meta = candidato
+                meta_nueva = candidato
                 break
             elif len(candidato) > 160:
-                # Ajustar la extensión para que quepa exactamente
-                espacio_disponible = 160 - len(meta.rstrip('.')) - 3
-                if espacio_disponible > 10:
-                    meta = meta.rstrip('.') + ext[:espacio_disponible].rsplit(' ', 1)[0] + '...'
-                break
-
-        # Si todavía es corta, rellenar con puntos suspensivos o repetir keyword
-        if len(meta) < 150:
-            faltante = 150 - len(meta)
-            if keyword and faltante > len(keyword) + 5:
-                meta = meta.rstrip('.') + f' Conoce todo sobre {keyword} en Verdad Hoy.'
-            if len(meta) > 160:
-                meta = meta[:157].rsplit(' ', 1)[0] + '...'
-
+                # Recortar la extensión para que quepa exactamente
+                espacio = 160 - len(meta_base)
+                trozo = ext[:espacio].rsplit(' ', 1)[0]
+                candidato2 = meta_base + trozo
+                if len(candidato2) >= 150:
+                    meta_nueva = candidato2
+                    break
+        # Si ninguna extensión llegó a 150, construir ad-hoc
+        if len(meta_nueva) < 150:
+            faltante2 = 150 - len(meta_nueva)
+            relleno = ' ' + ('— Análisis en Verdad Hoy.' if faltante2 > 25
+                             else '— Verdad Hoy.' if faltante2 > 13
+                             else '.')
+            meta_nueva = meta_nueva + relleno
+        meta = meta_nueva[:160]
+        if len(meta) > 160:
+            meta = meta[:157].rsplit(' ', 1)[0] + '...'
         log(f"✅ Meta extendida: {len(meta)} chars", 'info')
 
     resultado_ia['meta_descripcion'] = meta
@@ -952,10 +970,21 @@ def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria
         kw_palabras = len(keyword.split())
         kw_ocurrencias = len(re.findall(re.escape(keyword.lower()), texto_plano.lower()))
         densidad = (kw_ocurrencias * kw_palabras / n_palabras) * 100 if n_palabras > 0 else 0
-        if densidad < 0.8:
-            problemas.append(f"Densidad keyword {densidad:.1f}% — muy baja. Objetivo: 1-1.5% (usa la keyword ~{max(3, int(n_palabras*0.01))} veces).")
-        elif densidad > 2.5:
-            problemas.append(f"Densidad keyword {densidad:.1f}% — muy alta (keyword stuffing). Objetivo máx 1.5%.")
+        # V19.1.1: umbral dinamico segun largo de keyword
+        # En articulos de 650-850 palabras con 4 H2 la keyword aparece naturalmente muchas veces
+        # El stuffing real ocurre cuando la keyword es 1 palabra y aparece >15 veces
+        # Para keywords de 2-3 palabras el limite es ocurrencias absolutas, no porcentaje
+        if kw_palabras == 1:
+            limite_bajo, limite_alto = 0.3, 3.0
+        elif kw_palabras == 2:
+            limite_bajo, limite_alto = 0.2, 5.0
+        else:
+            limite_bajo, limite_alto = 0.1, 6.0
+        # Stuffing real: solo cuando ocurrencias absolutas > 12 Y densidad > limite
+        if densidad < limite_bajo:
+            problemas.append(f"Densidad keyword {densidad:.1f}% — muy baja. Usa la keyword al menos {max(2, int(n_palabras*0.005/kw_palabras))} veces.")
+        elif densidad > limite_alto and kw_ocurrencias > 12:
+            problemas.append(f"Densidad keyword {densidad:.1f}% — muy alta ({kw_ocurrencias} ocurrencias). Objetivo max {limite_alto}%.")
 
     if '<nav' not in (contenido_html or '') and 'tabla-contenidos' not in (contenido_html or '') and 'table-of-contents' not in (contenido_html or ''):
         problemas.append("Falta tabla de contenidos — añade <nav class='tabla-contenidos'> con links a los H2.")

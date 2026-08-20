@@ -11,7 +11,7 @@ CAMBIOS V19.0.1 vs V19.0.0:
     * Meta descripción: ejemplo mejorado con keyword al inicio
   - Sin cambios en validación, lógica, cuotas ni flujo principal
 """
-VERSION_BOT = "V19.0.1"
+VERSION_BOT = "V19.1.0"
 
 import requests, feedparser, re, hashlib, json, os, random, time, unicodedata
 from datetime import datetime, timedelta, timezone
@@ -542,6 +542,379 @@ KEYWORDS_SEO_CATEGORIA = {
 
 def obtener_keyword_categoria(categoria):
     return KEYWORDS_SEO_CATEGORIA.get(categoria, {}).get('principal', '')
+
+
+# ══════════════════════════════════════════════════════════
+# POST-PROCESAMIENTO V19.1.0
+# El bot corrige mecánicamente lo que la IA no puede contar:
+#   1. Palabras insuficientes → pide párrafo extra a IA
+#   2. Densidad keyword fuera de rango → ajusta programáticamente
+#   3. Meta descripción fuera de 150-160 → ajusta programáticamente
+#   4. Título sin número → inserta año si no hay otro número
+#   5. Título sin power word → agrega una al final
+#   6. Palabras de transición insuficientes → inyecta en párrafos
+# ══════════════════════════════════════════════════════════
+
+# Sinónimos por categoría para reducir densidad sin perder contexto
+SINONIMOS_KEYWORD = {
+    'tecnologia':   ['la empresa','el sistema','la plataforma','el servicio','la herramienta','la solución'],
+    'economia':     ['el mercado','la situación','el contexto','el escenario','la medida','el fenómeno'],
+    'politica':     ['la situación','el proceso','la decisión','el hecho','el evento','la coyuntura'],
+    'deportes':     ['el evento','la competencia','el encuentro','el partido','la jornada','el resultado'],
+    'salud':        ['la condición','el fenómeno','el caso','la situación','el problema','el tema'],
+    'ciencia':      ['el descubrimiento','el fenómeno','el hallazgo','el avance','el estudio','el resultado'],
+    'medio_ambiente':['el fenómeno','la situación','el problema','el contexto','el escenario','el impacto'],
+    'latinoamerica':['la situación','el contexto','el hecho','el evento','el caso','el escenario'],
+    'guerra':       ['el conflicto','la situación','el escenario','los hechos','la crisis','el evento'],
+    'entretenimiento':['el evento','el lanzamiento','la propuesta','el trabajo','el proyecto','la obra'],
+    'general':      ['el tema','la situación','el asunto','el caso','el hecho','el evento'],
+}
+
+POWER_WORDS_LISTA = ['clave','crucial','histórico','histórica','alerta','récord','oficial',
+                     'confirmado','urgente','impactante','revelador','crítico','decisivo',
+                     'sorprendente','explosivo','sin precedentes']
+
+TRANSICIONES_INYECTABLES = [
+    'Sin embargo, vale destacar que ',
+    'Además, es importante señalar que ',
+    'Por otro lado, cabe mencionar que ',
+    'En consecuencia, ',
+    'De hecho, ',
+    'Asimismo, ',
+    'Por lo tanto, ',
+    'Cabe destacar que ',
+]
+
+
+def _texto_plano(html):
+    """Extrae texto limpio de HTML."""
+    t = re.sub(r'<[^>]+>', ' ', html or '')
+    return re.sub(r'\s+', ' ', t).strip()
+
+
+def postprocesar_palabras(resultado_ia, titulo_original, contenido_fuente, url_api, headers, modelo):
+    """
+    V19.1.0: si el artículo tiene menos de 620 palabras,
+    pide a la IA UN párrafo adicional de extensión y lo inserta
+    antes del último H2.
+    """
+    contenido_html = resultado_ia.get('contenido_html', '')
+    texto = _texto_plano(contenido_html)
+    n_palabras = len(texto.split())
+
+    if n_palabras >= 620:
+        log(f"✅ Palabras OK: {n_palabras}", 'info')
+        return resultado_ia
+
+    faltan = 620 - n_palabras
+    log(f"⚠️ Solo {n_palabras} palabras — pidiendo extensión ({faltan} palabras más)", 'advertencia')
+
+    keyword = resultado_ia.get('keyword_principal', '')
+    categoria = resultado_ia.get('categoria', 'general')
+
+    prompt_extension = f"""Eres editor de VerdadHoy.com. El siguiente artículo tiene pocas palabras y necesita un párrafo adicional de {faltan + 50} palabras mínimo.
+
+ARTÍCULO ACTUAL (extracto):
+{texto[:1500]}
+
+KEYWORD PRINCIPAL: {keyword}
+CATEGORÍA: {categoria}
+NOTICIA ORIGINAL: {contenido_fuente[:800]}
+
+Escribe UN SOLO párrafo HTML de {faltan + 50} palabras mínimo que:
+- Amplíe con antecedentes históricos o contexto LATAM
+- Incluya al menos 1 cifra o dato verificable
+- Use la keyword "{keyword}" exactamente 1 vez
+- Empiece con una palabra de transición (Sin embargo / Además / Por otro lado / De hecho / Asimismo)
+- Sea un párrafo <p>...</p> listo para insertar en el artículo
+
+RESPONDE SOLO con el párrafo HTML, sin JSON, sin explicaciones."""
+
+    try:
+        payload_ext = {
+            "model": modelo,
+            "messages": [{"role": "user", "content": prompt_extension}],
+            "temperature": 0.4,
+            "max_tokens": 600
+        }
+        resp = requests.post(url_api, headers=headers, json=payload_ext, timeout=30)
+        resp_json = resp.json()
+        if "choices" in resp_json:
+            parrafo_extra = resp_json["choices"][0]["message"]["content"].strip()
+            # Asegurarse que tiene tags <p>
+            if not parrafo_extra.startswith('<p'):
+                parrafo_extra = f'<p>{parrafo_extra}</p>'
+            # Insertar antes del último H2
+            ultimo_h2 = list(re.finditer(r'<h2', contenido_html, flags=re.IGNORECASE))
+            if len(ultimo_h2) >= 2:
+                pos = ultimo_h2[-1].start()
+                contenido_html = contenido_html[:pos] + parrafo_extra + '\n' + contenido_html[pos:]
+            else:
+                contenido_html += '\n' + parrafo_extra
+            resultado_ia['contenido_html'] = contenido_html
+            nuevo_conteo = len(_texto_plano(contenido_html).split())
+            log(f"✅ Extensión OK — ahora {nuevo_conteo} palabras", 'exito')
+    except Exception as e:
+        log(f"⚠️ No se pudo extender artículo: {e}", 'advertencia')
+
+    return resultado_ia
+
+
+def postprocesar_densidad(resultado_ia):
+    """
+    V19.1.0: ajusta densidad de keyword al rango 0.8-1.5%.
+    - Si densidad > 1.5%: reemplaza ocurrencias excedentes con sinónimos
+    - Si densidad < 0.8%: no toca (el validador lo detectará si sigue bajo)
+    """
+    contenido_html = resultado_ia.get('contenido_html', '')
+    keyword = resultado_ia.get('keyword_principal', '').strip()
+    categoria = resultado_ia.get('categoria', 'general')
+
+    if not keyword or not contenido_html:
+        return resultado_ia
+
+    texto = _texto_plano(contenido_html)
+    n_palabras = len(texto.split())
+    if n_palabras == 0:
+        return resultado_ia
+
+    kw_lower = keyword.lower()
+    kw_palabras = len(keyword.split())
+    ocurrencias = len(re.findall(re.escape(kw_lower), texto.lower()))
+    densidad = (ocurrencias * kw_palabras / n_palabras) * 100
+
+    if densidad <= 1.5:
+        log(f"✅ Densidad OK: {densidad:.1f}% ({ocurrencias} veces)", 'info')
+        return resultado_ia
+
+    # Calcular cuántas ocurrencias hay que eliminar
+    # Objetivo: densidad ~1.0% → ocurrencias_objetivo = n_palabras * 0.01 / kw_palabras
+    objetivo = max(4, int(n_palabras * 0.01 / kw_palabras))
+    sobran = ocurrencias - objetivo
+    log(f"⚠️ Densidad {densidad:.1f}% — reduciendo de {ocurrencias} a ~{objetivo} ocurrencias", 'advertencia')
+
+    # Sinónimos disponibles para esta categoría
+    sinonimos = SINONIMOS_KEYWORD.get(categoria, SINONIMOS_KEYWORD['general'])
+
+    # Reemplazar en el HTML (respetando H2 — mantener keyword en encabezados)
+    # Solo reemplazar en párrafos <p>, no en <h2>
+    reemplazos_hechos = 0
+
+    def reemplazar_en_parrafo(match_p):
+        nonlocal reemplazos_hechos
+        parrafo = match_p.group(0)
+        # Buscar ocurrencias de keyword en este párrafo (case-insensitive)
+        ocurrs_p = list(re.finditer(re.escape(kw_lower), parrafo.lower()))
+        if not ocurrs_p or reemplazos_hechos >= sobran:
+            return parrafo
+        # Reemplazar desde la segunda ocurrencia en adelante
+        # (mantener la primera para contexto)
+        parrafo_nuevo = parrafo
+        for ocurr in reversed(ocurrs_p[1:]):  # reversed para no desplazar índices
+            if reemplazos_hechos >= sobran:
+                break
+            sinonimo = sinonimos[reemplazos_hechos % len(sinonimos)]
+            inicio = ocurr.start()
+            fin = ocurr.end()
+            # Preservar capitalización original
+            original = parrafo_nuevo[inicio:fin]
+            if original[0].isupper():
+                sinonimo = sinonimo.capitalize()
+            parrafo_nuevo = parrafo_nuevo[:inicio] + sinonimo + parrafo_nuevo[fin:]
+            reemplazos_hechos += 1
+        return parrafo_nuevo
+
+    contenido_html_nuevo = re.sub(
+        r'<p[^>]*>.*?</p>',
+        reemplazar_en_parrafo,
+        contenido_html,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+
+    resultado_ia['contenido_html'] = contenido_html_nuevo
+
+    # Verificar resultado
+    texto_nuevo = _texto_plano(contenido_html_nuevo)
+    ocurrs_nuevo = len(re.findall(re.escape(kw_lower), texto_nuevo.lower()))
+    densidad_nueva = (ocurrs_nuevo * kw_palabras / n_palabras) * 100
+    log(f"✅ Densidad ajustada: {densidad_nueva:.1f}% ({ocurrs_nuevo} veces)", 'exito')
+
+    return resultado_ia
+
+
+def postprocesar_meta(resultado_ia):
+    """
+    V19.1.0: ajusta meta descripción a 150-160 chars programáticamente.
+    - Si < 150: extiende con frase de cierre estándar
+    - Si > 160: recorta en la última palabra completa y agrega '...'
+    """
+    meta = resultado_ia.get('meta_descripcion', '').strip()
+    keyword = resultado_ia.get('keyword_principal', '').strip()
+
+    if not meta:
+        return resultado_ia
+
+    largo = len(meta)
+
+    # Recortar si pasa 160
+    if largo > 160:
+        meta = meta[:157].rsplit(' ', 1)[0].rstrip('.,;') + '...'
+        log(f"✅ Meta recortada: {len(meta)} chars", 'info')
+
+    # Extender si es menor a 150
+    if len(meta) < 150:
+        # Frases de extensión neutrales ordenadas de mayor a menor longitud
+        extensiones = [
+            ' Toda la información actualizada sobre este tema en Verdad Hoy.',
+            ' Lo que necesitas saber sobre este tema hoy.',
+            ' Análisis completo en Verdad Hoy.',
+            ' Más detalles en Verdad Hoy.',
+            ' Infórmate aquí.',
+        ]
+        for ext in extensiones:
+            candidato = meta.rstrip('.') + ext
+            if 150 <= len(candidato) <= 160:
+                meta = candidato
+                break
+            elif len(candidato) > 160:
+                # Ajustar la extensión para que quepa exactamente
+                espacio_disponible = 160 - len(meta.rstrip('.')) - 3
+                if espacio_disponible > 10:
+                    meta = meta.rstrip('.') + ext[:espacio_disponible].rsplit(' ', 1)[0] + '...'
+                break
+
+        # Si todavía es corta, rellenar con puntos suspensivos o repetir keyword
+        if len(meta) < 150:
+            faltante = 150 - len(meta)
+            if keyword and faltante > len(keyword) + 5:
+                meta = meta.rstrip('.') + f' Conoce todo sobre {keyword} en Verdad Hoy.'
+            if len(meta) > 160:
+                meta = meta[:157].rsplit(' ', 1)[0] + '...'
+
+        log(f"✅ Meta extendida: {len(meta)} chars", 'info')
+
+    resultado_ia['meta_descripcion'] = meta
+    return resultado_ia
+
+
+def postprocesar_titulo(resultado_ia):
+    """
+    V19.1.0: agrega número y/o power word al título si faltan.
+    Solo toca el título si es necesario, sin superar 55 chars.
+    """
+    titulo = resultado_ia.get('titulo_seo', '').strip()
+    if not titulo:
+        return resultado_ia
+
+    titulo_lower = titulo.lower()
+
+    # 1. Verificar power word
+    tiene_pw = any(pw in titulo_lower for pw in POWER_WORDS_LISTA)
+
+    # 2. Verificar número
+    tiene_numero = bool(re.search(r'\d', titulo))
+
+    año_actual = datetime.now().year
+
+    if not tiene_numero and len(titulo) <= 45:
+        # Agregar año al final si cabe
+        candidato = f"{titulo}: {año_actual}"
+        if len(candidato) <= 55:
+            titulo = candidato
+            tiene_numero = True
+            log(f"✅ Número añadido al título: '{titulo}'", 'info')
+
+    if not tiene_pw and len(titulo) <= 47:
+        # Agregar power word al final si cabe
+        for pw in ['clave', 'crucial', 'histórico', 'urgente', 'récord']:
+            candidato = f"{titulo} [{pw}]"
+            # Intentar sin corchetes primero
+            candidato2 = f"{titulo}, {pw}"
+            if len(candidato2) <= 55:
+                titulo = candidato2
+                log(f"✅ Power word '{pw}' añadida al título", 'info')
+                break
+
+    resultado_ia['titulo_seo'] = titulo
+    return resultado_ia
+
+
+def postprocesar_transiciones(resultado_ia):
+    """
+    V19.1.0: si hay menos de 4 palabras de transición,
+    inyecta las faltantes al inicio de párrafos que no las tengan.
+    """
+    contenido_html = resultado_ia.get('contenido_html', '')
+    texto = _texto_plano(contenido_html)
+    texto_lower = texto.lower()
+
+    n_trans = sum(1 for p in PALABRAS_TRANSICION if p in texto_lower)
+    if n_trans >= 4:
+        log(f"✅ Transiciones OK: {n_trans}", 'info')
+        return resultado_ia
+
+    faltan = 4 - n_trans
+    log(f"⚠️ Solo {n_trans} transiciones — inyectando {faltan}", 'advertencia')
+
+    transiciones_usadas = [t for t in PALABRAS_TRANSICION if t in texto_lower]
+    transiciones_disponibles = [t for t in TRANSICIONES_INYECTABLES
+                                 if not any(t.strip().lower().startswith(u) for u in transiciones_usadas)]
+
+    inyectadas = 0
+
+    def inyectar_transicion(match_p):
+        nonlocal inyectadas
+        if inyectadas >= faltan:
+            return match_p.group(0)
+        parrafo = match_p.group(0)
+        texto_p = _texto_plano(parrafo)
+        # Solo párrafos de contenido real (>40 chars) sin transición ya
+        if len(texto_p) < 40:
+            return parrafo
+        tiene_trans = any(t.lower() in texto_p.lower() for t in PALABRAS_TRANSICION)
+        if tiene_trans:
+            return parrafo
+        # No inyectar en el primer párrafo (apertura AEO)
+        if inyectadas == 0 and 'seccion' not in parrafo:
+            return parrafo
+        # Inyectar transición al inicio del párrafo
+        trans = transiciones_disponibles[inyectadas % len(transiciones_disponibles)]
+        # Insertar después de <p> o <p style="...">
+        parrafo_nuevo = re.sub(
+            r'(<p[^>]*>)(\s*)',
+            lambda m: m.group(1) + m.group(2) + trans,
+            parrafo, count=1, flags=re.IGNORECASE
+        )
+        inyectadas += 1
+        return parrafo_nuevo
+
+    contenido_html_nuevo = re.sub(
+        r'<p[^>]*>.*?</p>',
+        inyectar_transicion,
+        contenido_html,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+
+    resultado_ia['contenido_html'] = contenido_html_nuevo
+    n_trans_nuevo = sum(1 for p in PALABRAS_TRANSICION if p in _texto_plano(contenido_html_nuevo).lower())
+    log(f"✅ Transiciones tras inyección: {n_trans_nuevo}", 'exito')
+    return resultado_ia
+
+
+def postprocesar_resultado(resultado_ia, titulo_original, contenido_fuente, url_api, headers, modelo):
+    """
+    V19.1.0: pipeline completo de post-procesamiento.
+    Se ejecuta ANTES de validar_calidad_articulo.
+    Orden: palabras → densidad → transiciones → meta → título
+    """
+    log("🔧 Post-procesamiento V19.1.0 iniciado...", 'info')
+    resultado_ia = postprocesar_palabras(resultado_ia, titulo_original, contenido_fuente, url_api, headers, modelo)
+    resultado_ia = postprocesar_densidad(resultado_ia)
+    resultado_ia = postprocesar_transiciones(resultado_ia)
+    resultado_ia = postprocesar_meta(resultado_ia)
+    resultado_ia = postprocesar_titulo(resultado_ia)
+    log("🔧 Post-procesamiento completado", 'info')
+    return resultado_ia
 
 
 # ══════════════════════════════════════════════════════════
@@ -1406,6 +1779,31 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
     resultado_ia = reescribir_noticia_v19(titulo, contenido, tema, es_borrador=es_borrador)
 
     if resultado_ia:
+        # V19.1.0: post-procesamiento antes de validar
+        # Determinar proveedor activo para extensión de palabras
+        _url_api_pp = _headers_pp = _modelo_pp = None
+        if OPENAI_API_KEY:
+            _url_api_pp = "https://api.openai.com/v1/chat/completions"
+            _headers_pp = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
+            _modelo_pp  = "gpt-4o-mini"
+        elif GROQ_API_KEY:
+            _url_api_pp = "https://api.groq.com/openai/v1/chat/completions"
+            _headers_pp = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+            _modelo_pp  = "llama-3.3-70b-versatile"
+        elif GEMINI_API_KEY:
+            _url_api_pp = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+            _headers_pp = {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"}
+            _modelo_pp  = "gemini-2.5-flash"
+        elif OPENROUTER_API_KEY:
+            _url_api_pp = "https://openrouter.ai/api/v1/chat/completions"
+            _headers_pp = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
+            _modelo_pp  = "meta-llama/llama-3.3-70b-instruct:free"
+
+        resultado_ia = postprocesar_resultado(
+            resultado_ia, titulo, contenido,
+            _url_api_pp, _headers_pp, _modelo_pp
+        )
+
         keyword_para_validar = resultado_ia.get('keyword_principal','')
         es_valido, problemas = validar_calidad_articulo(
             resultado_ia.get('contenido_html',''), resultado_ia.get('meta_descripcion',''),
@@ -1419,6 +1817,11 @@ def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
             for p in problemas: log(f"   - {p}",'advertencia')
             resultado_reintento = reescribir_noticia_v19(titulo, contenido, tema, feedback_correccion=problemas, es_borrador=es_borrador)
             if resultado_reintento:
+                # V19.1.0: post-procesamiento también en reintento
+                resultado_reintento = postprocesar_resultado(
+                    resultado_reintento, titulo, contenido,
+                    _url_api_pp, _headers_pp, _modelo_pp
+                )
                 kw_r = resultado_reintento.get('keyword_principal','')
                 es_valido_2, problemas_2 = validar_calidad_articulo(
                     resultado_reintento.get('contenido_html',''), resultado_reintento.get('meta_descripcion',''),

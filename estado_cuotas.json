@@ -2,8 +2,9 @@
   "fecha": "2026-08-21",
   "conteo": {
     "politica": 3,
-    "ciencia-y-salud": 1
+    "ciencia-y-salud": 2,
+    "latinoamerica": 1
   },
-  "directos": 3,
-  "borradores": 1
+  "directos": 4,
+  "borradores": 2
 }

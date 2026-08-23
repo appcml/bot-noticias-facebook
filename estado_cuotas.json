@@ -2,9 +2,10 @@
   "fecha": "2026-08-23",
   "conteo": {
     "deportes": 1,
-    "politica": 1,
-    "latinoamerica": 2
+    "politica": 2,
+    "latinoamerica": 2,
+    "tecnologia": 1
   },
   "directos": 4,
-  "borradores": 0
+  "borradores": 2
 }

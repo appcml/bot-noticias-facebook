@@ -1,12 +1,11 @@
 {
-  "fecha": "2026-08-24",
+  "fecha": "2026-08-25",
   "conteo": {
-    "economia": 1,
-    "latinoamerica": 1,
-    "deportes": 1,
+    "economia": 2,
     "politica": 1,
-    "entretenimiento": 1,
-    "tecnologia": 1
+    "deportes": 1,
+    "ciencia-y-salud": 1,
+    "latinoamerica": 1
   },
   "directos": 4,
   "borradores": 2

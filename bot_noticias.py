@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias - V19.0.1
-CAMBIOS V19.0.1 vs V19.0.0:
-  - SOLO mejora de prompt en reescribir_noticia_v19():
-    * Instrucción explícita de densidad: keyword EXACTA mínimo 6 veces, no paráfrasis
-    * 4 palabras de transición obligatorias listadas con ejemplo de uso
-    * H2 con keyword: ejemplo concreto de cómo debe quedar
-    * Número en título: instrucción más directa con ejemplos
-    * Meta descripción: ejemplo mejorado con keyword al inicio
-  - Sin cambios en validación, lógica, cuotas ni flujo principal
+Bot de Noticias - V20.0.0
+CAMBIOS VS V19:
+  - TODO va a BORRADOR (sin publicacion directa automatica)
+  - Enfoque 100% EVERGREEN
+  - Rotacion equitativa por paises
+  - Prioridad por calidad e interes del tema
+  - Pinterest implementado (Opcion D)
+  - Categorias expandidas: misterios, historia, geopolitica, innovacion
 """
-VERSION_BOT = "V19.1.2"
+VERSION_BOT = "V20.0.0"
 
 import requests, feedparser, re, hashlib, json, os, random, time, unicodedata
 from datetime import datetime, timedelta, timezone
@@ -19,47 +18,83 @@ from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
 
-# ── PUBLICACION MIXTA ──────────────────────────────────────
-MAX_POSTS_DIA_DIRECTOS   = 4
-MAX_POSTS_DIA_BORRADORES = 2
-MAX_POSTS_WP_DIA         = MAX_POSTS_DIA_DIRECTOS + MAX_POSTS_DIA_BORRADORES
+MAX_BORRADORES_DIA = 3
+MAX_POSTS_WP_DIA   = MAX_BORRADORES_DIA
+ROTACION_PAISES_PATH = 'estado_rotacion_paises.json'
 
-# ── TIERS GEOGRAFICOS V19 ──────────────────────────────────
-LATAM_TIER1 = ['chile', 'argentina', 'mexico']
-LATAM_TIER2 = ['colombia', 'brasil']
-LATAM_TIER3 = ['venezuela','peru','ecuador','bolivia','uruguay','paraguay',
-               'cuba','el_salvador','guatemala','honduras','costa_rica',
-               'panama','rep_dom','haiti','nicaragua','puerto_rico',
-               'guyana','surinam','belice']
-BONUS_TIER1, BONUS_TIER2, BONUS_TIER3 = 15, 10, 5
-
-CUOTAS_CONTROL_PATH = 'estado_cuotas.json'
-
-CUOTAS_CATEGORIA = {
-    'latinoamerica':   {'cuota':0.25,'cpm_relativo':1.18,'brand_safe':True},
-    'deportes':        {'cuota':0.18,'cpm_relativo':1.25,'brand_safe':True},
-    'economia':        {'cuota':0.15,'cpm_relativo':1.55,'brand_safe':True},
-    'tecnologia':      {'cuota':0.12,'cpm_relativo':1.45,'brand_safe':True},
-    'entretenimiento': {'cuota':0.10,'cpm_relativo':1.20,'brand_safe':True},
-    'politica':        {'cuota':0.05,'cpm_relativo':1.10,'brand_safe':False},
-    'ciencia':         {'cuota':0.03,'cpm_relativo':1.40,'brand_safe':True},
-    'salud':           {'cuota':0.03,'cpm_relativo':1.40,'brand_safe':True},
-    'medio_ambiente':  {'cuota':0.03,'cpm_relativo':1.28,'brand_safe':True},
-    'mundo':           {'cuota':0.03,'cpm_relativo':1.00,'brand_safe':True},
-    'guerra':          {'cuota':0.01,'cpm_relativo':0.90,'brand_safe':False},
-    'desastre':        {'cuota':0.01,'cpm_relativo':0.95,'brand_safe':False},
-    'clima':           {'cuota':0.01,'cpm_relativo':1.30,'brand_safe':True},
-    'crimen':          {'cuota':0.00,'cpm_relativo':0.85,'brand_safe':False},
-    'educacion':       {'cuota':0.00,'cpm_relativo':1.35,'brand_safe':True},
-    'religion':        {'cuota':0.00,'cpm_relativo':1.00,'brand_safe':True},
-    'general':         {'cuota':0.00,'cpm_relativo':1.00,'brand_safe':True},
+POOL_PAISES = {
+    'chile':          {'peso': 10, 'region': 'latinoamerica'},
+    'argentina':      {'peso': 9,  'region': 'latinoamerica'},
+    'mexico':         {'peso': 9,  'region': 'latinoamerica'},
+    'colombia':       {'peso': 7,  'region': 'latinoamerica'},
+    'brasil':         {'peso': 7,  'region': 'latinoamerica'},
+    'venezuela':      {'peso': 6,  'region': 'latinoamerica'},
+    'peru':           {'peso': 5,  'region': 'latinoamerica'},
+    'ecuador':        {'peso': 4,  'region': 'latinoamerica'},
+    'bolivia':        {'peso': 3,  'region': 'latinoamerica'},
+    'uruguay':        {'peso': 3,  'region': 'latinoamerica'},
+    'estados_unidos': {'peso': 8,  'region': 'mundo'},
+    'europa':         {'peso': 7,  'region': 'mundo'},
+    'asia':           {'peso': 6,  'region': 'mundo'},
+    'global':         {'peso': 8,  'region': 'mundo'},
 }
+
+CATEGORIAS_EVERGREEN = {
+    'tecnologia':     {'slug': 'tecnologia',     'cpm': 1.45, 'evergreen': True},
+    'ciencia':        {'slug': 'ciencia-y-salud', 'cpm': 1.40, 'evergreen': True},
+    'salud':          {'slug': 'ciencia-y-salud', 'cpm': 1.40, 'evergreen': True},
+    'historia':       {'slug': 'mundo',           'cpm': 1.20, 'evergreen': True},
+    'misterios':      {'slug': 'mundo',           'cpm': 1.25, 'evergreen': True},
+    'geopolitica':    {'slug': 'mundo',           'cpm': 1.15, 'evergreen': True},
+    'economia':       {'slug': 'economia',        'cpm': 1.55, 'evergreen': True},
+    'politica':       {'slug': 'politica',        'cpm': 1.10, 'evergreen': True},
+    'medio_ambiente': {'slug': 'medio-ambiente',  'cpm': 1.28, 'evergreen': True},
+    'innovacion':     {'slug': 'tecnologia',      'cpm': 1.45, 'evergreen': True},
+    'cultura':        {'slug': 'entretenimiento', 'cpm': 1.20, 'evergreen': True},
+    'entretenimiento':{'slug': 'entretenimiento', 'cpm': 1.20, 'evergreen': True},
+    'deportes':       {'slug': 'deportes',        'cpm': 1.25, 'evergreen': True},
+    'latinoamerica':  {'slug': 'latinoamerica',   'cpm': 1.18, 'evergreen': True},
+    'mundo':          {'slug': 'mundo',           'cpm': 1.00, 'evergreen': True},
+    'guerra':         {'slug': 'internacional',   'cpm': 0.90, 'evergreen': False},
+    'crimen':         {'slug': 'internacional',   'cpm': 0.85, 'evergreen': False},
+    'desastre':       {'slug': 'internacional',   'cpm': 0.95, 'evergreen': False},
+    'general':        {'slug': 'mundo',           'cpm': 1.00, 'evergreen': True},
+}
+
+TABLEROS_PINTEREST = {
+    'tecnologia':     'tecnologia',
+    'innovacion':     'tecnologia',
+    'ciencia':        'noticias-del-mundo',
+    'salud':          'noticias-del-mundo',
+    'historia':       'noticias-del-mundo',
+    'misterios':      'noticias-del-mundo',
+    'geopolitica':    'noticias-del-mundo',
+    'economia':       'economia',
+    'politica':       'politica',
+    'medio_ambiente': 'noticias-del-mundo',
+    'cultura':        'noticias-del-mundo',
+    'entretenimiento':'noticias-del-mundo',
+    'deportes':       'deportes',
+    'latinoamerica':  'latinoamerica',
+    'mundo':          'noticias-del-mundo',
+    'general':        'noticias-del-mundo',
+}
+
+TEMAS_ALTA_RELEVANCIA = [
+    'inteligencia artificial','nasa','espacio','descubrimiento cientifico',
+    'fisica cuantica','genetica','cambio climatico','energia renovable',
+    'civilizacion perdida','arqueologia','historia antigua','misterio historico',
+    'mayas','incas','aztecas','egipto antiguo','manuscrito','artefacto inexplicable',
+    'robot','quantum','deepfake','neuralink','elon musk','openai','biotecnologia',
+    'cancer tratamiento','vacuna','longevidad','medicina del futuro','alzheimer',
+    'brics','geopolitica','litio','cobre','recursos naturales','acuerdo comercial',
+    'inflacion','criptomoneda','bitcoin','fintech','economia mundial',
+    'oscar','grammy','netflix','cultura pop','anime','cine latinoamericano',
+]
 
 NEWS_API_KEY       = os.getenv('NEWS_API_KEY','')
 NEWSDATA_API_KEY   = os.getenv('NEWSDATA_API_KEY','')
 GNEWS_API_KEY      = os.getenv('GNEWS_API_KEY','')
-FB_PAGE_ID         = os.getenv('FB_PAGE_ID','')
-FB_ACCESS_TOKEN    = os.getenv('FB_ACCESS_TOKEN','')
 WP_URL             = os.getenv('WP_URL','https://verdadhoy.com')
 WP_USER            = os.getenv('WP_USER','verdadhoy_admin')
 WP_APP_PASSWORD    = os.getenv('WP_APP_PASSWORD','')
@@ -69,130 +104,100 @@ GEMINI_API_KEY     = os.getenv('GEMINI_API_KEY','')
 TAVILY_API_KEY     = os.getenv('TAVILY_API_KEY','')
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY','')
 OPENAI_API_KEY     = os.getenv('OPENAI_API_KEY','')
-GITHUB_TOKEN       = os.getenv('GITHUB_TOKEN','')
-GITHUB_REPO        = os.getenv('GITHUB_REPOSITORY','')
 
-HISTORIAL_PATH      = os.getenv('HISTORIAL_PATH','historial_publicaciones.json')
-ESTADO_WP_PATH      = 'estado_wp.json'
-ESTADO_FB_PATH      = 'estado_fb.json'
-PENDING_VIDEOS_DIR  = 'pending_videos'
-ESTADO_PENDING_PATH = 'estado_pending_videos.json'
-ESTADO_LATAM_PATH   = 'estado_cuotas_latam.json'
+HISTORIAL_PATH  = os.getenv('HISTORIAL_PATH','historial_publicaciones.json')
+ESTADO_WP_PATH  = 'estado_wp.json'
+CUOTAS_PATH     = 'estado_cuotas.json'
 
-MODO_LATAM = os.getenv('MODO_LATAM','false').lower() == 'true'
-TIEMPO_ENTRE_WP_MIN = 230
-TIEMPO_ENTRE_FB_MIN = 90
-MAX_POSTS_WP_DIA_CHILE  = 3
-MAX_POSTS_WP_DIA_LATAM  = 3
-MAX_POSTS_WP_DIA_TOTAL  = 6
-REINTENTAR_CALIDAD_IA   = True
-PUBLICAR_EN_FACEBOOK    = False
+REINTENTAR_CALIDAD_IA      = True
 UMBRAL_SIMILITUD_TITULO    = 0.72
 UMBRAL_SIMILITUD_CONTENIDO = 0.62
 MAX_TITULOS_HISTORIA       = 300
 DIAS_HISTORIAL             = 14
 
-HORARIOS_PICO_UTC = [(0,4),(10,14),(18,22)]
-
-CATEGORIA_WP = {
-    'guerra':'internacional','desastre':'internacional','crimen':'internacional',
-    'religion':'internacional','educacion':'internacional','general':'internacional',
-    'politica':'politica','economia':'economia','tecnologia':'tecnologia',
-    'ciencia':'ciencia-y-salud','salud':'ciencia-y-salud','deportes':'deportes',
-    'entretenimiento':'entretenimiento','latinoamerica':'latinoamerica',
-    'clima':'medio-ambiente','medio_ambiente':'medio-ambiente','mundo':'mundo',
-}
-
-CATEGORIAS_ROTACION_WP = [
-    'politica','africa','asia','ciencia-y-salud','deportes','economia',
-    'entretenimiento','europa','internacional','latinoamerica',
-    'medio-ambiente','medio-oriente','mundo','oceania','tecnologia',
+PALABRAS_TRANSICION = [
+    'sin embargo','ademas','por otro lado','en consecuencia','a su vez',
+    'no obstante','por ejemplo','en primer lugar','finalmente','asimismo',
+    'por lo tanto','en efecto','de hecho','en este sentido','como resultado',
+    'en cambio','cabe destacar','mientras tanto','aunque','pese a',
+    'de esta manera','dado que','ya que','en definitiva',
 ]
 
-TABLEROS_PINTEREST = {
-    'guerra':'Noticias del Mundo','politica':'Politica','economia':'Economia',
-    'tecnologia':'Tecnologia','desastre':'Noticias del Mundo','deportes':'Noticias del Mundo',
-    'ciencia':'Noticias del Mundo','salud':'Noticias del Mundo',
-    'entretenimiento':'Noticias del Mundo','latinoamerica':'Latinoamerica',
-    'clima':'Noticias del Mundo','medio_ambiente':'Noticias del Mundo',
-    'educacion':'Noticias del Mundo','religion':'Noticias del Mundo',
-    'crimen':'Noticias del Mundo','mundo':'Noticias del Mundo','general':'Noticias del Mundo',
+POWER_WORDS_ES = {
+    'clave','crucial','decisivo','decisiva','historico','historica',
+    'alerta','record','oficial','confirmado','confirmada','sorprendente',
+    'revolucionario','revolucionaria','impactante','revelador','reveladora',
+    'inedito','inedita','definitivo','esencial','critico','critica',
+    'extraordinario','unico','unica','real','secreto','secretos',
+    'radical','masivo','masiva','sin precedentes','millones',
 }
 
-_cache_tableros_pinterest = {}
-_cache_categorias_wp      = {}
-_cache_tags_wp            = {}
+POWER_WORDS_LISTA = list(POWER_WORDS_ES)
 
-CTAS_POR_TEMA = {
-    'guerra':["¿Crees que esto puede escalar? Dinos 👇"],
-    'politica':["¿Estás de acuerdo? SÍ o NO 👇"],
-    'economia':["¿Sientes esto en tu bolsillo? 👇"],
-    'tecnologia':["¿La IA nos ayuda o nos amenaza? 👇"],
-    'desastre':["Nuestros pensamientos con los afectados 🙏"],
-    'deportes':["¿Qué opinas? Comenta 👇"],
-    'ciencia':["¿Lo sabías? Dinos 👇"],
-    'salud':["¿Cuidas tu salud? Comparte 👇"],
-    'entretenimiento':["¿Lo viste? ¿Qué te pareció? 👇"],
-    'latinoamerica':["¿Cómo afecta esto a tu país? 👇"],
-    'clima':["¿Sientes el cambio climático? 👇"],
-    'medio_ambiente':["¿Qué haces por el planeta? 👇"],
-    'educacion':["¿La educación mejora el mundo? SÍ o NO 👇"],
-    'religion':["¿Qué piensas? Comenta 👇"],
-    'crimen':["¿La justicia actúa bien? 👇"],
-    'mundo':["¿Qué piensas del mundo hoy? 👇"],
-    'general':["¿Qué opinas? Comenta 👇"],
+STOPWORDS_SLUG = {
+    'de','del','la','las','el','los','un','una','unos','unas',
+    'y','e','o','u','a','al','en','por','para','con','sin',
+    'que','se','su','sus','es','son','ha','han','fue','era',
+    'lo','le','les','me','te','nos','ante','bajo','desde',
+    'hacia','hasta','sobre','tras','entre','como','pero','si','no','ni',
 }
 
-PALABRAS_ALTA_PRIORIDAD = [
-    "copa libertadores","copa sudamericana","eliminatorias sudamericanas","conmebol",
-    "mundial 2026","copa del mundo","boric","milei","lula","sheinbaum","petro",
-    "maduro","bukele","litio chile","cobre chile","petroleo venezuela",
-    "peso chileno","peso argentino","inflacion argentina","inflacion chile",
-    "inflacion mexico","elecciones chile","elecciones argentina","elecciones colombia",
-    "terremoto chile","sismo chile","festival de viña","seleccion chilena","la roja",
-    "colo-colo","universidad de chile","guerra","conflicto armado","invasion",
-    "ofensiva militar","bombardeo","misiles","ataque aereo","drones militares",
-    "movilizacion militar","tropas","escalada de tension","amenaza nuclear",
-    "armas nucleares","terrorismo","atentado","ataque terrorista",
-    "ucrania","rusia","israel","gaza","iran","china","taiwan","corea del norte",
-    "otan","nato","brics","medio oriente","crisis humanitaria","refugiados",
-    "crisis de gobierno","golpe de estado","estado de emergencia","negociaciones de paz",
-    "alto el fuego","sanciones internacionales","economia mundial","inflacion",
-    "crisis economica","recesion","petroleo","gas","crisis energetica",
-    "ciberataque","hackeo","inteligencia artificial","ultima hora","urgente","breaking",
-    "putin","zelensky","trump","biden","netanyahu","xi jinping","kim jong un","macron",
-    "hamas","hezbollah","isis","taliban","houthis","elon musk",
-    "champions league","nba finals","super bowl","formula 1","grand prix",
-    "olimpiadas","juegos olimpicos","fichaje","gol","campeon",
-    "messi","mbappe","neymar","cristiano ronaldo","lebron james","verstappen",
-    "djokovic","alcaraz","oscar 2026","grammy","emmy",
-    "taylor swift","bad bunny","shakira","beyonce","karol g","maluma",
-    "j balvin","rauw alejandro","rosalia","daddy yankee",
-    "netflix estreno","disney plus","marvel","star wars",
-]
+SINONIMOS_KEYWORD = {
+    'tecnologia':    ['la empresa','el sistema','la plataforma','el servicio','la herramienta'],
+    'economia':      ['el mercado','la situacion','el contexto','el escenario','la medida'],
+    'politica':      ['la situacion','el proceso','la decision','el hecho','la coyuntura'],
+    'deportes':      ['el evento','la competencia','el encuentro','el partido','la jornada'],
+    'salud':         ['la condicion','el fenomeno','el caso','la situacion','el problema'],
+    'ciencia':       ['el descubrimiento','el fenomeno','el hallazgo','el avance','el estudio'],
+    'historia':      ['el periodo','la epoca','el evento','el hecho','el hallazgo'],
+    'misterios':     ['el fenomeno','el caso','el hallazgo','el enigma','el evento'],
+    'geopolitica':   ['la situacion','el contexto','el escenario','el conflicto','la crisis'],
+    'innovacion':    ['el avance','el desarrollo','la solucion','el proyecto','la propuesta'],
+    'cultura':       ['el evento','el lanzamiento','la propuesta','el trabajo','la obra'],
+    'medio_ambiente':['el fenomeno','la situacion','el problema','el impacto','el escenario'],
+    'general':       ['el tema','la situacion','el asunto','el caso','el hecho'],
+}
 
-PALABRAS_MEDIA_PRIORIDAD = [
-    "economia","mercados","FMI","banco mundial","tecnologia","innovacion",
-    "salud","educacion","medio ambiente","cambio climatico","comercio internacional",
-]
-
-BLACKLIST_TITULOS = [
-    r'^\s*última hora\s*$',r'^\s*breaking news\s*$',
-    r'^\s*noticias de hoy\s*$',r'^\s*\d+\s*$',
+TRANSICIONES_INYECTABLES = [
+    'Sin embargo, vale destacar que ',
+    'Ademas, es importante señalar que ',
+    'Por otro lado, cabe mencionar que ',
+    'En consecuencia, ',
+    'De hecho, ',
+    'Asimismo, ',
+    'Por lo tanto, ',
+    'Cabe destacar que ',
 ]
 
 BLACKLIST_CONTENIDO_SPAM = [
-    "rojabet","bet365","1xbet","betano","codere","tombola","sportingbet","bwin",
-    "pokerstars","888casino","betfair","unibet","casino online","apuestas deportivas",
-    "apuestas en linea","bono sin deposito","giros gratis casino","tragamonedas",
-    "tragaperras","ruleta online","poker online","blackjack online","slots online",
-    "juegos de azar","casa de apuestas","cuotas de apuestas","donde apostar",
-    "para apostar","pronóstico deportivo","pronostico deportivo","picks deportivos",
-    "predicciones deportivas","codigo promocional","cupon descuento",
-    "oferta exclusiva para","top 10 mejores","como ganar dinero con",
-    "prestamo rapido online","bitcoin gratis","cripto gratis","ganar criptomonedas",
+    'rojabet','bet365','1xbet','betano','casino online',
+    'apuestas deportivas','apuestas en linea','bono sin deposito',
+    'giros gratis casino','tragamonedas','ruleta online',
+    'prestamo rapido','bitcoin gratis','ganar criptomonedas',
 ]
 
+BLACKLIST_TITULOS = [
+    r'^\s*ultima hora\s*$',r'^\s*breaking news\s*$',
+    r'^\s*noticias de hoy\s*$',r'^\s*\d+\s*$',
+]
+
+_FUENTES_INCRUSTADAS = re.compile(
+    r'\b(LISTIN DIARIO|EL PAIS|El Pais|BBC|CNN|Reuters|AFP|AP News|INFOBAE|Infobae|'
+    r'EFE|France 24|DW|Euronews|RT|Al Jazeera|The Guardian|NYT|New York Times|'
+    r'Washington Post|Clarin|El Mundo|La Nacion|Milenio)\b[,.]?\s*',
+    re.IGNORECASE
+)
+_FRASES_SUSCRIPCION = re.compile(
+    r'(Recib[ii]\s+en\s+tu\s+mail[^.]*\.?|Suscr[ii]bete\s+[^.]*\.?|'
+    r'Registrate\s+[^.]*\.?|Newsletter\s+[^.]*\.?|Siguenos\s+en\s+[^.]*\.?|'
+    r'Leer\s+mas[^.]*\.?|Lee\s+tambien[^.]*\.?|Fuente:\s*[A-Z][^.]*\.?|'
+    r'Copyright\s+[^.]*\.?)',
+    re.IGNORECASE
+)
+
+_cache_categorias_wp  = {}
+_cache_tags_wp        = {}
+_cache_boards_pinterest = {}
 
 # ══════════════════════════════════════════════════════════
 # UTILIDADES
@@ -236,25 +241,15 @@ def normalizar_url(url):
     try:
         parsed = urlparse(url)
         netloc = re.sub(r'^(www\.|m\.|mobile\.|amp\.)','',parsed.netloc.lower())
-        path   = parsed.path.lower().rstrip('/')
-        path   = re.sub(r'/index\.(html|php|htm|asp)$','',path)
-        path   = re.sub(r'\.html?$','',path)
+        path = parsed.path.lower().rstrip('/')
+        path = re.sub(r'/index\.(html|php|htm|asp)$','',path)
+        path = re.sub(r'\.html?$','',path)
         return f"{netloc}{path}"
-    except:
-        return url.lower().strip()
-
-def extraer_dominio(url):
-    try:
-        parts = urlparse(url).netloc.lower().split('.')
-        return '.'.join(parts[-2:]) if len(parts) > 2 else '.'.join(parts)
-    except:
-        return ""
+    except: return url.lower().strip()
 
 def similitud_titulos(t1, t2):
     if not t1 or not t2: return 0.0
-    stopwords = {'el','la','los','las','un','una','en','de','del','al','y','o',
-                 'que','con','por','para','sobre','entre','the','of','and','to',
-                 'in','is','a','an','it','as','at','by','from','not','or'}
+    stopwords = {'el','la','los','las','un','una','en','de','del','al','y','o','que'}
     def normalizar(t):
         t = re.sub(r'[^\w\s]','',t.lower().strip())
         t = re.sub(r'\s+',' ',t)
@@ -278,20 +273,6 @@ def es_titulo_generico(titulo):
     palabras = [p for p in re.findall(r'\b\w+\b',tl) if p not in stop and len(p) > 3]
     return len(set(palabras)) < 4
 
-_FUENTES_INCRUSTADAS = re.compile(
-    r'\b(LISTIN DIARIO|EL PAÍS|El País|BBC|CNN|Reuters|AFP|AP News|INFOBAE|Infobae|'
-    r'EFE|France 24|DW|Euronews|RT|Al Jazeera|The Guardian|NYT|New York Times|'
-    r'Washington Post|Clarín|Clarin|El Mundo|La Nación|La Nacion|Milenio)\b[,.]?\s*',
-    re.IGNORECASE
-)
-_FRASES_SUSCRIPCION = re.compile(
-    r'(Recib[ií]\s+en\s+tu\s+mail[^.]*\.?|Suscr[ií]bete\s+[^.]*\.?|'
-    r'Registrate\s+[^.]*\.?|Newsletter\s+[^.]*\.?|Descarga\s+la\s+app\s+[^.]*\.?|'
-    r'Síguenos\s+en\s+[^.]*\.?|Leer\s+más[^.]*\.?|Lee\s+también[^.]*\.?|'
-    r'Fuente:\s*[A-Z][^.]*\.?|Copyright\s+[^.]*\.?|©[^.]*\.?)',
-    re.IGNORECASE
-)
-
 def limpiar_texto(texto):
     if not texto: return ""
     import html
@@ -308,173 +289,12 @@ def limpiar_texto(texto):
 def es_contenido_spam(titulo, descripcion=""):
     txt = f"{titulo} {descripcion}".lower()
     for keyword in BLACKLIST_CONTENIDO_SPAM:
-        if keyword.lower() in txt:
-            return True, keyword
+        if keyword.lower() in txt: return True, keyword
     return False, None
 
-
-# ══════════════════════════════════════════════════════════
-# DETECCIÓN DE TEMA Y REGIÓN
-# ══════════════════════════════════════════════════════════
-def detectar_tema(titulo, descripcion=""):
-    txt = f"{titulo} {descripcion}".lower()
-    if any(p in txt for p in ["terremoto","sismo","huracan","inundacion","tsunami","erupcion volcanica","tormenta tropical","derrumbe","aluvion","alerta de tsunami","catastrofe natural","incendio forestal masivo"]):
-        return 'desastre'
-    if any(p in txt for p in ["asesinato","homicidio","narcotrafico","cartel","crimen organizado","mafia","fraude millonario","banda criminal","sicario","feminicidio","masacre","narcotraficante"]):
-        return 'crimen'
-    if any(p in txt for p in ["guerra","bombardeo","misil balístico","conflicto armado","invasion","invasión","tropas rusas","tropas ucranianas","hamas","hezbollah","ataque aéreo","ataque aereo","ofensiva militar","drones militares","drones de combate","muertos en combate","bombardeado","ataque terrorista","atentado terrorista","alto el fuego","cese del fuego","zona de guerra","guerra civil","milicias armadas"]):
-        return 'guerra'
-    if any(p in txt for p in ["futbol","fútbol","copa libertadores","copa sudamericana","copa del mundo","mundial de futbol","mundial 2026","champions league","premier league","laliga","la liga","eliminatoria","gol","penalti","seleccion chilena","seleccion argentina","seleccion colombiana","seleccion brasileña","seleccion mexicana","la roja","colo-colo","universidad de chile","nba","baloncesto","tenis","djokovic","alcaraz","wimbledon","formula 1","f1","gran premio","olimpiadas","juegos olimpicos","atletismo","boxeo","ufc","messi","cristiano ronaldo","mbappe","neymar","lebron james","verstappen","medalla de oro"]):
-        return 'deportes'
-    if any(p in txt for p in ["pelicula estreno","estreno de pelicula","trailer oficial","oscar","grammy","emmy","golden globe","latin grammy","festival de cine","cannes","album musical","nuevo album","gira musical","concierto de","lanzamiento musical","videoclip","spotify charts","billboard charts","taylor swift","bad bunny","shakira","beyonce","rihanna","karol g","maluma","j balvin","rauw alejandro","rosalia","daddy yankee","netflix estrena","netflix serie","disney plus estreno","serie de tv","actor de cine","actriz premiada","reggaeton","celebrity","celebridad"]):
-        return 'entretenimiento'
-    if any(p in txt for p in ["inteligencia artificial","chatgpt","openai","gemini google","deepseek","llm ","modelo de lenguaje","ia generativa","robot","ciberataque","hackeo","ciberseguridad","ransomware","elon musk","spacex","starlink","samsung galaxy","apple iphone","chip semiconductor","nvidia gpu","quantum computing","startup tecnologica","fintech","blockchain","criptomoneda","5g","6g","metaverso","realidad virtual","software","app nueva","plataforma digital","red neuronal","machine learning","innovacion tecnologica"]):
-        return 'tecnologia'
-    if any(p in txt for p in ["inflacion","inflación","recesion","bolsa de valores","mercado financiero","dolar","dólar","euro cae","euro sube","tipo de cambio","fmi acuerdo","banco central","reserva federal","crisis economica","aranceles","exportaciones","importaciones","pib","producto interno bruto","desempleo","wall street","nasdaq","dow jones","petroleo precio","inversion extranjera","deficit fiscal","devaluacion","libre comercio"]):
-        return 'economia'
-    if any(p in txt for p in ["cambio climatico","cambio climático","calentamiento global","temperatura record","sequia","sequía","incendio forestal","contaminacion ambiental","co2 emisiones","medio ambiente","cop30","cop29","biodiversidad","extincion de especies","deforestacion","amazonia","reserva natural","energia renovable","energia solar","energia eolica","huella de carbono","glaciar","deshielo","nivel del mar"]):
-        return 'medio_ambiente'
-    if any(p in txt for p in ["cancer","cáncer","enfermedad","hospital","medico","pandemia","vacuna","virus","salud publica","oms","epidemia","brote infeccioso","medicamento","cirugia","cirugía","tratamiento médico","farmaco","fármaco","mortalidad","obesidad","diabetes","hipertension","salud mental","antibiotico","variante viral","oncologia","cardiologia"]):
-        return 'salud'
-    if any(p in txt for p in ["descubrimiento cientifico","descubrimiento científico","agencia espacial nasa","nasa lanza","cohete espacial","satelite lanzado","planeta","universo","agujero negro","exoplaneta","investigacion cientifica","astronomia","telescopio espacial","marte exploracion","particula subatomica","adn descubrimiento","premio nobel de","fisica cuantica"]):
-        return 'ciencia'
-    if any(p in txt for p in ["eleccion","elección","elecciones presidenciales","presidente anuncia","gobierno de","gabinete presidencial","golpe de estado","diplomacia","cumbre diplomatica","sancion diplomatica","g7","g20","onu debate","referendum","parlamento aprueba","congreso aprueba","primer ministro","canciller anuncia","politica exterior","campana electoral","partido politico","decreto presidencial","reforma legislativa","diputado","senador","macron","scholz","modi","xi jinping","putin","zelensky","erdogan","netanyahu","trump anuncia","sheinbaum anuncia","boric anuncia","milei anuncia","petro anuncia","lula anuncia","maduro anuncia"]):
-        return 'politica'
-    if any(p in txt for p in ["reforma educativa","sistema educativo","becas universitarias","universidad publica","escuelas publicas","maestros en huelga","profesores protestan","prueba pisa"]):
-        return 'educacion'
-    if any(p in txt for p in ["papa francisco","vaticano","iglesia católica","islam","judaismo","budismo","hinduismo","mezquita","sinagoga","catedral","pontifice","cardenal","encíclica","pastor evangelico","obispo"]):
-        return 'religion'
-    if any(p in txt for p in ["chile","chilena","chileno","boric","carabineros","codelco","mexico","mexicano","mexicana","cdmx","sheinbaum","pemex","argentina","argentino","buenos aires","milei","brasil","brazil","brasileño","lula","sao paulo","colombia","colombiano","bogota","petro","peru","peruano","boluarte","venezuela","venezolano","maduro","ecuador","ecuatoriano","noboa","bolivia","boliviano","uruguay","uruguayo","paraguay","paraguayo","cuba","cubano","nicaragua","guatemala","honduras","el salvador","bukele","panamá","costa rica","republica dominicana","dominicano","haiti","haitiano","america latina","latinoamerica","latinoamericano","latam","centroamerica","caribe","sudamerica"]):
-        return 'latinoamerica'
-    if any(p in txt for p in ["africa","asia pacifico","europa occidental","oriente medio","naciones unidas","onu cumbre","cumbre mundial","union europea","brics"]):
-        return 'mundo'
-    return 'general'
-
-KEYWORDS_CHILE = [
-    "chile","chilena","chileno","chilenas","chilenos","santiago","valparaíso",
-    "valparaiso","concepción","concepcion","antofagasta","temuco","viña del mar",
-    "vina del mar","la serena","rancagua","talca","arica","iquique","puerto montt",
-    "gabriel boric","boric","gobierno de chile","congreso chileno","senado chileno",
-    "carabineros","pdi chile","banco central de chile","peso chileno",
-    "conaf","codelco","enap chile","metro de santiago","sernac","sii chile",
-    "bolsa de santiago","ipsa","uf chilena","latam airlines chile","sky airline",
-    "festival de viña","festival de viña del mar","selección chilena","la roja",
-    "colo colo","universidad de chile","universidad católica","mapuche","araucanía",
-]
-
-KEYWORDS_LATAM_PAISES = {
-    'mexico':     ["méxico","mexico","mexicano","mexicana","cdmx","ciudad de mexico","sheinbaum","pemex","guadalajara","monterrey","puebla"],
-    'argentina':  ["argentina","argentino","buenos aires","milei","merval","peso argentino","rosario ar","córdoba ar"],
-    'colombia':   ["colombia","colombiano","bogotá","bogota","petro","medellín","medellin","cali colombia","cartagena colombia","barranquilla"],
-    'brasil':     ["brasil","brazil","brasileño","lula","sao paulo","río de janeiro","rio de janeiro","brasilia","real brasileiro"],
-    'venezuela':  ["venezuela","venezolano","maduro","caracas","bolívar venezolano","maracaibo"],
-    'peru':       ["perú","peru","peruano","lima perú","lima peru","boluarte","arequipa","cusco"],
-    'ecuador':    ["ecuador","ecuatoriano","quito","noboa","guayaquil"],
-    'bolivia':    ["bolivia","boliviano","la paz bolivia","santa cruz de la sierra"],
-    'uruguay':    ["uruguay","uruguayo","montevideo","orsi"],
-    'paraguay':   ["paraguay","paraguayo","asunción","asuncion"],
-    'cuba':       ["cuba","cubano","la habana"],
-    'nicaragua':  ["nicaragua","nicaragüense","ortega nicaragua","managua"],
-    'guatemala':  ["guatemala","guatemalteco","ciudad de guatemala"],
-    'honduras':   ["honduras","hondureño","tegucigalda"],
-    'el_salvador':["el salvador","salvadoreño","bukele","san salvador"],
-    'panama':     ["panamá","panama","panameño","ciudad de panamá"],
-    'costa_rica': ["costa rica","costarricense","san josé cr"],
-    'rep_dom':    ["república dominicana","dominicano","santo domingo"],
-    'haiti':      ["haití","haiti","haitiano","puerto príncipe"],
-    'puerto_rico':["puerto rico","puertorriqueño","san juan pr"],
-    'guyana':     ["guyana","guyanés","georgetown guyana"],
-    'surinam':    ["surinam","surinamés","paramaribo"],
-    'belice':     ["belice","beliceño","belmopán"],
-}
-
-KEYWORDS_REGIONES = {
-    'europa':["españa","espana","francia","alemania","italia","reino unido","inglaterra","escocia","gales","irlanda","portugal","países bajos","paises bajos","holanda","bélgica","belgica","suiza","austria","polonia","ucrania","rusia","kremlin","rumania","hungría","grecia","suecia","noruega","dinamarca","finlandia","bruselas","unión europea","union europea","otan","vaticano","madrid","París","paris","berlín","berlin","londres","roma","putin","zelenski"],
-    'asia':["china","japón","japon","corea del sur","corea del norte","india","pakistán","indonesia","filipinas","vietnam","tailandia","malasia","singapur","taiwán","taiwan","mongolia","pekín","beijing","tokio","seúl","nueva delhi","xi jinping","kim jong"],
-    'africa':["nigeria","sudáfrica","sudafrica","egipto","kenia","etiopía","marruecos","argelia","túnez","libia","sudán","congo","angola","mozambique","ghana","senegal","ruanda","somalia","zimbabue","tanzania","uganda","el cairo","lagos nigeria","johannesburgo","nairobi"],
-    'medio_oriente':["israel","palestina","gaza","cisjordania","hamás","hamas","hezbolá","hezbola","irán","iran","teherán","teheran","irak","bagdad","siria","damasco","líbano","libano","beirut","arabia saudita","riad","yemen","jordania","qatar","catar","emiratos árabes","dubái","kuwait","turquía","turquia","ankara","estambul","netanyahu"],
-    'oceania':["australia","nueva zelanda","fiyi","papua nueva guinea","canberra","sídney","sydney","wellington","auckland","melbourne"],
-}
-
-REGION_SLUG_WP = {
-    'europa':'europa','asia':'asia','africa':'africa',
-    'medio_oriente':'medio-oriente','oceania':'oceania','mundo':'mundo',
-}
-
-def detectar_region_internacional(titulo, descripcion=""):
-    txt = f"{titulo} {descripcion}".lower()
-    puntajes = {region: sum(1 for kw in kws if kw in txt) for region, kws in KEYWORDS_REGIONES.items()}
-    mejor_region, mejor_puntaje = max(puntajes.items(), key=lambda x: x[1])
-    if mejor_puntaje == 0: return 'mundo'
-    return mejor_region
-
-KEYWORDS_ESPANA_DOMESTICO = [
-    "ayuso","sánchez","pedro sanchez","psoe","vox"," pp ","sumar",
-    "congreso de los diputados","senado español","moncloa","casa real española",
-    "felipe vi","junta electoral central","madrid","barcelona","sevilla","valencia",
-    "andalucía","cataluña","país vasco","galicia españa","comunidad de madrid",
-    "generalitat","ayuntamiento de madrid","guardia civil","policía nacional española",
-    "rtve","el corte inglés","renfe","adif",
-]
-
-def es_noticia_espana_domestica(titulo, descripcion=""):
-    txt = f"{titulo} {descripcion}".lower()
-    tiene_espana = any(kw in txt for kw in KEYWORDS_ESPANA_DOMESTICO)
-    if not tiene_espana: return False
-    if any(kw in txt for kws in KEYWORDS_LATAM_PAISES.values() for kw in kws): return False
-    if any(kw in txt for kw in KEYWORDS_CHILE): return False
-    return True
-
-def es_noticia_chile(titulo, descripcion=""):
-    txt = f"{titulo} {descripcion}".lower()
-    return any(kw in txt for kw in KEYWORDS_CHILE)
-
-def es_noticia_latam_sin_chile(titulo, descripcion=""):
-    txt = f"{titulo} {descripcion}".lower()
-    if any(kw in txt for kw in KEYWORDS_CHILE): return False, None
-    for pais, keywords in KEYWORDS_LATAM_PAISES.items():
-        if any(kw in txt for kw in keywords): return True, pais
-    if any(kw in txt for kw in ["latinoamérica","latinoamerica","america latina","centroamerica","caribe","sudamerica"]):
-        return True, 'latam_general'
-    return False, None
-
-def detectar_pais_latam(titulo, descripcion=""):
-    txt = f"{titulo} {descripcion}".lower()
-    if any(kw in txt for kw in KEYWORDS_CHILE): return 'chile', LATAM_TIER1
-    for pais, keywords in KEYWORDS_LATAM_PAISES.items():
-        if any(kw in txt for kw in keywords):
-            if pais in LATAM_TIER1: return pais, LATAM_TIER1
-            if pais in LATAM_TIER2: return pais, LATAM_TIER2
-            return pais, LATAM_TIER3
-    return None, None
-
-
-# ══════════════════════════════════════════════════════════
-# SEO: TÍTULO, SLUG, KEYWORDS V19
-# ══════════════════════════════════════════════════════════
-
-POWER_WORDS_ES = {
-    'clave','crucial','decisivo','decisiva','histórico','histórica',
-    'alerta','récord','record','oficial','confirmado','confirmada',
-    'sorprendente','revolucionario','revolucionaria','explosivo','explosiva',
-    'inesperado','inesperada','urgente','impactante','revelador','reveladora',
-    'inédito','inédita','definitivo','definitiva','polémico','polémica',
-    'esencial','crítico','crítica','exclusivo','exclusiva','extraordinario',
-    'extraordinaria','primero','primera','único','única','máximo','mínimo',
-    'grave','vital','nueva','nuevo','mejor','peor','mayor','menor',
-    'real','verdad','secreto','secretos','brutal','radical','total','final',
-    'absoluto','absoluta','masivo','masiva','sin precedentes','millones',
-    'millonario','millonaria','logra','logró','conquista','histórico',
-}
-
-STOPWORDS_SLUG = {
-    'de','del','la','las','el','los','un','una','unos','unas',
-    'y','e','o','u','a','al','en','por','para','con','sin',
-    'que','se','su','sus','es','son','ha','han','fue','era',
-    'lo','le','les','me','te','nos','ante','bajo','desde',
-    'hacia','hasta','sobre','tras','entre','como','pero',
-    'si','no','ni','ya','aun','aunque','sino'
-}
+def _texto_plano(html_content):
+    t = re.sub(r'<[^>]+>',' ', html_content or '')
+    return re.sub(r'\s+',' ',t).strip()
 
 def generar_slug_seo(titulo, max_chars=50):
     if not titulo: return ''
@@ -486,687 +306,163 @@ def generar_slug_seo(titulo, max_chars=50):
     slug = ''
     for palabra in palabras:
         candidato = (slug + '-' + palabra) if slug else palabra
-        if len(candidato) > max_chars:
-            break
+        if len(candidato) > max_chars: break
         slug = candidato
     slug = re.sub(r'-{2,}','-',slug).strip('-')
-    return slug or 'noticia'
-
-def generar_titulo_seo_completo(keyword, power_word, dato_concreto='', max_chars=55):
-    if dato_concreto:
-        titulo = f"{keyword}: {dato_concreto} {power_word}".strip()
-        if len(titulo) <= max_chars: return titulo
-    if dato_concreto:
-        titulo = f"{keyword} {power_word}: {dato_concreto}".strip()
-        if len(titulo) <= max_chars: return titulo
-    titulo = f"{keyword} {power_word}".strip()
-    if len(titulo) <= max_chars: return titulo
-    palabras = keyword.split()
-    titulo = ''
-    for p in palabras:
-        candidato = (titulo + ' ' + p).strip()
-        if len(candidato) > max_chars: break
-        titulo = candidato
-    return titulo or keyword[:max_chars]
-
-PALABRAS_TRANSICION = [
-    'sin embargo','además','por otro lado','en consecuencia','a su vez',
-    'no obstante','por ejemplo','en primer lugar','finalmente','asimismo',
-    'por lo tanto','en efecto','por su parte','en tanto','de hecho',
-    'en este sentido','como resultado','en cambio','cabe destacar',
-    'mientras tanto','por consiguiente','en última instancia','en tal caso',
-    'aunque','aun así','pese a','a pesar de','de esta manera','de este modo',
-    'en ese sentido','en esa línea','en la misma línea','bajo este escenario',
-    'en ese contexto','en este marco','eso sí','cabe mencionar','vale destacar',
-    'a la vez','al mismo tiempo','dado que','ya que','debido a esto',
-    'por su lado','de igual forma','de igual manera','en definitiva',
-]
-
-INICIOS_META_PROHIBIDOS = ('descubre','conoce','entérate','entera','sabías')
-CATEGORIAS_EVERGREEN = {'ciencia','tecnologia','medio_ambiente','salud'}
-
-KEYWORDS_SEO_CATEGORIA = {
-    'latinoamerica': {'principal':'noticias Latinoamérica','secundarias':['América Latina hoy','últimas noticias LATAM','sucesos latinoamericanos'],'modificadores':['crece la tensión','anuncia','aprueba reforma','genera crisis','impacta la región']},
-    'chile':         {'principal':'noticias Chile','secundarias':['últimas noticias Chile','actualidad Chile','sucesos Chile hoy'],'modificadores':['Gobierno de Chile','Boric anuncia','Congreso aprueba','impacta a los chilenos']},
-    'economia':      {'principal':'economía','secundarias':['dólar hoy','inflación','mercados financieros','crisis económica'],'modificadores':['sube','cae','reforma económica','impacto económico','afecta el bolsillo']},
-    'politica':      {'principal':'política','secundarias':['gobierno','elecciones','congreso','presidente anuncia'],'modificadores':['anuncia','aprueba','reforma','decreto presidencial','genera polémica']},
-    'tecnologia':    {'principal':'tecnología','secundarias':['inteligencia artificial','innovación','startups','IA'],'modificadores':['revoluciona','lanza','presenta','cambia todo','transforma']},
-    'deportes':      {'principal':'deportes','secundarias':['fútbol','Copa Libertadores','eliminatorias','Mundial 2026'],'modificadores':['gana','pierde','clasifica','sorprende','histórico']},
-    'entretenimiento':{'principal':'entretenimiento','secundarias':['música latina','cine','series','artistas'],'modificadores':['lanza','estrena','conquista','sorprende','regresa']},
-    'salud':         {'principal':'salud','secundarias':['medicina','vacuna','tratamiento','OMS'],'modificadores':['alerta','descubre','recomienda','advierte','avanza']},
-    'ciencia':       {'principal':'ciencia','secundarias':['descubrimiento','investigación','espacio','NASA'],'modificadores':['descubre','confirma','revela','sorprende','avanza']},
-    'medio_ambiente':{'principal':'medio ambiente','secundarias':['cambio climático','Amazonía','glaciares','energía renovable'],'modificadores':['alerta','amenaza','protege','destruye','impacta']},
-    'guerra':        {'principal':'conflicto','secundarias':['guerra','bombardeo','tropas','crisis militar'],'modificadores':['escala','ataca','avanza','amenaza','cesan fuegos']},
-    'mundo':         {'principal':'noticias internacionales','secundarias':['noticias del mundo','actualidad global','internacional'],'modificadores':['sacude al mundo','impacta globalmente','genera debate','histórico']},
-}
-
-def obtener_keyword_categoria(categoria):
-    return KEYWORDS_SEO_CATEGORIA.get(categoria, {}).get('principal', '')
-
+    return slug or 'articulo'
 
 # ══════════════════════════════════════════════════════════
-# POST-PROCESAMIENTO V19.1.0
-# El bot corrige mecánicamente lo que la IA no puede contar:
-#   1. Palabras insuficientes → pide párrafo extra a IA
-#   2. Densidad keyword fuera de rango → ajusta programáticamente
-#   3. Meta descripción fuera de 150-160 → ajusta programáticamente
-#   4. Título sin número → inserta año si no hay otro número
-#   5. Título sin power word → agrega una al final
-#   6. Palabras de transición insuficientes → inyecta en párrafos
+# ROTACION DE PAISES V20
 # ══════════════════════════════════════════════════════════
-
-# Sinónimos por categoría para reducir densidad sin perder contexto
-SINONIMOS_KEYWORD = {
-    'tecnologia':   ['la empresa','el sistema','la plataforma','el servicio','la herramienta','la solución'],
-    'economia':     ['el mercado','la situación','el contexto','el escenario','la medida','el fenómeno'],
-    'politica':     ['la situación','el proceso','la decisión','el hecho','el evento','la coyuntura'],
-    'deportes':     ['el evento','la competencia','el encuentro','el partido','la jornada','el resultado'],
-    'salud':        ['la condición','el fenómeno','el caso','la situación','el problema','el tema'],
-    'ciencia':      ['el descubrimiento','el fenómeno','el hallazgo','el avance','el estudio','el resultado'],
-    'medio_ambiente':['el fenómeno','la situación','el problema','el contexto','el escenario','el impacto'],
-    'latinoamerica':['la situación','el contexto','el hecho','el evento','el caso','el escenario'],
-    'guerra':       ['el conflicto','la situación','el escenario','los hechos','la crisis','el evento'],
-    'entretenimiento':['el evento','el lanzamiento','la propuesta','el trabajo','el proyecto','la obra'],
-    'general':      ['el tema','la situación','el asunto','el caso','el hecho','el evento'],
-}
-
-POWER_WORDS_LISTA = ['clave','crucial','histórico','histórica','alerta','récord','oficial',
-                     'confirmado','urgente','impactante','revelador','crítico','decisivo',
-                     'sorprendente','explosivo','sin precedentes']
-
-TRANSICIONES_INYECTABLES = [
-    'Sin embargo, vale destacar que ',
-    'Además, es importante señalar que ',
-    'Por otro lado, cabe mencionar que ',
-    'En consecuencia, ',
-    'De hecho, ',
-    'Asimismo, ',
-    'Por lo tanto, ',
-    'Cabe destacar que ',
-]
-
-
-def _texto_plano(html):
-    """Extrae texto limpio de HTML."""
-    t = re.sub(r'<[^>]+>', ' ', html or '')
-    return re.sub(r'\s+', ' ', t).strip()
-
-
-def postprocesar_palabras(resultado_ia, titulo_original, contenido_fuente, url_api, headers, modelo):
-    """
-    V19.1.0: si el artículo tiene menos de 620 palabras,
-    pide a la IA UN párrafo adicional de extensión y lo inserta
-    antes del último H2.
-    """
-    contenido_html = resultado_ia.get('contenido_html', '')
-    texto = _texto_plano(contenido_html)
-    n_palabras = len(texto.split())
-
-    if n_palabras >= 620:
-        log(f"✅ Palabras OK: {n_palabras}", 'info')
-        return resultado_ia
-
-    faltan = 620 - n_palabras
-    log(f"⚠️ Solo {n_palabras} palabras — pidiendo extensión ({faltan} palabras más)", 'advertencia')
-
-    keyword = resultado_ia.get('keyword_principal', '')
-    categoria = resultado_ia.get('categoria', 'general')
-
-    prompt_extension = f"""Eres editor de VerdadHoy.com. El siguiente artículo tiene pocas palabras y necesita un párrafo adicional de {faltan + 50} palabras mínimo.
-
-ARTÍCULO ACTUAL (extracto):
-{texto[:1500]}
-
-KEYWORD PRINCIPAL: {keyword}
-CATEGORÍA: {categoria}
-NOTICIA ORIGINAL: {contenido_fuente[:800]}
-
-Escribe UN SOLO párrafo HTML de {faltan + 50} palabras mínimo que:
-- Amplíe con antecedentes históricos o contexto LATAM
-- Incluya al menos 1 cifra o dato verificable
-- Use la keyword "{keyword}" exactamente 1 vez
-- Empiece con una palabra de transición (Sin embargo / Además / Por otro lado / De hecho / Asimismo)
-- Sea un párrafo <p>...</p> listo para insertar en el artículo
-
-RESPONDE SOLO con el párrafo HTML, sin JSON, sin explicaciones."""
-
-    try:
-        payload_ext = {
-            "model": modelo,
-            "messages": [{"role": "user", "content": prompt_extension}],
-            "temperature": 0.4,
-            "max_tokens": 600
-        }
-        resp = requests.post(url_api, headers=headers, json=payload_ext, timeout=30)
-        resp_json = resp.json()
-        if "choices" in resp_json:
-            parrafo_extra = resp_json["choices"][0]["message"]["content"].strip()
-            # Asegurarse que tiene tags <p>
-            if not parrafo_extra.startswith('<p'):
-                parrafo_extra = f'<p>{parrafo_extra}</p>'
-            # Insertar antes del último H2
-            ultimo_h2 = list(re.finditer(r'<h2', contenido_html, flags=re.IGNORECASE))
-            if len(ultimo_h2) >= 2:
-                pos = ultimo_h2[-1].start()
-                contenido_html = contenido_html[:pos] + parrafo_extra + '\n' + contenido_html[pos:]
-            else:
-                contenido_html += '\n' + parrafo_extra
-            resultado_ia['contenido_html'] = contenido_html
-            nuevo_conteo = len(_texto_plano(contenido_html).split())
-            log(f"✅ Extensión OK — ahora {nuevo_conteo} palabras", 'exito')
-    except Exception as e:
-        log(f"⚠️ No se pudo extender artículo: {e}", 'advertencia')
-
-    return resultado_ia
-
-
-def postprocesar_densidad(resultado_ia):
-    """
-    V19.1.2: reemplazo directo sobre el HTML crudo posicionalmente.
-    Busca todas las ocurrencias de la keyword en el HTML (case-insensitive),
-    identifica cuales NO estan dentro de tags <h2> (para preservarlas),
-    y reemplaza el exceso con sinonimos directamente en el string.
-    Esto evita el problema del regex de parrafos que no matcheaba bien.
-    """
-    contenido_html = resultado_ia.get('contenido_html', '')
-    keyword = resultado_ia.get('keyword_principal', '').strip()
-    categoria = resultado_ia.get('categoria', 'general')
-
-    if not keyword or not contenido_html:
-        return resultado_ia
-
-    texto = _texto_plano(contenido_html)
-    n_palabras = len(texto.split())
-    if n_palabras == 0:
-        return resultado_ia
-
-    kw_lower = keyword.lower()
-    kw_palabras = len(keyword.split())
-    ocurrencias = len(re.findall(re.escape(kw_lower), texto.lower()))
-    densidad = (ocurrencias * kw_palabras / n_palabras) * 100
-
-    # Umbrales dinamicos segun largo de keyword
-    if kw_palabras == 1:
-        limite_alto = 3.0
-    elif kw_palabras == 2:
-        limite_alto = 5.0
-    else:
-        limite_alto = 6.0
-
-    if ocurrencias <= 12 or densidad <= limite_alto:
-        log(f"✅ Densidad OK: {densidad:.1f}% ({ocurrencias} veces)", 'info')
-        return resultado_ia
-
-    # Objetivo: reducir a maximo 12 ocurrencias (siempre dentro del limite)
-    objetivo_ocurrs = min(12, max(4, int(n_palabras * (limite_alto * 0.7) / 100 / kw_palabras)))
-    sobran = ocurrencias - objetivo_ocurrs
-    log(f"⚠️ Densidad {densidad:.1f}% — reduciendo de {ocurrencias} a {objetivo_ocurrs} ocurrencias", 'advertencia')
-
-    sinonimos = SINONIMOS_KEYWORD.get(categoria, SINONIMOS_KEYWORD['general'])
-
-    # Encontrar todas las posiciones de la keyword en el HTML crudo
-    html_lower = contenido_html.lower()
-    posiciones = [m.start() for m in re.finditer(re.escape(kw_lower), html_lower)]
-
-    # Identificar cuales estan dentro de un tag H2 (preservar esas)
-    h2_rangos = [(m.start(), m.end()) for m in re.finditer(r'<h2[^>]*>.*?</h2>', contenido_html,
-                                                             flags=re.IGNORECASE | re.DOTALL)]
-    def _en_h2(pos):
-        return any(inicio <= pos <= fin for inicio, fin in h2_rangos)
-
-    # Identificar cuales estan dentro de tags HTML (atributos, etc.) — no reemplazar
-    def _en_tag(pos):
-        # Buscar si hay un '<' sin '>' antes de esta posicion
-        fragmento = html_lower[max(0, pos-200):pos]
-        ultimo_lt = fragmento.rfind('<')
-        ultimo_gt = fragmento.rfind('>')
-        return ultimo_lt > ultimo_gt
-
-    # Candidatas a reemplazo: no en H2, no en tag, saltear la primera ocurrencia global
-    candidatas = [p for p in posiciones if not _en_h2(p) and not _en_tag(p)]
-
-    # Mantener la primera (apertura) — reemplazar desde la segunda en adelante
-    candidatas_reemplazar = candidatas[1:]  # saltar primera
-
-    # Reemplazar de atras hacia adelante para no desplazar indices
-    reemplazos = 0
-    html_nuevo = contenido_html
-    for pos in reversed(candidatas_reemplazar):
-        if reemplazos >= sobran:
-            break
-        sinonimo = sinonimos[reemplazos % len(sinonimos)]
-        # Preservar capitalizacion
-        original_char = html_nuevo[pos:pos+1]
-        if original_char.isupper():
-            sinonimo = sinonimo.capitalize()
-        fin = pos + len(keyword)
-        html_nuevo = html_nuevo[:pos] + sinonimo + html_nuevo[fin:]
-        reemplazos += 1
-
-    resultado_ia['contenido_html'] = html_nuevo
-
-    texto_nuevo = _texto_plano(html_nuevo)
-    ocurrs_nuevo = len(re.findall(re.escape(kw_lower), texto_nuevo.lower()))
-    densidad_nueva = (ocurrs_nuevo * kw_palabras / n_palabras) * 100
-    log(f"✅ Densidad ajustada: {densidad_nueva:.1f}% ({ocurrs_nuevo} veces)", 'exito')
-    return resultado_ia
-
-
-def postprocesar_meta(resultado_ia):
-    """
-    V19.1.0: ajusta meta descripción a 150-160 chars programáticamente.
-    - Si < 150: extiende con frase de cierre estándar
-    - Si > 160: recorta en la última palabra completa y agrega '...'
-    """
-    meta = resultado_ia.get('meta_descripcion', '').strip()
-    keyword = resultado_ia.get('keyword_principal', '').strip()
-
-    if not meta:
-        return resultado_ia
-
-    largo = len(meta)
-
-    # Recortar si pasa 160
-    if largo > 160:
-        meta = meta[:157].rsplit(' ', 1)[0].rstrip('.,;') + '...'
-        log(f"✅ Meta recortada: {len(meta)} chars", 'info')
-
-    # Extender si es menor a 150
-    if len(meta) < 150:
-        meta_base = meta.rstrip('.')
-        faltante = 150 - len(meta_base)
-        # Frases candidatas ordenadas para llenar exactamente el espacio
-        extensiones = [
-            ' Toda la información actualizada sobre este tema en Verdad Hoy.',
-            ' Lo que necesitas saber hoy sobre este tema en Verdad Hoy.',
-            ' Análisis completo y actualizado en Verdad Hoy.',
-            ' Detalles, análisis y contexto en Verdad Hoy.',
-            ' Lo que debes saber hoy en Verdad Hoy.',
-            ' Más detalles en Verdad Hoy.',
-            ' Infórmate en Verdad Hoy.',
-        ]
-        meta_nueva = meta_base
-        for ext in extensiones:
-            candidato = meta_base + ext
-            if 150 <= len(candidato) <= 160:
-                meta_nueva = candidato
-                break
-            elif len(candidato) > 160:
-                # Recortar la extensión para que quepa exactamente
-                espacio = 160 - len(meta_base)
-                trozo = ext[:espacio].rsplit(' ', 1)[0]
-                candidato2 = meta_base + trozo
-                if len(candidato2) >= 150:
-                    meta_nueva = candidato2
-                    break
-        # Si ninguna extensión llegó a 150, construir ad-hoc
-        if len(meta_nueva) < 150:
-            faltante2 = 150 - len(meta_nueva)
-            relleno = ' ' + ('— Análisis en Verdad Hoy.' if faltante2 > 25
-                             else '— Verdad Hoy.' if faltante2 > 13
-                             else '.')
-            meta_nueva = meta_nueva + relleno
-        meta = meta_nueva[:160]
-        if len(meta) > 160:
-            meta = meta[:157].rsplit(' ', 1)[0] + '...'
-        log(f"✅ Meta extendida: {len(meta)} chars", 'info')
-
-    resultado_ia['meta_descripcion'] = meta
-    return resultado_ia
-
-
-def postprocesar_titulo(resultado_ia):
-    """
-    V19.1.0: agrega número y/o power word al título si faltan.
-    Solo toca el título si es necesario, sin superar 55 chars.
-    """
-    titulo = resultado_ia.get('titulo_seo', '').strip()
-    if not titulo:
-        return resultado_ia
-
-    titulo_lower = titulo.lower()
-
-    # 1. Verificar power word
-    tiene_pw = any(pw in titulo_lower for pw in POWER_WORDS_LISTA)
-
-    # 2. Verificar número
-    tiene_numero = bool(re.search(r'\d', titulo))
-
-    año_actual = datetime.now().year
-
-    if not tiene_numero and len(titulo) <= 45:
-        # Agregar año al final si cabe
-        candidato = f"{titulo}: {año_actual}"
-        if len(candidato) <= 55:
-            titulo = candidato
-            tiene_numero = True
-            log(f"✅ Número añadido al título: '{titulo}'", 'info')
-
-    if not tiene_pw and len(titulo) <= 47:
-        # Agregar power word al final si cabe
-        for pw in ['clave', 'crucial', 'histórico', 'urgente', 'récord']:
-            candidato = f"{titulo} [{pw}]"
-            # Intentar sin corchetes primero
-            candidato2 = f"{titulo}, {pw}"
-            if len(candidato2) <= 55:
-                titulo = candidato2
-                log(f"✅ Power word '{pw}' añadida al título", 'info')
-                break
-
-    resultado_ia['titulo_seo'] = titulo
-    return resultado_ia
-
-
-def postprocesar_transiciones(resultado_ia):
-    """
-    V19.1.0: si hay menos de 4 palabras de transición,
-    inyecta las faltantes al inicio de párrafos que no las tengan.
-    """
-    contenido_html = resultado_ia.get('contenido_html', '')
-    texto = _texto_plano(contenido_html)
-    texto_lower = texto.lower()
-
-    n_trans = sum(1 for p in PALABRAS_TRANSICION if p in texto_lower)
-    if n_trans >= 4:
-        log(f"✅ Transiciones OK: {n_trans}", 'info')
-        return resultado_ia
-
-    faltan = 4 - n_trans
-    log(f"⚠️ Solo {n_trans} transiciones — inyectando {faltan}", 'advertencia')
-
-    transiciones_usadas = [t for t in PALABRAS_TRANSICION if t in texto_lower]
-    transiciones_disponibles = [t for t in TRANSICIONES_INYECTABLES
-                                 if not any(t.strip().lower().startswith(u) for u in transiciones_usadas)]
-
-    inyectadas = 0
-
-    def inyectar_transicion(match_p):
-        nonlocal inyectadas
-        if inyectadas >= faltan:
-            return match_p.group(0)
-        parrafo = match_p.group(0)
-        texto_p = _texto_plano(parrafo)
-        # Solo párrafos de contenido real (>40 chars) sin transición ya
-        if len(texto_p) < 40:
-            return parrafo
-        tiene_trans = any(t.lower() in texto_p.lower() for t in PALABRAS_TRANSICION)
-        if tiene_trans:
-            return parrafo
-        # No inyectar en el primer párrafo (apertura AEO)
-        if inyectadas == 0 and 'seccion' not in parrafo:
-            return parrafo
-        # Inyectar transición al inicio del párrafo
-        trans = transiciones_disponibles[inyectadas % len(transiciones_disponibles)]
-        # Insertar después de <p> o <p style="...">
-        parrafo_nuevo = re.sub(
-            r'(<p[^>]*>)(\s*)',
-            lambda m: m.group(1) + m.group(2) + trans,
-            parrafo, count=1, flags=re.IGNORECASE
-        )
-        inyectadas += 1
-        return parrafo_nuevo
-
-    contenido_html_nuevo = re.sub(
-        r'<p[^>]*>.*?</p>',
-        inyectar_transicion,
-        contenido_html,
-        flags=re.IGNORECASE | re.DOTALL
-    )
-
-    resultado_ia['contenido_html'] = contenido_html_nuevo
-    n_trans_nuevo = sum(1 for p in PALABRAS_TRANSICION if p in _texto_plano(contenido_html_nuevo).lower())
-    log(f"✅ Transiciones tras inyección: {n_trans_nuevo}", 'exito')
-    return resultado_ia
-
-
-def postprocesar_resultado(resultado_ia, titulo_original, contenido_fuente, url_api, headers, modelo):
-    """
-    V19.1.0: pipeline completo de post-procesamiento.
-    Se ejecuta ANTES de validar_calidad_articulo.
-    Orden: palabras → densidad → transiciones → meta → título
-    """
-    log("🔧 Post-procesamiento V19.1.0 iniciado...", 'info')
-    resultado_ia = postprocesar_palabras(resultado_ia, titulo_original, contenido_fuente, url_api, headers, modelo)
-    resultado_ia = postprocesar_densidad(resultado_ia)
-    resultado_ia = postprocesar_transiciones(resultado_ia)
-    resultado_ia = postprocesar_meta(resultado_ia)
-    resultado_ia = postprocesar_titulo(resultado_ia)
-    log("🔧 Post-procesamiento completado", 'info')
-    return resultado_ia
-
-
-# ══════════════════════════════════════════════════════════
-# VALIDACIÓN DE CALIDAD V19
-# ══════════════════════════════════════════════════════════
-def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria='', keyword=''):
-    problemas = []
-    texto_plano = re.sub(r'<[^>]+>',' ', contenido_html or '')
-    texto_plano = re.sub(r'\s+',' ', texto_plano).strip()
-    n_palabras = len(texto_plano.split())
-
-    if n_palabras < 620:
-        problemas.append(f"Solo {n_palabras} palabras — mínimo 620. Desarrolla más con antecedente histórico, cifras y contexto LATAM.")
-
-    if '<blockquote' not in (contenido_html or ''):
-        problemas.append("Falta <blockquote> (Dato destacado) — es obligatorio para Rank Math.")
-
-    n_h2 = len(re.findall(r'<h2', contenido_html or '', flags=re.IGNORECASE))
-    if n_h2 < 4:
-        problemas.append(f"Solo {n_h2} H2 — mínimo 4, cada uno con ángulo distinto.")
-
-    if keyword:
-        kw_lower = keyword.lower()
-        h2_textos = re.findall(r'<h2[^>]*>(.*?)</h2>', contenido_html or '', flags=re.IGNORECASE|re.DOTALL)
-        h2_con_kw = sum(1 for h in h2_textos if kw_lower in re.sub(r'<[^>]+>','',h).lower())
-        if h2_con_kw < 2:
-            problemas.append(f"Keyword '{keyword}' en solo {h2_con_kw} H2 — debe aparecer en al menos 2.")
-
-    if keyword:
-        primeras_80 = ' '.join(texto_plano.split()[:80]).lower()
-        if keyword.lower() not in primeras_80:
-            problemas.append(f"Keyword '{keyword}' no aparece en los primeros 80 palabras — crítico para Rank Math.")
-
-    if keyword and n_palabras > 0:
-        kw_palabras = len(keyword.split())
-        kw_ocurrencias = len(re.findall(re.escape(keyword.lower()), texto_plano.lower()))
-        densidad = (kw_ocurrencias * kw_palabras / n_palabras) * 100 if n_palabras > 0 else 0
-        # V19.1.1: umbral dinamico segun largo de keyword
-        # En articulos de 650-850 palabras con 4 H2 la keyword aparece naturalmente muchas veces
-        # El stuffing real ocurre cuando la keyword es 1 palabra y aparece >15 veces
-        # Para keywords de 2-3 palabras el limite es ocurrencias absolutas, no porcentaje
-        if kw_palabras == 1:
-            limite_bajo, limite_alto = 0.3, 3.0
-        elif kw_palabras == 2:
-            limite_bajo, limite_alto = 0.2, 5.0
-        else:
-            limite_bajo, limite_alto = 0.1, 6.0
-        # Stuffing real: solo cuando ocurrencias absolutas > 12 Y densidad > limite
-        if densidad < limite_bajo:
-            problemas.append(f"Densidad keyword {densidad:.1f}% — muy baja. Usa la keyword al menos {max(2, int(n_palabras*0.005/kw_palabras))} veces.")
-        elif densidad > limite_alto and kw_ocurrencias > 12:
-            problemas.append(f"Densidad keyword {densidad:.1f}% — muy alta ({kw_ocurrencias} ocurrencias). Objetivo max {limite_alto}%.")
-
-    if '<nav' not in (contenido_html or '') and 'tabla-contenidos' not in (contenido_html or '') and 'table-of-contents' not in (contenido_html or ''):
-        problemas.append("Falta tabla de contenidos — añade <nav class='tabla-contenidos'> con links a los H2.")
-
-    texto_lower = texto_plano.lower()
-    n_transiciones = sum(1 for p in PALABRAS_TRANSICION if p in texto_lower)
-    if n_transiciones < 4:
-        problemas.append(f"Solo {n_transiciones} palabras de transición — mínimo 4 (sin embargo, además, por otro lado, en consecuencia...).")
-
-    len_meta = len(meta_desc or '')
-    if len_meta < 150 or len_meta > 160:
-        problemas.append(f"Meta descripción {len_meta} chars — debe ser 150-160 exacto.")
-
-    if keyword and meta_desc:
-        meta_inicio = meta_desc[:40].lower()
-        if keyword.lower() not in meta_inicio:
-            problemas.append(f"Meta descripción debe EMPEZAR con la keyword '{keyword}' (primeros 40 chars).")
-
-    if (meta_desc or '').strip().lower().startswith(INICIOS_META_PROHIBIDOS):
-        problemas.append("Meta descripción empieza con palabra prohibida (descubre/conoce/entérate).")
-
-    if titulo_seo:
-        titulo_lower = titulo_seo.lower()
-        tiene_pw = any(pw in titulo_lower for pw in POWER_WORDS_ES)
-        if not tiene_pw:
-            problemas.append(f"Título '{titulo_seo}' sin power word — añade: clave, crucial, histórico, récord, urgente...")
-
-    if keyword and titulo_seo:
-        titulo_inicio = ' '.join(titulo_seo.lower().split()[:3])
-        if keyword.lower().split()[0] not in titulo_inicio:
-            problemas.append(f"Título debe EMPEZAR con la keyword '{keyword}' (primeras 3 palabras).")
-
-    if titulo_seo and not re.search(r'\d', titulo_seo):
-        problemas.append(f"Título sin número — añade cifra cuando el hecho lo permita (porcentaje, fecha, cantidad).")
-
-    return (len(problemas) == 0, problemas)
-
-def calcular_puntaje(titulo, desc):
-    titulo = titulo or ""
-    desc   = desc or ""
-    txt = f"{titulo} {desc}".lower()
-    p = 0
-    for frase in PALABRAS_ALTA_PRIORIDAD:
-        if frase.lower() in txt: p += 7
-        else:
-            for palabra in frase.lower().split():
-                if len(palabra) >= 4 and palabra in txt:
-                    p += 3; break
-    for frase in PALABRAS_MEDIA_PRIORIDAD:
-        for palabra in frase.lower().split():
-            if len(palabra) >= 3 and palabra in txt:
-                p += 1; break
-    if 30 <= len(titulo) <= 150: p += 2
-    if len(desc) >= 50: p += 2
-
-    pais, tier = detectar_pais_latam(titulo, desc)
-    if tier == LATAM_TIER1:
-        p += BONUS_TIER1
-    elif tier == LATAM_TIER2:
-        p += BONUS_TIER2
-    elif tier == LATAM_TIER3:
-        p += BONUS_TIER3
-
-    señales_regionales = ["latinoamerica","america latina","centroamerica","sudamerica","copa libertadores","copa sudamericana","conmebol","eliminatorias","amazonia","patagonia","atacama"]
-    if any(kw in txt for kw in señales_regionales): p += 5
-
-    if tier is None:
-        keywords_no_latam = ["washington dc","white house","congress usa","senate usa","wall street","silicon valley","pentagon","kremlin","bundestag","westminster","downing street"]
-        if sum(1 for kw in keywords_no_latam if kw in txt) >= 1: p -= 4
-        if es_noticia_espana_domestica(titulo, desc): p -= 6
-
-    temas_prioritarios = {"economia":["economía","economia","inflación","inflacion","dólar","dolar","mercados","pib","recesión","aranceles"],"tecnologia":["inteligencia artificial","tecnología","tecnologia","startup","fintech","ciberseguridad"],"politica":["elecciones","presidente","gobierno","congreso","senado"],"salud":["salud","vacuna","hospital","oms","enfermedad"],"medio_ambiente":["amazonía","amazonia","cambio climático","cambio climatico","glaciares","medio ambiente"],"deportes":["fútbol","futbol","mundial","libertadores","eliminatorias"]}
-    for kws in temas_prioritarios.values():
-        if any(kw in txt for kw in kws):
-            p += 2; break
-
-    tema_d = detectar_tema(titulo, desc)
-    if tema_d in {'tecnologia','ciencia','salud','medio_ambiente'}: p += 10
-    elif tema_d in {'economia','educacion'}: p += 5
-    elif tema_d in {'guerra','desastre','crimen'}: p -= 4
-
-    return p
-
-def bonus_frescura(fecha_str):
-    if not fecha_str: return 0
-    try:
-        fecha_str_norm = str(fecha_str).replace('Z','+00:00')
-        fecha_pub = datetime.fromisoformat(fecha_str_norm)
-        if fecha_pub.tzinfo is None: fecha_pub = fecha_pub.replace(tzinfo=timezone.utc)
-        horas = (datetime.now(timezone.utc) - fecha_pub).total_seconds() / 3600
-        if horas < 0: return 0
-        if horas <= 6: return 8
-        elif horas <= 24: return 5
-        elif horas <= 48: return 2
-        return 0
-    except:
-        return 0
-
-
-# ══════════════════════════════════════════════════════════
-# CUOTAS, HISTORIAL, ESTADO WP/FB
-# ══════════════════════════════════════════════════════════
-def cargar_cuotas_hoy():
-    datos = cargar_json(CUOTAS_CONTROL_PATH, {})
+def cargar_rotacion():
+    datos = cargar_json(ROTACION_PAISES_PATH, {
+        'fecha':'','ciclo':0,'paises_usados_hoy':[],'conteo_por_pais':{}
+    })
     hoy = datetime.now().strftime('%Y-%m-%d')
     if datos.get('fecha') != hoy:
-        return {'fecha': hoy, 'conteo': {}, 'directos': 0, 'borradores': 0}
+        datos['fecha'] = hoy
+        datos['paises_usados_hoy'] = []
     return datos
 
-def registrar_cuota(categoria, es_borrador=False):
-    datos = cargar_cuotas_hoy()
-    datos['conteo'][categoria] = datos['conteo'].get(categoria, 0) + 1
-    if es_borrador:
-        datos['borradores'] = datos.get('borradores', 0) + 1
-    else:
-        datos['directos'] = datos.get('directos', 0) + 1
-    guardar_json(CUOTAS_CONTROL_PATH, datos)
+def seleccionar_paises_ciclo(rotacion, n=3):
+    usados_hoy = set(rotacion.get('paises_usados_hoy',[]))
+    conteo = rotacion.get('conteo_por_pais',{})
+    todos = list(POOL_PAISES.keys())
+    candidatos = [p for p in todos if p not in usados_hoy]
+    if len(candidatos) < n: candidatos = todos
+    def score(pais):
+        veces = conteo.get(pais, 0)
+        peso  = POOL_PAISES[pais]['peso']
+        return (peso / (veces + 1)) * random.uniform(0.8, 1.2)
+    candidatos_ord = sorted(candidatos, key=score, reverse=True)
+    seleccionados = []
+    regiones_usadas = {}
+    for pais in candidatos_ord:
+        if len(seleccionados) >= n: break
+        region = POOL_PAISES[pais]['region']
+        if regiones_usadas.get(region, 0) >= 2: continue
+        seleccionados.append(pais)
+        regiones_usadas[region] = regiones_usadas.get(region, 0) + 1
+    for pais in candidatos_ord:
+        if len(seleccionados) >= n: break
+        if pais not in seleccionados: seleccionados.append(pais)
+    return seleccionados[:n]
 
-def categoria_disponible(categoria, total_dia=MAX_POSTS_WP_DIA):
-    datos = cargar_cuotas_hoy()
-    conteo = datos['conteo'].get(categoria, 0)
-    maximo = max(1, int(total_dia * CUOTAS_CATEGORIA.get(categoria, {}).get('cuota', 0.10)))
-    return conteo < maximo
+def registrar_paises_usados(rotacion, paises):
+    rotacion['paises_usados_hoy'] = list(set(rotacion.get('paises_usados_hoy',[])) | set(paises))
+    rotacion['ciclo'] = rotacion.get('ciclo',0) + 1
+    conteo = rotacion.get('conteo_por_pais',{})
+    for p in paises: conteo[p] = conteo.get(p,0) + 1
+    rotacion['conteo_por_pais'] = conteo
+    guardar_json(ROTACION_PAISES_PATH, rotacion)
 
-def es_categoria_critica(categoria):
-    return categoria in ('guerra','crimen','desastre')
+# ══════════════════════════════════════════════════════════
+# DETECCION DE TEMA V20
+# ══════════════════════════════════════════════════════════
+def detectar_tema(titulo, descripcion=""):
+    txt = f"{titulo} {descripcion}".lower()
+    if any(p in txt for p in ["terremoto","sismo","huracan","inundacion","tsunami","erupcion"]): return 'desastre'
+    if any(p in txt for p in ["asesinato","homicidio","narcotrafico","cartel","crimen organizado","feminicidio","masacre"]): return 'crimen'
+    if any(p in txt for p in ["guerra","bombardeo","misil","conflicto armado","invasion","tropas","ofensiva militar","drones de combate"]): return 'guerra'
+    if any(p in txt for p in ["misterio","arqueologia","civilizacion perdida","artefacto antiguo","oopart","manuscrito",
+                               "enigma historico","historia antigua","tumba","piramide","ruinas antiguas","fosil","mayas","incas","aztecas"]): return 'misterios'
+    if any(p in txt for p in ["historia de","siglo xix","siglo xx","segunda guerra","primera guerra","revolucion",
+                               "colonia","independencia","dictadura","operacion condor","guerra fria","archivo historico"]): return 'historia'
+    if any(p in txt for p in ["geopolitica","brics","otan","g7","g20","acuerdo comercial","tratado internacional",
+                               "diplomacia","relaciones internacionales","potencia mundial","hegemonia","orden mundial"]): return 'geopolitica'
+    if any(p in txt for p in ["innovacion","startup","emprendimiento","fintech","biotech","nanotecnologia",
+                               "biotecnologia","fusion nuclear","computacion cuantica","quantum"]): return 'innovacion'
+    if any(p in txt for p in ["inteligencia artificial","chatgpt","openai","gemini","robot","ciberataque","hackeo",
+                               "elon musk","spacex","starlink","nvidia","blockchain","criptomoneda","machine learning"]): return 'tecnologia'
+    if any(p in txt for p in ["inflacion","recesion","bolsa de valores","mercado financiero","dolar","fmi",
+                               "banco central","crisis economica","aranceles","pib","wall street","deficit fiscal"]): return 'economia'
+    if any(p in txt for p in ["cambio climatico","calentamiento global","sequia","incendio forestal",
+                               "contaminacion","medio ambiente","biodiversidad","extincion","amazonia","glaciar","energia renovable"]): return 'medio_ambiente'
+    if any(p in txt for p in ["cancer","enfermedad","pandemia","vacuna","virus","salud publica","oms","epidemia",
+                               "medicamento","alzheimer","diabetes","salud mental","longevidad","medicina del futuro"]): return 'salud'
+    if any(p in txt for p in ["descubrimiento cientifico","nasa","espacio","agujero negro","exoplaneta",
+                               "astronomia","telescopio","marte","luna","fisica cuantica","adn","premio nobel"]): return 'ciencia'
+    if any(p in txt for p in ["futbol","copa libertadores","champions league","mundial","olimpiadas",
+                               "nba","formula 1","messi","cristiano ronaldo","seleccion"]): return 'deportes'
+    if any(p in txt for p in ["pelicula","oscar","grammy","netflix","disney","marvel","anime","musica",
+                               "concierto","taylor swift","bad bunny","shakira","cultura pop","serie de tv"]): return 'entretenimiento'
+    if any(p in txt for p in ["eleccion","presidente","gobierno","congreso","senado","reforma","decreto","parlamento"]): return 'politica'
+    if any(p in txt for p in ["chile","argentina","mexico","colombia","brasil","venezuela","peru","ecuador",
+                               "bolivia","uruguay","latinoamerica","america latina","latam"]): return 'latinoamerica'
+    return 'general'
 
-def ajustar_categoria_por_cuota(categoria):
-    if es_categoria_critica(categoria): return categoria
-    if categoria_disponible(categoria): return categoria
-    log(f"📊 Cuota llena para '{categoria}' — buscando alternativa brand-safe",'advertencia')
-    alternativas = sorted(
-        [(c,v) for c,v in CUOTAS_CATEGORIA.items() if v.get('brand_safe') and categoria_disponible(c) and not es_categoria_critica(c)],
-        key=lambda x: -x[1]['cpm_relativo']
-    )
-    if alternativas:
-        nueva = alternativas[0][0]
-        log(f"   → Reasignado a '{nueva}'",'info')
-        return nueva
-    return categoria
+def es_evergreen(tema):
+    return CATEGORIAS_EVERGREEN.get(tema, {}).get('evergreen', True)
 
-def es_brand_safe(categoria):
-    return CUOTAS_CATEGORIA.get(categoria, {}).get('brand_safe', True)
+def calcular_relevancia_evergreen(titulo, descripcion=""):
+    txt = f"{titulo} {descripcion}".lower()
+    score = 0
+    for tema_r in TEMAS_ALTA_RELEVANCIA:
+        if tema_r in txt: score += 8
+    tema = detectar_tema(titulo, descripcion)
+    cpm = CATEGORIAS_EVERGREEN.get(tema, {}).get('cpm', 1.0)
+    score += int(cpm * 10)
+    palabras_efimeras = ['hoy','ayer','esta manana','ultimas horas','breaking','urgente','ultima hora']
+    for p in palabras_efimeras:
+        if p in txt: score -= 5
+    palabras_profundidad = ['historia','investigacion','estudio','descubrimiento','analisis',
+                             'datos','cifras','expertos','cientificos','investigadores','por que','como funciona']
+    for p in palabras_profundidad:
+        if p in txt: score += 3
+    palabras_titulo = len(titulo.split())
+    if 6 <= palabras_titulo <= 12: score += 5
+    return max(0, score)
 
-def categorias_usadas_hoy():
-    datos = cargar_cuotas_hoy()
-    return {c for c, n in datos.get('conteo', {}).items() if int(n) > 0 and c in CATEGORIAS_ROTACION_WP}
+KEYWORDS_POR_PAIS = {
+    'chile':          ['chile','chilena','chileno','santiago','boric','codelco'],
+    'argentina':      ['argentina','argentino','buenos aires','milei','cordoba'],
+    'mexico':         ['mexico','mexicano','cdmx','sheinbaum','pemex','guadalajara'],
+    'colombia':       ['colombia','colombiano','bogota','petro','medellin'],
+    'brasil':         ['brasil','brasileno','lula','sao paulo','rio de janeiro'],
+    'venezuela':      ['venezuela','venezolano','maduro','caracas','maracaibo'],
+    'peru':           ['peru','peruano','lima','boluarte','arequipa'],
+    'ecuador':        ['ecuador','ecuatoriano','quito','noboa','guayaquil'],
+    'bolivia':        ['bolivia','boliviano','la paz','santa cruz'],
+    'uruguay':        ['uruguay','uruguayo','montevideo'],
+    'estados_unidos': ['estados unidos','eeuu','trump','washington','wall street','silicon valley','nasa'],
+    'europa':         ['europa','union europea','alemania','francia','reino unido','espana','italia'],
+    'asia':           ['china','japon','corea','india','xi jinping','taiwan','tokio'],
+    'global':         [],
+}
 
-def puede_publicar_directo_hoy():
-    datos = cargar_cuotas_hoy()
-    return datos.get('directos', 0) < MAX_POSTS_DIA_DIRECTOS
+def noticia_es_de_pais(titulo, descripcion, pais):
+    if pais == 'global': return True
+    txt = f"{titulo} {descripcion}".lower()
+    return any(kw in txt for kw in KEYWORDS_POR_PAIS.get(pais, []))
 
-def puede_publicar_borrador_hoy():
-    datos = cargar_cuotas_hoy()
-    return datos.get('borradores', 0) < MAX_POSTS_DIA_BORRADORES
 
+# ══════════════════════════════════════════════════════════
+# HISTORIAL Y CUOTAS
+# ══════════════════════════════════════════════════════════
 HISTORIAL_DEFAULT = {
     'urls':[],'urls_normalizadas':[],'hashes':[],'timestamps':[],
     'titulos':[],'descripciones':[],'hashes_contenido':[],'hashes_permanentes':[],
-    'estadisticas':{'total_publicadas':0,'total_wp':0,'total_fb':0,'total_pinterest':0,'total_borradores':0}
+    'estadisticas':{'total_publicadas':0,'total_wp':0,'total_borradores':0,'total_pinterest':0}
 }
 
 def cargar_historial():
     h = cargar_json(HISTORIAL_PATH, HISTORIAL_DEFAULT)
-    for k, v in HISTORIAL_DEFAULT.items():
-        if k not in h:
-            h[k] = v if not isinstance(v, dict) else v.copy()
+    for k,v in HISTORIAL_DEFAULT.items():
+        if k not in h: h[k] = v if not isinstance(v,dict) else v.copy()
     _limpiar_historial_antiguo(h)
     return h
 
 def _limpiar_historial_antiguo(h):
     ahora = datetime.now()
     indices_validos = []
-    for i, ts in enumerate(h.get('timestamps', [])):
+    for i,ts in enumerate(h.get('timestamps',[])):
         try:
-            if (ahora - datetime.fromisoformat(ts)).days < DIAS_HISTORIAL:
-                indices_validos.append(i)
+            if (ahora - datetime.fromisoformat(ts)).days < DIAS_HISTORIAL: indices_validos.append(i)
         except: continue
     for key in ['urls','urls_normalizadas','hashes','timestamps','titulos','descripciones','hashes_contenido']:
         if key in h and isinstance(h[key], list):
             h[key] = [h[key][i] for i in indices_validos if i < len(h[key])]
-    if len(h.get('hashes_permanentes', [])) > 500:
+    if len(h.get('hashes_permanentes',[])) > 500:
         h['hashes_permanentes'] = h['hashes_permanentes'][-500:]
 
 def noticia_ya_publicada(h, url, titulo, desc=""):
@@ -1174,23 +470,23 @@ def noticia_ya_publicada(h, url, titulo, desc=""):
     url_n  = normalizar_url(url)
     hash_t = generar_hash(titulo)
     hash_d = generar_hash(desc) if desc else ""
-    if url_n in h.get('urls_normalizadas', []): return True, "url_duplicada"
-    todos_hashes = set(h.get('hashes', [])) | set(h.get('hashes_permanentes', []))
+    if url_n in h.get('urls_normalizadas',[]): return True, "url_duplicada"
+    todos_hashes = set(h.get('hashes',[])) | set(h.get('hashes_permanentes',[]))
     if hash_t in todos_hashes: return True, "hash_titulo"
-    if hash_d and hash_d in h.get('hashes_contenido', []): return True, "hash_contenido"
-    for th in h.get('titulos', []):
-        if not isinstance(th, str): continue
-        if similitud_titulos(titulo, th) >= UMBRAL_SIMILITUD_TITULO: return True, "titulo_similar"
+    if hash_d and hash_d in h.get('hashes_contenido',[]): return True, "hash_contenido"
+    for th in h.get('titulos',[]):
+        if not isinstance(th,str): continue
+        if similitud_titulos(titulo,th) >= UMBRAL_SIMILITUD_TITULO: return True, "titulo_similar"
     if desc:
-        for dh in h.get('descripciones', []):
-            if isinstance(dh, str) and dh:
-                if similitud_contenido(desc, dh, 150) >= UMBRAL_SIMILITUD_CONTENIDO: return True, "descripcion_similar"
+        for dh in h.get('descripciones',[]):
+            if isinstance(dh,str) and dh:
+                if similitud_contenido(desc,dh,150) >= UMBRAL_SIMILITUD_CONTENIDO: return True, "descripcion_similar"
     return False, "nuevo"
 
 def guardar_en_historial(h, url, titulo, desc=""):
     url_n  = normalizar_url(url)
     hash_t = generar_hash(titulo)
-    if url_n in h.get('urls_normalizadas', []): return h
+    if url_n in h.get('urls_normalizadas',[]): return h
     h['urls'].append(url)
     h['urls_normalizadas'].append(url_n)
     h['hashes'].append(hash_t)
@@ -1199,7 +495,7 @@ def guardar_en_historial(h, url, titulo, desc=""):
     h['descripciones'].append(desc[:600] if desc else "")
     h['hashes_contenido'].append(generar_hash(desc) if desc else "")
     h['hashes_permanentes'].append(hash_t)
-    h['estadisticas']['total_publicadas'] = h['estadisticas'].get('total_publicadas', 0) + 1
+    h['estadisticas']['total_publicadas'] = h['estadisticas'].get('total_publicadas',0) + 1
     for k in ['urls','urls_normalizadas','hashes','timestamps','titulos','descripciones','hashes_contenido']:
         if len(h[k]) > MAX_TITULOS_HISTORIA: h[k] = h[k][-MAX_TITULOS_HISTORIA:]
     if len(h['hashes_permanentes']) > 500: h['hashes_permanentes'] = h['hashes_permanentes'][-500:]
@@ -1208,507 +504,475 @@ def guardar_en_historial(h, url, titulo, desc=""):
 
 def puede_publicar_wp():
     if os.getenv('FORZAR_PUBLICACION','').lower() == 'true': return True
-    cuotas_hoy = cargar_cuotas_hoy()
-    total_hoy = sum(int(v) for v in cuotas_hoy.get('conteo', {}).values())
-    if total_hoy >= MAX_POSTS_WP_DIA:
-        log(f"🚫 WP: cuota diaria alcanzada ({total_hoy}/{MAX_POSTS_WP_DIA})",'advertencia')
+    datos = cargar_json(CUOTAS_PATH, {})
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    if datos.get('fecha') != hoy: return True
+    total = datos.get('borradores', 0)
+    if total >= MAX_BORRADORES_DIA:
+        log(f"Cuota diaria alcanzada ({total}/{MAX_BORRADORES_DIA})",'advertencia')
         return False
-    e = cargar_json(ESTADO_WP_PATH, {'ultima_publicacion': None})
-    u = e.get('ultima_publicacion')
-    if not u: return True
-    try:
-        minutos = (datetime.now() - datetime.fromisoformat(u)).total_seconds() / 60
-        margen = TIEMPO_ENTRE_WP_MIN - 15
-        if minutos < margen:
-            log(f"⏱️ WP: publicado hace {minutos:.0f} min — mínimo {margen} min",'info')
-            return False
-    except: pass
     return True
 
-def puede_publicar_fb(h):
-    if os.getenv('FORZAR_PUBLICACION','').lower() == 'true': return True
-    hora_utc = datetime.utcnow().hour
-    en_pico  = any(inicio <= hora_utc < fin for inicio, fin in HORARIOS_PICO_UTC)
-    if not en_pico: return False
-    hoy = datetime.now().date()
-    posts_hoy = sum(1 for ts in h.get('timestamps', []) if ts and datetime.fromisoformat(ts).date() == hoy)
-    if posts_hoy >= 4: return False
-    e = cargar_json(ESTADO_FB_PATH, {'ultima_publicacion': None})
-    u = e.get('ultima_publicacion')
-    if u:
-        try:
-            minutos = (datetime.now() - datetime.fromisoformat(u)).total_seconds() / 60
-            if minutos < TIEMPO_ENTRE_FB_MIN: return False
-        except: pass
-    return True
+def registrar_borrador():
+    datos = cargar_json(CUOTAS_PATH, {})
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    if datos.get('fecha') != hoy: datos = {'fecha':hoy,'borradores':0}
+    datos['borradores'] = datos.get('borradores',0) + 1
+    guardar_json(CUOTAS_PATH, datos)
 
-def guardar_estado_wp():
-    guardar_json(ESTADO_WP_PATH, {'ultima_publicacion': datetime.now().isoformat()})
-
-def guardar_estado_fb():
-    guardar_json(ESTADO_FB_PATH, {'ultima_publicacion': datetime.now().isoformat()})
-
+def borradores_hoy():
+    datos = cargar_json(CUOTAS_PATH, {})
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    if datos.get('fecha') != hoy: return 0
+    return datos.get('borradores', 0)
 
 # ══════════════════════════════════════════════════════════
-# BÚSQUEDA WEB (TAVILY) Y REESCRITURA CON IA V19.0.1
+# TAVILY
 # ══════════════════════════════════════════════════════════
 def buscar_contexto_web(titulo, max_resultados=3):
     if not TAVILY_API_KEY: return []
     try:
         resp = requests.post("https://api.tavily.com/search",
-            json={"api_key":TAVILY_API_KEY,"query":titulo,"search_depth":"basic","max_results":max_resultados,"include_answer":False},
-            timeout=15)
+            json={"api_key":TAVILY_API_KEY,"query":titulo,"search_depth":"basic",
+                  "max_results":max_resultados,"include_answer":False}, timeout=15)
         data = resp.json()
-        resultados = data.get("results", [])
+        resultados = data.get("results",[])
         if not resultados: return []
-        log(f"🔎 Tavily: {len(resultados)} fuente(s) para contexto",'info')
-        return [{"title":r.get("title",""),"url":r.get("url",""),"content":(r.get("content","") or "")[:600]} for r in resultados]
+        return [{"title":r.get("title",""),"url":r.get("url",""),
+                 "content":(r.get("content","") or "")[:600]} for r in resultados]
     except Exception as e:
-        log(f"⚠️ Tavily falló ({e}) — sin contexto adicional",'advertencia')
+        log(f"Tavily fallo ({e})",'advertencia')
         return []
 
-def reescribir_noticia_v19(titulo, contenido, categoria_sugerida='general', feedback_correccion=None, es_borrador=False):
-    """
-    V19.0.1: mismo flujo que V19.0.0, SOLO mejora de prompt para que OpenAI
-    cumpla las reglas Rank Math 80+ desde el primer intento.
-    Cambios en el prompt:
-      - Densidad keyword: instrucción de repetir la frase EXACTA, no sinónimos
-      - Transiciones: listar las 4 obligatorias con ejemplo de uso en oración
-      - H2 con keyword: plantilla concreta de cómo debe quedar cada H2
-      - Número en título: instrucción directa con ejemplos positivos/negativos
-      - Meta descripción: template más estricto con conteo de chars
-    """
+# ══════════════════════════════════════════════════════════
+# IA V20 — PROMPT EVERGREEN
+# ══════════════════════════════════════════════════════════
+def reescribir_noticia_v20(titulo, contenido, categoria='general', pais_foco='global', feedback_correccion=None):
     api_key = OPENAI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY or GEMINI_API_KEY
     if not api_key: return None
 
-    palabras_contenido = len(contenido.split())
-    tiempo_lectura = max(2, round(palabras_contenido / 200))
+    TITULOS_BOX = [
+        ('⚡','Lo que debes saber','#ff6b35','#fff3e0'),
+        ('📋','Resumen rapido','#0891b2','#e0f2fe'),
+        ('🔑','Puntos clave','#a855f7','#ede9fe'),
+        ('📌','Lo esencial','#1a56db','#eff6ff'),
+    ]
+    emoji_box, texto_box, color_titulo, color_fondo = random.choice(TITULOS_BOX)
 
-    TITULOS_BOX_RESUMEN = [('⚡','Lo que debes saber'),('📌','Lo esencial'),('🔑','Puntos clave'),('📋','Resumen rápido')]
-    emoji_box, texto_box = random.choice(TITULOS_BOX_RESUMEN)
-    titulo_box_resumen = f"{emoji_box} {texto_box}"
-
-    modo_borrador_txt = ""
-    if es_borrador:
-        modo_borrador_txt = """
-⭐ MODO EVERGREEN (este artículo irá a BORRADOR para revisión manual):
-- Profundidad histórica obligatoria: el lector debe entender el origen del tema, no solo la noticia de hoy
-- Incluye al menos 3 cifras verificables (estadísticas, porcentajes, fechas clave)
-- Proyección futura: ¿qué se espera que pase en los próximos 6-12 meses?
-- El contenido debe ser útil para alguien que lo lea en 6 meses, no solo hoy
-- Mínimo 750 palabras (más profundo que las noticias directas)"""
+    nombres_paises = {
+        'chile':'Chile','argentina':'Argentina','mexico':'Mexico','colombia':'Colombia',
+        'brasil':'Brasil','venezuela':'Venezuela','peru':'Peru','ecuador':'Ecuador',
+        'bolivia':'Bolivia','uruguay':'Uruguay','estados_unidos':'Estados Unidos',
+        'europa':'Europa','asia':'Asia','global':'America Latina',
+    }
+    nombre_pais = nombres_paises.get(pais_foco, 'America Latina')
+    pais_contexto = f"\nPAIS/REGION DE FOCO: {nombre_pais} — angulo de impacto en {nombre_pais} y America Latina."
 
     bloque_feedback = ""
     if feedback_correccion:
         problemas_txt = '\n'.join(f'  - {p}' for p in feedback_correccion)
-        hay_densidad = any('densidad' in p.lower() for p in feedback_correccion)
-        hay_palabras = any('palabras — mínimo' in p for p in feedback_correccion)
-        hay_h2kw = any('H2' in p for p in feedback_correccion)
-        hay_inicio_titulo = any('EMPEZAR' in p and 'Título' in p for p in feedback_correccion)
-        hay_inicio_meta = any('EMPEZAR' in p and 'Meta' in p for p in feedback_correccion)
-        instrucciones_extra = ""
-        if hay_densidad:
-            instrucciones_extra += "\nDENSIDAD: usa la keyword_principal EXACTA al menos 6 veces distribuidas en todo el texto, una vez en cada H2."
-        if hay_palabras:
-            instrucciones_extra += "\nEXTENSIÓN: agrega párrafo de antecedente, párrafo de cifras, párrafo de impacto LATAM, y desarrolla cada dato en 2-3 oraciones."
-        if hay_h2kw:
-            instrucciones_extra += "\nH2: incluye la keyword_principal o variante directa en AL MENOS 2 de los 4 H2."
-        if hay_inicio_titulo:
-            instrucciones_extra += "\nTÍTULO: debe comenzar CON la keyword, ej: 'Keyword récord: dato concreto'."
-        if hay_inicio_meta:
-            instrucciones_extra += "\nMETA: primeras palabras = keyword exacta, ej: 'Keyword — lo que debes saber sobre...'"
-        bloque_feedback = f"""⚠️ CORRECCIÓN OBLIGATORIA — reintento:
-{problemas_txt}
-{instrucciones_extra}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
+        bloque_feedback = f"CORRECCION OBLIGATORIA:\n{problemas_txt}\n"
 
     bloque_contexto_web = ""
     if not feedback_correccion:
         fuentes_web = buscar_contexto_web(titulo)
         if fuentes_web:
-            fuentes_txt = "\n\n".join(f"Fuente {i+1}: {f['title']}\n{f['content']}" for i, f in enumerate(fuentes_web))
-            bloque_contexto_web = f"""📚 CONTEXTO ADICIONAL (fuentes reales — úsalo para agregar cifras y antecedentes verificables):
-{fuentes_txt}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""
+            fuentes_txt = "\n\n".join(f"Fuente {i+1}: {f['title']}\n{f['content']}" for i,f in enumerate(fuentes_web))
+            bloque_contexto_web = f"CONTEXTO ADICIONAL:\n{fuentes_txt}\n"
 
-    # ══════════════════════════════════════════════════════
-    # PROMPT V19.0.1 — ÚNICA SECCIÓN MODIFICADA
-    # Cambios vs V19.0.0:
-    #   1. Densidad keyword: instrucción EXPLÍCITA de escribir la frase exacta
-    #      mínimo 6 veces, con ejemplo de dónde poner cada una
-    #   2. Transiciones: 4 palabras obligatorias listadas con ejemplo en oración
-    #   3. H2 con keyword: plantilla de los 4 H2 con [KEYWORD] marcado
-    #   4. Número en título: regla más directa con ✅/❌ ejemplos
-    #   5. Meta descripción: template con conteo de chars orientativo
-    # ══════════════════════════════════════════════════════
-    prompt = f"""Eres el Editor Jefe Digital de VerdadHoy.com, medio de noticias en español para América Latina.
-VerdadHoy tiene audiencia principal en Chile, Argentina y México (Tier 1), con presencia en Colombia y Brasil (Tier 2).
-Tono editorial: directo y callejero pero no vulgar — similar a La Cuarta pero más serio. Nunca flaite puro.
-{modo_borrador_txt}
+    prompt = f"""Eres Editor Jefe Digital de VerdadHoy.com. Tono: directo, claro, periodistico. Audiencia: Chile, Argentina, Mexico.
+{pais_contexto}
 
-⚠️ REGLA CRÍTICA DE EXTENSIÓN:
-El artículo fuente puede ser corto. Tu trabajo es CREAR un artículo completo de 650-850 palabras.
-Usa los datos de la fuente + conocimiento propio + contexto web. Siempre 650 palabras mínimo.
+MISION: contenido EVERGREEN. Util hoy y en 6 meses. NO es noticia del dia. ES articulo de fondo.
 
-═══════════════════════════════════════
-NOTICIA:
-Título original: {titulo}
-Contenido: {contenido[:3000]}
-Categoría sugerida: {categoria_sugerida}
-Tiempo de lectura: {tiempo_lectura} min
-═══════════════════════════════════════
+TIPOS VALIDOS:
+- "Por que [tema] importa para America Latina"
+- "La historia detras de [tema]: lo que nadie te conto"
+- "[N] datos sorprendentes sobre [tema]"
+- "Que es [tema] y por que deberias prestarle atencion"
+
+EXTENSION MINIMA: 750 palabras. Incluye SIEMPRE:
+- Antecedentes historicos o cientificos
+- Al menos 3 cifras o datos verificables
+- Impacto en America Latina
+- Proyeccion a futuro
+
+FUENTE/TEMA BASE:
+Titulo: {titulo}
+Contenido: {contenido[:2500]}
+Categoria: {categoria}
+
 {bloque_contexto_web}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 1 — KEYWORD Y TÍTULO SEO (RANK MATH 80+):
+REGLAS SEO:
+TITULO: [KEYWORD INICIO]: [dato] [power word] — max 55 chars, numero obligatorio
+Power words: historico, clave, revelador, sorprendente, esencial, record, definitivo
+META: "[KEYWORD] — [dato con numero]. [consecuencia]. [cierre]" — 150-160 chars exacto
 
-La keyword_principal es la frase de búsqueda más probable (2-4 palabras).
-IMPORTANTE: elige una keyword de 2-3 palabras, NO de 4 si puedes evitarlo.
-Las keywords cortas son más fáciles de repetir con densidad correcta.
-
-REGLA TÍTULO — ORDEN OBLIGATORIO:
-  [KEYWORD AL INICIO] : [DATO NUMÉRICO] [POWER WORD]
-  ✅ "Chile inflación récord: sube 4,7% en junio"    ← keyword + número + power word
-  ✅ "Inteligencia artificial: 3 cambios históricos en 2026"  ← keyword + número + power word
-  ✅ "OpenAI privacidad: nueva política afecta a 400 millones"  ← keyword + número
-  ❌ "El gobierno de Chile enfrenta alza histórica"   ← keyword no al inicio
-  ❌ "River Plate inscribe a Thiago Almada para la"   ← CORTADO, sin número
-  ❌ "OpenAI lanza nueva política de privacidad"       ← sin número, sin power word
-
-NÚMERO EN TÍTULO — OBLIGATORIO si el hecho lo permite:
-  → Porcentaje: "sube 4,7%", "cae 12%"
-  → Cantidad: "400 millones", "3 países"
-  → Año: "en 2026", "desde 2019"
-  → Días/meses: "en 30 días", "3 meses"
-  Si la noticia no tiene ningún número natural, inventa uno de contexto: "afecta a millones" → "afecta a más de 500 millones"
-
-POWER WORD obligatoria (elige una):
-  récord, histórico, histórica, clave, urgente, decisivo, alerta, oficial,
-  confirmado, revelador, crítico, explosivo, sorprendente, sin precedentes
-
-REGLAS TÍTULO:
-  - Máximo 55 chars de texto (el bot agrega " | Verdad Hoy" — NO lo incluyas)
-  - La keyword debe estar en las PRIMERAS 3 palabras del título
-  - FRASE COMPLETA — nunca cortar a la mitad
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REGLA META DESCRIPCIÓN — TEMPLATE OBLIGATORIO:
-
-  "[KEYWORD EXACTA] — [dato concreto con número]. [Consecuencia o pregunta]. [Cierre 1 oración]"
-
-  Ejemplo correcto (156 chars):
-  "OpenAI privacidad — la nueva política afecta a 400 millones de usuarios desde agosto 2026. ¿Qué cambia para ti? Todo lo que debes saber."
-
-  Reglas de conteo:
-  - Mínimo 150 chars, máximo 160 chars (cuenta los chars antes de enviar)
-  - Los primeros 40 chars DEBEN contener la keyword exacta
-  - NO empieces con: Descubre, Conoce, Entérate, Te contamos, Haz clic
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 2 — CLASIFICACIÓN DE CATEGORÍA:
-  - "latinoamerica" SOLO si no hay categoría temática más específica
-  - Inflación en Argentina → "economia" (NO latinoamerica)
-  - Elecciones en Colombia → "politica" (NO latinoamerica)
-  - Messi en Copa Libertadores → "deportes" (NO latinoamerica)
-  - España, Francia, Alemania → "mundo"
-  - Wearables, smartwatch → "tecnologia"
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 3 — DENSIDAD DE KEYWORD (CRÍTICO):
-
-La keyword_principal que elijas debe aparecer TEXTUALMENTE (mismas palabras, mismo orden)
-al menos 6 veces en el artículo. NO uses sinónimos como sustituto — úsalos ADEMÁS de la keyword.
-
-DISTRIBUCIÓN OBLIGATORIA de las 6 repeticiones mínimas:
-  1. Párrafo de apertura (antes de la palabra 80)
-  2. H2 #1 (en el texto del encabezado)
-  3. H2 #2 (en el texto del encabezado) — o en el párrafo inmediatamente debajo
-  4. Párrafo del cuerpo (sección 2 o 3)
-  5. Blockquote o párrafo nativo
-  6. Último párrafo o H2 #4
-
-Ejemplo con keyword "OpenAI privacidad":
-  ✅ "OpenAI privacidad es el tema central de..."  (apertura)
-  ✅ <h2>OpenAI privacidad: qué cambia en 2026</h2>  (H2 #1)
-  ✅ <h2>Impacto de OpenAI privacidad en LATAM</h2>  (H2 #2)
-  ✅ "El debate sobre OpenAI privacidad se intensifica..."  (cuerpo)
-  ✅ "OpenAI privacidad representa un cambio histórico..."  (nativo)
-  ✅ "OpenAI privacidad seguirá siendo central en..."  (cierre)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 4 — PALABRAS DE TRANSICIÓN (MÍNIMO 4 OBLIGATORIAS):
-
-Debes usar AL MENOS estas 4 palabras de transición, en oraciones completas:
-  1. "Sin embargo, [oración]..."
-  2. "Además, [oración]..."
-  3. "Por otro lado, [oración]..."
-  4. "En consecuencia, [oración]..."
-
-Puedes agregar más de estas: no obstante, asimismo, por lo tanto, cabe destacar,
-mientras tanto, de hecho, en este sentido, aunque, pese a, finalmente.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PASO 5 — ESTRUCTURA COMPLETA DEL ARTÍCULO (RANK MATH 80+):
-
-── TABLA DE CONTENIDOS (obligatoria) ──
+ESTRUCTURA HTML:
 <nav class="tabla-contenidos" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin:0 0 24px 0;">
-<p style="margin:0 0 8px 0;font-weight:700;color:#1e293b;font-size:0.9em;">📋 En este artículo</p>
+<p style="margin:0 0 8px 0;font-weight:700;color:#1e293b;font-size:0.9em;">📋 En este articulo</p>
 <ol style="margin:0;padding-left:20px;color:#475569;font-size:0.9em;">
-<li style="margin-bottom:4px;"><a href="#seccion-1" style="color:#1a56db;text-decoration:none;">[título H2 #1]</a></li>
-<li style="margin-bottom:4px;"><a href="#seccion-2" style="color:#1a56db;text-decoration:none;">[título H2 #2]</a></li>
-<li style="margin-bottom:4px;"><a href="#seccion-3" style="color:#1a56db;text-decoration:none;">[título H2 #3]</a></li>
-<li style="margin-bottom:0;"><a href="#seccion-4" style="color:#1a56db;text-decoration:none;">[título H2 #4]</a></li>
-</ol>
-</nav>
+<li><a href="#seccion-1" style="color:#1a56db;text-decoration:none;">[H2 #1]</a></li>
+<li><a href="#seccion-2" style="color:#1a56db;text-decoration:none;">[H2 #2]</a></li>
+<li><a href="#seccion-3" style="color:#1a56db;text-decoration:none;">[H2 #3]</a></li>
+<li><a href="#seccion-4" style="color:#1a56db;text-decoration:none;">[H2 #4]</a></li>
+</ol></nav>
 
-── BOX RESUMEN ──
-<div style="background:#f0f4ff;border-left:4px solid #1a56db;padding:16px 20px;margin:0 0 24px 0;border-radius:0 8px 8px 0;">
-<p style="margin:0 0 8px 0;font-weight:700;color:#1a56db;font-size:0.95em;">{titulo_box_resumen}</p>
+<div style="background:{color_fondo};border-left:4px solid {color_titulo};padding:16px 20px;margin:0 0 24px 0;border-radius:0 8px 8px 0;">
+<p style="margin:0 0 8px 0;font-weight:700;color:{color_titulo};font-size:0.95em;">{emoji_box} {texto_box}</p>
 <ul style="margin:0;padding-left:20px;color:#374151;">
-<li style="margin-bottom:6px;">[Punto clave 1]</li>
-<li style="margin-bottom:6px;">[Punto clave 2]</li>
-<li style="margin-bottom:6px;">[Punto clave 3]</li>
-<li style="margin-bottom:0;">[Punto clave 4]</li>
-</ul>
-</div>
+<li style="margin-bottom:6px;">[Punto 1]</li><li style="margin-bottom:6px;">[Punto 2]</li>
+<li style="margin-bottom:6px;">[Punto 3]</li><li style="margin-bottom:0;">[Punto 4]</li>
+</ul></div>
 
-── APERTURA AEO (≤40 palabras, antes de palabra 80, CON KEYWORD) ──
-<p>[KEYWORD EXACTA] es/fue/representa... [Nombre completo + cargo + verbo activo + hecho + fecha + consecuencia.
-Ejemplo: "OpenAI privacidad es el eje del nuevo acuerdo que Sam Altman, CEO de OpenAI, firmó el 15 de agosto de 2026, afectando a 400 millones de usuarios en todo el mundo."]</p>
+<p>[KEYWORD] es/fue/representa... [hecho + dato + relevancia LATAM — max 40 palabras]</p>
 
-── H2 #1 — PLANTILLA (keyword en el encabezado) ──
-<h2 id="seccion-1">[KEYWORD]: [ángulo 1 — qué pasó exactamente]</h2>
-<p>[Contexto y antecedente. Máx 3 líneas. Sin embargo, [dato]...]</p>
-<p>[Desarrollo con <strong>términos clave</strong>. Dato concreto. Además, [dato]...]</p>
+<h2 id="seccion-1">[KEYWORD]: [historia o que es]</h2>
+<p>[Antecedentes. Sin embargo, [dato historico]...]</p>
+<p>[Desarrollo. Ademas, [cifra]...]</p>
 
-── H2 #2 — PLANTILLA (keyword o variante directa en encabezado) ──
-<h2 id="seccion-2">[Impacto de KEYWORD en] [región/sector/año]</h2>
-<p>[Por otro lado, [dato adicional]. Máx 3 líneas.]</p>
+<h2 id="seccion-2">[Datos que revelan importancia de KEYWORD]</h2>
+<p>[Por otro lado, [dato con numero]...]</p>
 
-── PÁRRAFO NATIVO (tono VerdadHoy — después del H2 #2) ──
-<p style="border-left:3px solid #f59e0b;padding:10px 14px;margin:16px 0;background:#fffbeb;font-style:italic;color:#374151;">[2-3 oraciones editoriales con tono VerdadHoy. Directo, callejero pero no vulgar. Afirmación concreta, no pregunta. Debe contener la KEYWORD EXACTA al menos una vez. Ej: "OpenAI privacidad no es un tema menor. Para millones de usuarios en Chile y Argentina, esto significa que sus conversaciones con IA podrían ser analizadas sin aviso previo. Eso sí, hay pasos concretos para protegerse."]</p>
+<p style="border-left:3px solid #f59e0b;padding:10px 14px;margin:16px 0;background:#fffbeb;font-style:italic;color:#374151;">[2-3 oraciones editoriales. Directo. Contiene KEYWORD exacta.]</p>
 
-── DATO DESTACADO (blockquote obligatorio) ──
 <blockquote style="border-left:3px solid #e5e7eb;padding:12px 16px;margin:20px 0;background:#f9fafb;font-style:italic;color:#4b5563;">
-"[Cita textual o dato estadístico verificable con número. Según [fuente], [dato concreto].]"
+"[Cita o dato estadistico verificable con numero y fuente]"
 </blockquote>
 
-── H2 #3 — consecuencias o impacto LATAM ──
-<h2 id="seccion-3">[Ángulo 3 — consecuencias, reacciones o cifras]</h2>
-<p>[En consecuencia, [dato]. Menciona Chile y otro país LATAM si aplica. Máx 3 líneas.]</p>
+<h2 id="seccion-3">[KEYWORD] en America Latina: [impacto]</h2>
+<p>[En consecuencia, [impacto en LATAM con 2 paises]...]</p>
 
-── H2 #4 — cierre ──
-<h2 id="seccion-4">[Qué significa [KEYWORD] para América Latina / Lo que dicen los expertos / Análisis final]</h2>
-<p>[Cierre con reflexión. Cabe destacar, [dato final]. Pregunta específica al lector al final.]</p>
+<h2 id="seccion-4">[El futuro de KEYWORD / Por que define la proxima decada]</h2>
+<p>[Cabe destacar, [proyeccion futura con año]. Pregunta al lector al final.]</p>
 
 [ENLACES_INTERNOS]
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CHECKLIST RANK MATH 80+ — AUTOVALIDAR ANTES DE RESPONDER:
-☑ keyword_principal en título (primeras 3 palabras)
-☑ keyword_principal en meta descripción (primeros 40 chars)
-☑ keyword_principal en apertura (antes palabra 80)
-☑ keyword_principal en H2 #1 y H2 #2 (texto del encabezado)
-☑ keyword_principal en párrafo nativo
-☑ keyword_principal en cierre (H2 #4 o párrafo final)
-☑ Total keyword_principal en texto: mínimo 6 veces
-☑ Densidad: contar keyword / total palabras × 100 → debe ser 1-1.5%
-☑ 4 H2 con id="seccion-N"
-☑ Tabla de contenidos al inicio
-☑ Box resumen después de la tabla
-☑ Blockquote con dato numérico
-☑ Mínimo 4 palabras de transición: sin embargo, además, por otro lado, en consecuencia
-☑ Meta descripción: 150-160 chars exacto, empieza con keyword
-☑ Título: keyword al inicio, power word, número, máx 55 chars, FRASE COMPLETA
-☑ [ENLACES_INTERNOS] al final
-☑ Mínimo 650 palabras en el artículo completo
+CHECKLIST:
+- Keyword en titulo (primeras 3 palabras)
+- Keyword en meta (primeros 40 chars)
+- Keyword en apertura (antes palabra 80)
+- Keyword en H2 #1 y #2
+- Keyword minimo 6 veces total
+- 4 H2 con id="seccion-N"
+- Tabla de contenidos
+- Box resumen
+- Blockquote con dato numerico
+- 4 transiciones: sin embargo, ademas, por otro lado, en consecuencia
+- Meta 150-160 chars
+- Titulo max 55 chars con numero y power word
+- Minimo 750 palabras
 
-PROHIBICIONES:
-- NO inventar datos, citas o cifras
-- NO reproducir más de 5 palabras consecutivas del original
-- NO empezar meta con: Descubre, Entérate, Conoce, Te contamos, Haz clic
-- NO contenido gráfico en guerra/crimen
-- NO keyword stuffing (máx 1.5% densidad)
-- NO usar sinónimos en lugar de la keyword — úsalos ADEMÁS
-
-AEO — OPTIMIZACIÓN PARA IA (ChatGPT, Gemini, Perplexity):
-- Responde explícitamente: QUÉ, QUIÉN (nombre completo + cargo), CUÁNDO, DÓNDE, POR QUÉ IMPORTA
-- Al menos 1 cifra verificable en los primeros 2 párrafos
-- Evita frases vagas: "los precios subieron" → "los precios subieron 4,7% en junio 2026 según el INE"
+PROHIBIDO: NO noticias efimeras. NO inventar datos. NO copiar texto original.
 
 {bloque_feedback}
 
-RESPONDE ÚNICAMENTE con JSON sin markdown:
-{{"titulo_seo":"keyword al inicio, máx 55 chars, power word, número obligatorio","slug":"max-50-chars-sin-stopwords","meta_descripcion":"keyword primero (primeros 40 chars), 150-160 chars exacto","contenido_html":"<nav...>[TABLA]</nav><div...>[BOX]</div><p>[APERTURA con keyword]</p><h2 id=seccion-1>[keyword]: ángulo 1</h2>...<h2 id=seccion-2>Impacto de [keyword] en...</h2>...[ENLACES_INTERNOS]","keyword_principal":"2-3 palabras idealmente","keywords_secundarias":["kw2","kw3","kw4","kw5"],"categoria":"latinoamerica|deportes|economia|tecnologia|entretenimiento|politica|ciencia|salud|medio_ambiente|guerra|desastre|mundo|general","parrafo_nativo":"texto plano del párrafo nativo para referencia editorial"}}"""
+RESPONDE SOLO JSON sin markdown:
+{{"titulo_seo":"keyword inicio+numero+power word max 55 chars","slug":"max-50-chars","meta_descripcion":"keyword primero 150-160 chars","contenido_html":"HTML completo","keyword_principal":"2-3 palabras","keywords_secundarias":["kw2","kw3","kw4","kw5"],"categoria":"tecnologia|ciencia|salud|historia|misterios|geopolitica|economia|politica|medio_ambiente|innovacion|cultura|entretenimiento|deportes|latinoamerica|mundo|general","parrafo_nativo":"texto plano parrafo nativo","descripcion_pinterest":"100-150 chars con hashtags para Pinterest"}}"""
 
-    def _llamar_api_ia(url_api, headers, modelo, payload):
+    def _llamar_api(url_api, headers, modelo, payload):
         try:
-            resp = requests.post(url_api, headers=headers, json=payload, timeout=55)
+            resp = requests.post(url_api, headers=headers, json=payload, timeout=60)
         except Exception as e:
-            log(f"❌ IA error de red ({url_api}): {e}",'error')
-            return None, 'otro', None
+            log(f"IA error de red: {e}",'error')
+            return None
         try: resp_json = resp.json()
         except:
-            log(f"❌ IA respuesta no JSON (HTTP {resp.status_code})",'error')
-            return None, 'otro', None
+            log(f"IA respuesta no JSON (HTTP {resp.status_code})",'error')
+            return None
         if "choices" not in resp_json:
-            err = resp_json.get("error", {})
-            msg = err.get("message", str(resp_json)[:200]) if isinstance(err, dict) else str(err)[:200]
-            code = err.get("code", resp.status_code) if isinstance(err, dict) else resp.status_code
-            log(f"❌ IA error (HTTP {resp.status_code}): {msg}",'error')
-            msg_lower = str(msg).lower()
-            if "insufficient" in msg_lower or "quota" in msg_lower or "credit" in msg_lower: return None, 'credito', None
-            elif "rate limit" in msg_lower or code == 429:
-                espera_seg = None
-                m = re.search(r'try again in ([\d.]+)\s*s', msg_lower)
-                if m:
-                    try: espera_seg = float(m.group(1))
-                    except: pass
-                return None, 'rate_limit', espera_seg
-            elif ("invalid" in msg_lower and "key" in msg_lower) or code == 401: return None, 'auth', None
-            return None, 'otro', None
-        return resp_json, None, None
+            err = resp_json.get("error",{})
+            msg = err.get("message",str(resp_json)[:200]) if isinstance(err,dict) else str(err)[:200]
+            log(f"IA error: {msg}",'error')
+            return None
+        return resp_json
 
     try:
         proveedores = []
         if OPENAI_API_KEY:
-            proveedores.append(("OpenAI","https://api.openai.com/v1/chat/completions",{"Authorization":f"Bearer {OPENAI_API_KEY}","Content-Type":"application/json"},"gpt-4o-mini"))
+            proveedores.append(("OpenAI","https://api.openai.com/v1/chat/completions",
+                                {"Authorization":f"Bearer {OPENAI_API_KEY}","Content-Type":"application/json"},
+                                "gpt-4o-mini"))
         if OPENROUTER_API_KEY:
-            proveedores.append(("OpenRouter","https://openrouter.ai/api/v1/chat/completions",{"Authorization":f"Bearer {OPENROUTER_API_KEY}","Content-Type":"application/json"},"meta-llama/llama-3.3-70b-instruct:free"))
+            proveedores.append(("OpenRouter","https://openrouter.ai/api/v1/chat/completions",
+                                {"Authorization":f"Bearer {OPENROUTER_API_KEY}","Content-Type":"application/json"},
+                                "meta-llama/llama-3.3-70b-instruct:free"))
         if GROQ_API_KEY:
-            proveedores.append(("Groq","https://api.groq.com/openai/v1/chat/completions",{"Authorization":f"Bearer {GROQ_API_KEY}","Content-Type":"application/json"},"llama-3.3-70b-versatile"))
+            proveedores.append(("Groq","https://api.groq.com/openai/v1/chat/completions",
+                                {"Authorization":f"Bearer {GROQ_API_KEY}","Content-Type":"application/json"},
+                                "llama-3.3-70b-versatile"))
         if GEMINI_API_KEY:
-            proveedores.append(("Gemini","https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",{"Authorization":f"Bearer {GEMINI_API_KEY}","Content-Type":"application/json"},"gemini-2.5-flash"))
-
-        global _proveedores_ia_logueados
-        try: _proveedores_ia_logueados
-        except NameError: _proveedores_ia_logueados = False
-        if not _proveedores_ia_logueados:
-            nombres = [p[0] for p in proveedores]
-            log(f"🔑 Proveedores IA: {', '.join(nombres) if nombres else 'NINGUNO — sin API keys'}", 'info' if nombres else 'error')
-            _proveedores_ia_logueados = True
+            proveedores.append(("Gemini","https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                                {"Authorization":f"Bearer {GEMINI_API_KEY}","Content-Type":"application/json"},
+                                "gemini-2.5-flash"))
 
         resp_json = None
-        url_api = headers = modelo = payload = None
-        for i, (nombre, url_i, headers_i, modelo_i) in enumerate(proveedores):
-            payload_i = {"model":modelo_i,"messages":[{"role":"user","content":prompt}],"temperature":0.35,"max_tokens":3500}
-            if i > 0: log(f"   🔁 Reintentando con {nombre}...",'advertencia')
-            resp_json, motivo, espera_seg = _llamar_api_ia(url_i, headers_i, modelo_i, payload_i)
-            if resp_json is None and motivo == 'rate_limit' and espera_seg and espera_seg <= 45:
-                time.sleep(espera_seg + 2)
-                resp_json, motivo, espera_seg = _llamar_api_ia(url_i, headers_i, modelo_i, payload_i)
-            if resp_json is not None:
-                url_api, headers, modelo, payload = url_i, headers_i, modelo_i, payload_i
-                if i > 0: log(f"   ✅ Fallback a {nombre} exitoso",'exito')
-                break
-        if resp_json is None: return None
+        for i,(nombre,url_i,headers_i,modelo_i) in enumerate(proveedores):
+            payload_i = {"model":modelo_i,"messages":[{"role":"user","content":prompt}],"temperature":0.35,"max_tokens":4000}
+            if i > 0: log(f"Reintentando con {nombre}...",'advertencia')
+            resp_json = _llamar_api(url_i, headers_i, modelo_i, payload_i)
+            if resp_json: break
 
-        choice = resp_json["choices"][0]
-        if choice.get("finish_reason") == "length":
-            log("⚠️ IA cortó respuesta por longitud — reintentando con contenido más corto",'advertencia')
-            prompt_corto = prompt.replace(contenido[:3000], contenido[:1500])
-            payload["messages"] = [{"role":"user","content":prompt_corto}]
-            resp2 = requests.post(url_api, headers=headers, json=payload, timeout=55)
-            try:
-                resp_json2 = resp2.json()
-                if "choices" in resp_json2: choice = resp_json2["choices"][0]
-                else: return None
-            except: return None
+        if not resp_json: return None
 
-        texto = choice["message"]["content"].strip()
+        texto = resp_json["choices"][0]["message"]["content"].strip()
         texto = re.sub(r'^```json\s*|```$','',texto,flags=re.MULTILINE).strip()
-        if not texto.endswith('}'):
-            log("⚠️ JSON incompleto",'advertencia')
-            return None
+        if not texto.endswith('}'): return None
 
         resultado = json.loads(texto)
-        categorias_validas = set(CATEGORIA_WP.keys())
+        categorias_validas = set(CATEGORIAS_EVERGREEN.keys())
         cat_ia = resultado.get('categoria','').strip().lower()
-        if cat_ia not in categorias_validas:
-            log(f"⚠️ Categoría inválida '{cat_ia}' — usando '{categoria_sugerida}'",'advertencia')
-            resultado['categoria'] = categoria_sugerida if categoria_sugerida in categorias_validas else 'general'
-        elif cat_ia != categoria_sugerida:
-            log(f"🧠 IA corrigió categoría: '{categoria_sugerida}' → '{cat_ia}'",'info')
-
-        contenido_generado = resultado.get('contenido_html','')
-        sim = similitud_contenido(contenido_generado, contenido[:3000], longitud=200)
-        if sim > 0.42:
-            log(f"⚠️ Contenido muy similar al original (sim={sim:.2f}) — reintentando",'advertencia')
-            payload_retry = {"model":modelo,"messages":[{"role":"system","content":"Eres editor periodístico. NUNCA copies el texto fuente. Escribe artículos completamente originales."},{"role":"user","content":prompt}],"temperature":0.55,"max_tokens":3500}
-            try:
-                resp2 = requests.post(url_api, headers=headers, json=payload_retry, timeout=55)
-                resp2_json = resp2.json()
-                if "choices" in resp2_json:
-                    texto2 = resp2_json["choices"][0]["message"]["content"].strip()
-                    texto2 = re.sub(r'^```json\s*|```$','',texto2,flags=re.MULTILINE).strip()
-                    if texto2.endswith('}'):
-                        resultado2 = json.loads(texto2)
-                        sim2 = similitud_contenido(resultado2.get('contenido_html',''), contenido[:3000], longitud=200)
-                        if sim2 < sim:
-                            resultado = resultado2
-                            cat2 = resultado.get('categoria','').strip().lower()
-                            if cat2 not in categorias_validas: resultado['categoria'] = categoria_sugerida if categoria_sugerida in categorias_validas else 'general'
-                            log(f"✅ Reintento originalidad OK (sim={sim2:.2f})",'info')
-            except Exception as e2:
-                log(f"⚠️ Reintento originalidad falló: {e2}",'advertencia')
-        else:
-            log(f"✅ Originalidad OK (sim={sim:.2f})",'info')
-
-        log(f"✅ IA — Título: {resultado.get('titulo_seo','')[:55]} | Cat: {resultado.get('categoria')}",'info')
+        if cat_ia not in categorias_validas: resultado['categoria'] = categoria if categoria in categorias_validas else 'general'
+        log(f"IA OK — Titulo: {resultado.get('titulo_seo','')[:55]} | Cat: {resultado.get('categoria')}",'info')
         return resultado
     except Exception as e:
-        log(f"⚠️ reescribir_noticia_v19 error: {e}",'advertencia')
+        log(f"reescribir_noticia_v20 error: {e}",'advertencia')
         return None
 
 
 # ══════════════════════════════════════════════════════════
-# RESOLUCIÓN CATEGORÍA WP + ENLACES INTERNOS
+# POST-PROCESAMIENTO
 # ══════════════════════════════════════════════════════════
-def resolver_categoria_wp(categoria_editorial, titulo, texto_analisis):
-    categorias_paraguas = {'desastre','guerra','crimen','religion','educacion','general','mundo'}
-    if categoria_editorial in categorias_paraguas:
-        texto_chk = f"{titulo} {texto_analisis}".lower()
-        es_latam = (any(kw in texto_chk for kw in KEYWORDS_CHILE) or
-                    any(kw in texto_chk for kws in KEYWORDS_LATAM_PAISES.values() for kw in kws))
-        if es_latam: return 'latinoamerica'
-        region = detectar_region_internacional(titulo, texto_analisis)
-        return REGION_SLUG_WP.get(region, 'internacional')
-    return CATEGORIA_WP.get(categoria_editorial, 'internacional')
+def postprocesar_meta(resultado_ia):
+    meta = resultado_ia.get('meta_descripcion','').strip()
+    if not meta: return resultado_ia
+    if len(meta) > 160: meta = meta[:157].rsplit(' ',1)[0].rstrip('.,;') + '...'
+    if len(meta) < 150:
+        meta_base = meta.rstrip('.')
+        extensiones = [
+            ' Toda la informacion actualizada sobre este tema en Verdad Hoy.',
+            ' Lo que necesitas saber sobre este tema en Verdad Hoy.',
+            ' Analisis completo y actualizado en Verdad Hoy.',
+            ' Mas detalles en Verdad Hoy.',
+        ]
+        for ext in extensiones:
+            candidato = meta_base + ext
+            if 150 <= len(candidato) <= 160: meta = candidato; break
+            elif len(candidato) > 160:
+                espacio = 160 - len(meta_base)
+                trozo = ext[:espacio].rsplit(' ',1)[0]
+                candidato2 = meta_base + trozo
+                if len(candidato2) >= 150: meta = candidato2; break
+        if len(meta) < 150: meta = (meta.rstrip('.') + ' — Analisis completo en Verdad Hoy.')[:160]
+    resultado_ia['meta_descripcion'] = meta
+    return resultado_ia
 
-def obtener_articulos_wp_recientes(num=3):
-    if not WP_APP_PASSWORD: return []
+def postprocesar_titulo(resultado_ia):
+    titulo = resultado_ia.get('titulo_seo','').strip()
+    if not titulo: return resultado_ia
+    titulo_lower = titulo.lower()
+    tiene_pw = any(pw in titulo_lower for pw in POWER_WORDS_LISTA)
+    tiene_numero = bool(re.search(r'\d', titulo))
+    año_actual = datetime.now().year
+    if not tiene_numero and len(titulo) <= 45:
+        candidato = f"{titulo}: {año_actual}"
+        if len(candidato) <= 55: titulo = candidato
+    if not tiene_pw and len(titulo) <= 47:
+        for pw in ['clave','historico','revelador','esencial','sorprendente']:
+            candidato = f"{titulo}, {pw}"
+            if len(candidato) <= 55: titulo = candidato; break
+    resultado_ia['titulo_seo'] = titulo
+    return resultado_ia
+
+def postprocesar_densidad(resultado_ia):
+    contenido_html = resultado_ia.get('contenido_html','')
+    keyword = resultado_ia.get('keyword_principal','').strip()
+    categoria = resultado_ia.get('categoria','general')
+    if not keyword or not contenido_html: return resultado_ia
+    texto = _texto_plano(contenido_html)
+    n_palabras = len(texto.split())
+    if n_palabras == 0: return resultado_ia
+    kw_lower = keyword.lower()
+    kw_palabras = len(keyword.split())
+    ocurrencias = len(re.findall(re.escape(kw_lower), texto.lower()))
+    densidad = (ocurrencias * kw_palabras / n_palabras) * 100
+    limite_alto = 3.0 if kw_palabras == 1 else (5.0 if kw_palabras == 2 else 6.0)
+    if ocurrencias <= 12 or densidad <= limite_alto: return resultado_ia
+    objetivo = min(12, max(4, int(n_palabras * (limite_alto * 0.7) / 100 / kw_palabras)))
+    sobran = ocurrencias - objetivo
+    sinonimos = SINONIMOS_KEYWORD.get(categoria, SINONIMOS_KEYWORD['general'])
+    html_lower = contenido_html.lower()
+    posiciones = [m.start() for m in re.finditer(re.escape(kw_lower), html_lower)]
+    h2_rangos = [(m.start(),m.end()) for m in re.finditer(r'<h2[^>]*>.*?</h2>',contenido_html,flags=re.IGNORECASE|re.DOTALL)]
+    def _en_h2(pos): return any(inicio <= pos <= fin for inicio,fin in h2_rangos)
+    def _en_tag(pos):
+        fragmento = html_lower[max(0,pos-200):pos]
+        return fragmento.rfind('<') > fragmento.rfind('>')
+    candidatas = [p for p in posiciones if not _en_h2(p) and not _en_tag(p)]
+    candidatas_reemplazar = candidatas[1:]
+    reemplazos = 0
+    html_nuevo = contenido_html
+    for pos in reversed(candidatas_reemplazar):
+        if reemplazos >= sobran: break
+        sinonimo = sinonimos[reemplazos % len(sinonimos)]
+        if html_nuevo[pos:pos+1].isupper(): sinonimo = sinonimo.capitalize()
+        fin = pos + len(keyword)
+        html_nuevo = html_nuevo[:pos] + sinonimo + html_nuevo[fin:]
+        reemplazos += 1
+    resultado_ia['contenido_html'] = html_nuevo
+    return resultado_ia
+
+def postprocesar_transiciones(resultado_ia):
+    contenido_html = resultado_ia.get('contenido_html','')
+    texto_lower = _texto_plano(contenido_html).lower()
+    n_trans = sum(1 for p in PALABRAS_TRANSICION if p in texto_lower)
+    if n_trans >= 4: return resultado_ia
+    faltan = 4 - n_trans
+    transiciones_usadas = [t for t in PALABRAS_TRANSICION if t in texto_lower]
+    disponibles = [t for t in TRANSICIONES_INYECTABLES
+                   if not any(t.strip().lower().startswith(u) for u in transiciones_usadas)]
+    inyectadas = 0
+    def inyectar(match_p):
+        nonlocal inyectadas
+        if inyectadas >= faltan: return match_p.group(0)
+        parrafo = match_p.group(0)
+        texto_p = _texto_plano(parrafo)
+        if len(texto_p) < 40 or any(t.lower() in texto_p.lower() for t in PALABRAS_TRANSICION): return parrafo
+        if inyectadas == 0: return parrafo
+        trans = disponibles[inyectadas % len(disponibles)]
+        parrafo_nuevo = re.sub(r'(<p[^>]*>)(\s*)',lambda m:m.group(1)+m.group(2)+trans,parrafo,count=1,flags=re.IGNORECASE)
+        inyectadas += 1
+        return parrafo_nuevo
+    contenido_nuevo = re.sub(r'<p[^>]*>.*?</p>',inyectar,contenido_html,flags=re.IGNORECASE|re.DOTALL)
+    resultado_ia['contenido_html'] = contenido_nuevo
+    return resultado_ia
+
+def postprocesar_resultado(resultado_ia):
+    resultado_ia = postprocesar_densidad(resultado_ia)
+    resultado_ia = postprocesar_transiciones(resultado_ia)
+    resultado_ia = postprocesar_meta(resultado_ia)
+    resultado_ia = postprocesar_titulo(resultado_ia)
+    return resultado_ia
+
+INICIOS_META_PROHIBIDOS = ('descubre','conoce','enterate','sabias')
+
+def validar_calidad_articulo(contenido_html, meta_desc, titulo_seo='', categoria='', keyword=''):
+    problemas = []
+    texto_plano = _texto_plano(contenido_html or '')
+    n_palabras = len(texto_plano.split())
+    if n_palabras < 620: problemas.append(f"Solo {n_palabras} palabras — minimo 620.")
+    if '<blockquote' not in (contenido_html or ''): problemas.append("Falta blockquote.")
+    n_h2 = len(re.findall(r'<h2',contenido_html or '',flags=re.IGNORECASE))
+    if n_h2 < 4: problemas.append(f"Solo {n_h2} H2 — minimo 4.")
+    if keyword:
+        kw_lower = keyword.lower()
+        primeras_80 = ' '.join(texto_plano.split()[:80]).lower()
+        if kw_lower not in primeras_80: problemas.append(f"Keyword '{keyword}' no en primeras 80 palabras.")
+        if n_palabras > 0:
+            kw_palabras = len(keyword.split())
+            kw_oc = len(re.findall(re.escape(kw_lower), texto_plano.lower()))
+            densidad = (kw_oc * kw_palabras / n_palabras) * 100
+            if densidad < 0.2: problemas.append(f"Densidad keyword {densidad:.1f}% — muy baja.")
+    if '<nav' not in (contenido_html or '') and 'tabla-contenidos' not in (contenido_html or ''):
+        problemas.append("Falta tabla de contenidos.")
+    n_trans = sum(1 for p in PALABRAS_TRANSICION if p in texto_plano.lower())
+    if n_trans < 4: problemas.append(f"Solo {n_trans} transiciones — minimo 4.")
+    len_meta = len(meta_desc or '')
+    if len_meta < 150 or len_meta > 160: problemas.append(f"Meta {len_meta} chars — debe ser 150-160.")
+    if keyword and meta_desc:
+        if keyword.lower() not in meta_desc[:40].lower(): problemas.append(f"Meta debe empezar con '{keyword}'.")
+    if (meta_desc or '').strip().lower().startswith(INICIOS_META_PROHIBIDOS): problemas.append("Meta empieza con palabra prohibida.")
+    if titulo_seo:
+        if not any(pw in titulo_seo.lower() for pw in POWER_WORDS_ES): problemas.append("Titulo sin power word.")
+        if not re.search(r'\d', titulo_seo): problemas.append("Titulo sin numero.")
+    return (len(problemas) == 0, problemas)
+
+# ══════════════════════════════════════════════════════════
+# PINTEREST V20
+# ══════════════════════════════════════════════════════════
+def obtener_board_id_pinterest(slug_tablero):
+    global _cache_boards_pinterest
+    if slug_tablero in _cache_boards_pinterest: return _cache_boards_pinterest[slug_tablero]
+    if not PINTEREST_TOKEN: return None
     try:
-        resp = requests.get(f"{WP_URL}/wp-json/wp/v2/posts",
-            params={'per_page':num+1,'status':'publish','orderby':'date','order':'desc','_fields':'id,title,link'},
-            auth=(WP_USER, WP_APP_PASSWORD), timeout=10)
-        if resp.status_code == 200: return resp.json()[:num]
+        headers = {'Authorization':f'Bearer {PINTEREST_TOKEN}','Content-Type':'application/json'}
+        resp = requests.get('https://api.pinterest.com/v5/boards',headers=headers,params={'page_size':50},timeout=15)
+        if resp.status_code == 200:
+            boards = resp.json().get('items',[])
+            for board in boards:
+                board_name = board.get('name','').lower()
+                board_id   = board.get('id','')
+                nfkd = unicodedata.normalize('NFKD', board_name)
+                sin_ac = ''.join(c for c in nfkd if not unicodedata.combining(c))
+                slug = re.sub(r'[^a-z0-9]+','-',sin_ac).strip('-')
+                _cache_boards_pinterest[slug] = board_id
+                _cache_boards_pinterest[re.sub(r'[^a-z0-9]+','-',board_name).strip('-')] = board_id
+            resultado = _cache_boards_pinterest.get(slug_tablero)
+            if not resultado:
+                log(f"Board '{slug_tablero}' no encontrado. Disponibles: {list(_cache_boards_pinterest.keys())}",'advertencia')
+            return resultado
+        else:
+            log(f"Pinterest boards error: {resp.status_code}",'advertencia')
     except Exception as e:
-        log(f"⚠️ No se pudieron obtener artículos relacionados: {e}",'debug')
-    return []
+        log(f"Error obteniendo boards Pinterest: {e}",'advertencia')
+    return None
 
-def generar_seccion_relacionados(articulos):
-    if not articulos: return ""
-    items = ""
-    for art in articulos:
-        t = art.get('title',{}).get('rendered','')
-        l = art.get('link','#')
-        if t and l:
-            items += f'<li><a href="{l}" style="color:#1a1a1a;text-decoration:none;">{t}</a></li>\n'
-    if not items: return ""
-    return ('\n<div class="vh-relacionadas" style="margin-top:24px;padding:16px;background:#f8f9fa;border-left:4px solid #cc0000;border-radius:4px;">\n'
-            '<h3 style="margin:0 0 10px;font-size:1rem;color:#cc0000;">📰 Te puede interesar</h3>\n'
-            f'<ul style="margin:0;padding-left:20px;">\n{items}</ul>\n</div>\n')
+def publicar_en_pinterest(titulo, url_articulo, imagen_path, categoria, descripcion_pinterest="", meta_desc=""):
+    if not PINTEREST_TOKEN:
+        log("PINTEREST_TOKEN no configurado",'advertencia')
+        return False
+    if not imagen_path or not os.path.exists(imagen_path):
+        log("Sin imagen para Pinterest",'advertencia')
+        return False
+    slug_tablero = TABLEROS_PINTEREST.get(categoria,'noticias-del-mundo')
+    board_id = obtener_board_id_pinterest(slug_tablero)
+    if not board_id: board_id = obtener_board_id_pinterest('noticias-del-mundo')
+    if not board_id:
+        log(f"Pinterest: no se encontro board para '{slug_tablero}'",'error')
+        return False
+    if descripcion_pinterest:
+        desc_pin = descripcion_pinterest
+    else:
+        hashtags_cat = {
+            'tecnologia':'#Tecnologia #IA #Innovacion','ciencia':'#Ciencia #Descubrimiento',
+            'salud':'#Salud #Bienestar #Medicina','historia':'#Historia #CulturaLatina',
+            'misterios':'#Misterios #Historia','geopolitica':'#Geopolitica #Internacional',
+            'economia':'#Economia #Finanzas #LATAM','politica':'#Politica #AméricaLatina',
+            'medio_ambiente':'#MedioAmbiente #CambioClimatico','innovacion':'#Innovacion #Futuro',
+            'cultura':'#Cultura #AméricaLatina','entretenimiento':'#Entretenimiento #Cine',
+            'deportes':'#Deportes #Futbol','latinoamerica':'#Latinoamerica #AméricaLatina',
+            'mundo':'#Mundo #Internacional',
+        }
+        hashtags = hashtags_cat.get(categoria,'#Noticias #AméricaLatina #VerdadHoy')
+        desc_pin = f"{(meta_desc or titulo)[:200]} {hashtags}"
+    headers = {'Authorization':f'Bearer {PINTEREST_TOKEN}','Content-Type':'application/json'}
+    try:
+        import base64
+        with open(imagen_path,'rb') as f: imagen_b64 = base64.b64encode(f.read()).decode('utf-8')
+        pin_data = {
+            "board_id": board_id,
+            "title": titulo[:100],
+            "description": desc_pin[:500],
+            "link": url_articulo,
+            "media_source": {
+                "source_type": "image_base64",
+                "content_type": "image/jpeg",
+                "data": imagen_b64
+            }
+        }
+        resp = requests.post('https://api.pinterest.com/v5/pins',headers=headers,json=pin_data,timeout=30)
+        if resp.status_code in (200,201):
+            pin_id = resp.json().get('id','unknown')
+            log(f"Pinterest: pin creado ID {pin_id} en '{slug_tablero}'",'exito')
+            return True
+        else:
+            log(f"Pinterest error: {resp.status_code} — {resp.text[:300]}",'advertencia')
+            # Fallback sin imagen base64
+            pin_fallback = {"board_id":board_id,"title":titulo[:100],"description":desc_pin[:500],"link":url_articulo}
+            resp2 = requests.post('https://api.pinterest.com/v5/pins',headers=headers,json=pin_fallback,timeout=30)
+            if resp2.status_code in (200,201):
+                log(f"Pinterest fallback OK: pin creado",'exito')
+                return True
+            log(f"Pinterest fallback fallo: {resp2.status_code}",'error')
+            return False
+    except Exception as e:
+        log(f"Pinterest excepcion: {e}",'error')
+        return False
 
-def insertar_enlaces_internos(contenido_html):
-    articulos = obtener_articulos_wp_recientes(2)
-    html_relacionados = generar_seccion_relacionados(articulos)
-    if "[ENLACES_INTERNOS]" in contenido_html:
-        return contenido_html.replace("[ENLACES_INTERNOS]", html_relacionados)
-    return contenido_html + html_relacionados
 
 # ══════════════════════════════════════════════════════════
-# WORDPRESS — IMÁGENES Y TAGS
+# WORDPRESS
 # ══════════════════════════════════════════════════════════
 def obtener_id_categoria_wp(slug_categoria):
     global _cache_categorias_wp
@@ -1716,14 +980,13 @@ def obtener_id_categoria_wp(slug_categoria):
     try:
         r = requests.get(f"{WP_URL}/wp-json/wp/v2/categories",
             params={'slug':slug_categoria,'per_page':1},
-            auth=(WP_USER, WP_APP_PASSWORD), timeout=15).json()
-        if r and isinstance(r, list) and len(r) > 0:
+            auth=(WP_USER,WP_APP_PASSWORD),timeout=15).json()
+        if r and isinstance(r,list) and len(r) > 0:
             cat_id = r[0]['id']
             _cache_categorias_wp[slug_categoria] = cat_id
-            log(f"📂 Categoría WP '{slug_categoria}' → ID {cat_id}",'info')
             return cat_id
     except Exception as e:
-        log(f"⚠️ Error obteniendo categoría '{slug_categoria}': {e}",'advertencia')
+        log(f"Error categoria '{slug_categoria}': {e}",'advertencia')
     return None
 
 def obtener_crear_tag_wp(nombre_tag):
@@ -1732,403 +995,18 @@ def obtener_crear_tag_wp(nombre_tag):
     if not tag_clean or len(tag_clean) < 2: return None
     if tag_clean in _cache_tags_wp: return _cache_tags_wp[tag_clean]
     try:
-        r = requests.get(f"{WP_URL}/wp-json/wp/v2/tags",
-            params={'search':tag_clean,'per_page':5},
-            auth=(WP_USER, WP_APP_PASSWORD), timeout=10).json()
-        if r and isinstance(r, list):
+        r = requests.get(f"{WP_URL}/wp-json/wp/v2/tags",params={'search':tag_clean,'per_page':5},auth=(WP_USER,WP_APP_PASSWORD),timeout=10).json()
+        if r and isinstance(r,list):
             for tag in r:
                 if tag.get('name','').lower() == tag_clean:
                     _cache_tags_wp[tag_clean] = tag['id']
                     return tag['id']
-        r_post = requests.post(f"{WP_URL}/wp-json/wp/v2/tags",
-            json={'name':nombre_tag.strip()},
-            auth=(WP_USER, WP_APP_PASSWORD), timeout=10).json()
+        r_post = requests.post(f"{WP_URL}/wp-json/wp/v2/tags",json={'name':nombre_tag.strip()},auth=(WP_USER,WP_APP_PASSWORD),timeout=10).json()
         if 'id' in r_post:
             _cache_tags_wp[tag_clean] = r_post['id']
             return r_post['id']
-    except Exception as e:
-        log(f"⚠️ Error gestionando tag '{nombre_tag}': {e}",'debug')
+    except: pass
     return None
-
-def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descripcion=""):
-    if not imagen_path or not os.path.exists(imagen_path): return None
-    try:
-        nombre_archivo = f"noticia-{generar_hash(titulo)}.jpg"
-        with open(imagen_path,'rb') as f:
-            r = requests.post(f"{WP_URL}/wp-json/wp/v2/media",
-                headers={'Content-Disposition':f'attachment; filename="{nombre_archivo}"','Content-Type':'image/jpeg'},
-                data=f.read(), auth=(WP_USER, WP_APP_PASSWORD), timeout=60).json()
-        if 'id' in r:
-            media_id = r['id']
-            log(f"🖼️ Imagen subida WP — ID: {media_id}",'exito')
-            kw_imagen = (frase_clave or titulo)[:125]
-            metadatos = {'title':kw_imagen,'alt_text':kw_imagen,
-                         'caption':f"{titulo[:120]} — Fuente: Verdad Hoy",
-                         'description':(f"{frase_clave}. {meta_descripcion}".strip()[:300] if meta_descripcion and frase_clave else (frase_clave or titulo)[:300])}
-            try:
-                requests.post(f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
-                    json=metadatos, auth=(WP_USER, WP_APP_PASSWORD), timeout=10)
-            except Exception as e:
-                log(f"⚠️ No se pudieron guardar metadatos imagen: {e}",'debug')
-            return media_id
-        else:
-            log(f"⚠️ Error subiendo imagen: {r.get('message','desconocido')}",'advertencia')
-    except Exception as e:
-        log(f"⚠️ Excepción subiendo imagen: {e}",'advertencia')
-    return None
-
-
-# ══════════════════════════════════════════════════════════
-# PUBLICAR EN WORDPRESS V19
-# ══════════════════════════════════════════════════════════
-def publicar_en_wordpress(titulo, contenido, tema, imagen_path, fuente_url,
-                           fecha_fuente=None, fuente_noticia=None, es_borrador=False):
-    if not WP_APP_PASSWORD:
-        log("⚠️ WP_APP_PASSWORD no configurado",'advertencia')
-        return None, None
-    if not imagen_path or not os.path.exists(imagen_path):
-        log("❌ Sin imagen — no se publica en WordPress",'error')
-        return None, None
-
-    def extraer_nombre_medio(url):
-        try:
-            dominio = urlparse(url).netloc.lower()
-            dominio = re.sub(r'^(www\.|m\.)','',dominio)
-            mapa = {'elpais.com':'El País','bbc.com':'BBC Mundo','cnn.com':'CNN en Español',
-                    'infobae.com':'Infobae','reuters.com':'Reuters','france24.com':'France 24',
-                    'efe.com':'EFE','dw.com':'Deutsche Welle','euronews.com':'Euronews',
-                    'theguardian.com':'The Guardian'}
-            for dom, nombre in mapa.items():
-                if dom in dominio: return nombre
-            partes = dominio.split('.')
-            return partes[-2].capitalize() if len(partes) >= 2 else dominio
-        except: return 'Fuente externa'
-
-    nombre_medio = extraer_nombre_medio(fuente_url)
-    resultado_ia = reescribir_noticia_v19(titulo, contenido, tema, es_borrador=es_borrador)
-
-    if resultado_ia:
-        # V19.1.0: post-procesamiento antes de validar
-        # Determinar proveedor activo para extensión de palabras
-        _url_api_pp = _headers_pp = _modelo_pp = None
-        if OPENAI_API_KEY:
-            _url_api_pp = "https://api.openai.com/v1/chat/completions"
-            _headers_pp = {"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"}
-            _modelo_pp  = "gpt-4o-mini"
-        elif GROQ_API_KEY:
-            _url_api_pp = "https://api.groq.com/openai/v1/chat/completions"
-            _headers_pp = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
-            _modelo_pp  = "llama-3.3-70b-versatile"
-        elif GEMINI_API_KEY:
-            _url_api_pp = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-            _headers_pp = {"Authorization": f"Bearer {GEMINI_API_KEY}", "Content-Type": "application/json"}
-            _modelo_pp  = "gemini-2.5-flash"
-        elif OPENROUTER_API_KEY:
-            _url_api_pp = "https://openrouter.ai/api/v1/chat/completions"
-            _headers_pp = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
-            _modelo_pp  = "meta-llama/llama-3.3-70b-instruct:free"
-
-        resultado_ia = postprocesar_resultado(
-            resultado_ia, titulo, contenido,
-            _url_api_pp, _headers_pp, _modelo_pp
-        )
-
-        keyword_para_validar = resultado_ia.get('keyword_principal','')
-        es_valido, problemas = validar_calidad_articulo(
-            resultado_ia.get('contenido_html',''), resultado_ia.get('meta_descripcion',''),
-            resultado_ia.get('titulo_seo',''), resultado_ia.get('categoria',''), keyword_para_validar)
-        if not es_valido:
-            if not REINTENTAR_CALIDAD_IA:
-                log(f"❌ No pasó calidad ({len(problemas)} problema(s)) — descartado",'error')
-                for p in problemas: log(f"   - {p}",'error')
-                return None, None
-            log(f"⚠️ No pasó calidad ({len(problemas)} problema(s)) — reintentando",'advertencia')
-            for p in problemas: log(f"   - {p}",'advertencia')
-            resultado_reintento = reescribir_noticia_v19(titulo, contenido, tema, feedback_correccion=problemas, es_borrador=es_borrador)
-            if resultado_reintento:
-                # V19.1.0: post-procesamiento también en reintento
-                resultado_reintento = postprocesar_resultado(
-                    resultado_reintento, titulo, contenido,
-                    _url_api_pp, _headers_pp, _modelo_pp
-                )
-                kw_r = resultado_reintento.get('keyword_principal','')
-                es_valido_2, problemas_2 = validar_calidad_articulo(
-                    resultado_reintento.get('contenido_html',''), resultado_reintento.get('meta_descripcion',''),
-                    resultado_reintento.get('titulo_seo',''), resultado_reintento.get('categoria',''), kw_r)
-                if es_valido_2:
-                    log("✅ Reintento corrigió los problemas",'exito')
-                    resultado_ia = resultado_reintento
-                else:
-                    log(f"❌ Reintento tampoco pasó calidad ({len(problemas_2)} problema(s)) — descartado",'error')
-                    for p in problemas_2: log(f"   - {p}",'error')
-                    return None, None
-            else:
-                log("❌ IA no disponible para reintento — descartado",'error')
-                return None, None
-    else:
-        log("❌ IA no disponible — no se publica sin IA",'error')
-        return None, None
-
-    titulo_final_raw = resultado_ia.get('titulo_seo', titulo) or titulo
-    categoria_ia     = resultado_ia.get('categoria', tema)
-    meta_desc        = resultado_ia.get('meta_descripcion', '')
-    frase_clave      = resultado_ia.get('keyword_principal', '')
-    slug_ia          = resultado_ia.get('slug', '')
-    contenido_html   = resultado_ia.get('contenido_html', '')
-
-    titulo_final = titulo_final_raw.strip()
-    if len(titulo_final) > 55:
-        palabras = titulo_final.split()
-        titulo_reconstruido = ''
-        for p in palabras:
-            candidato = (titulo_reconstruido + ' ' + p).strip()
-            if len(candidato) > 55: break
-            titulo_reconstruido = candidato
-        titulo_final = titulo_reconstruido or titulo_final[:55].rsplit(' ',1)[0]
-
-    sufijo_seo = ' | Verdad Hoy'
-    titulo_seo = titulo_final + sufijo_seo
-    log(f"📰 titulo_seo: '{titulo_seo}' ({len(titulo_seo)} chars)",'debug')
-
-    if slug_ia and len(slug_ia) <= 50:
-        slug_post = slug_ia
-    else:
-        slug_post = generar_slug_seo(titulo_final, max_chars=50)
-    log(f"🔗 Slug ({len(slug_post)} chars): {slug_post}",'debug')
-
-    if not meta_desc or len(meta_desc) < 140:
-        texto_limpio = ' '.join(contenido.split())
-        oraciones = re.split(r'(?<=[.!?])\s+', texto_limpio)
-        meta_desc_base = meta_desc.rstrip('.') if meta_desc else (oraciones[0][:80] if oraciones else titulo[:80])
-        for oracion_extra in oraciones[1:4]:
-            oracion_extra = oracion_extra.strip()
-            if not oracion_extra: continue
-            candidato = meta_desc_base + '. ' + oracion_extra
-            if len(candidato) <= 160: meta_desc_base = candidato
-            else:
-                espacio = 157 - len(meta_desc_base) - 2
-                if espacio > 20: meta_desc_base = meta_desc_base + '. ' + oracion_extra[:espacio].rsplit(' ',1)[0] + '...'
-                break
-            if len(meta_desc_base) >= 150: break
-        meta_desc = meta_desc_base
-    if len(meta_desc) > 160: meta_desc = meta_desc[:157].rsplit(' ',1)[0] + '...'
-    log(f"📝 meta_desc: {len(meta_desc)} chars",'debug')
-
-    _tiene_box = any(t in contenido_html for t in ['background:#f0f4ff','Lo esencial','Puntos clave','Resumen r','Lo que debes saber'])
-    if not _tiene_box:
-        log("⚠️ IA omitió box resumen — inyectando",'advertencia')
-        texto_plano_box = re.sub(r'<[^>]+>',' ',contenido_html)
-        oraciones_box = [o.strip() for o in re.split(r'(?<=[.!?])\s+', texto_plano_box) if len(o.strip()) > 40]
-        puntos_box = []
-        for o in oraciones_box[:10]:
-            if any(skip in o.lower() for skip in ['verdad hoy','fuente:']): continue
-            punto = o[:160] if len(o) <= 160 else o[:160].rsplit(' ',1)[0] + '...'
-            puntos_box.append(punto if punto.endswith(('.','!','?')) else punto + '.')
-            if len(puntos_box) == 4: break
-        while len(puntos_box) < 3: puntos_box.append(f'Noticia: {titulo_final[:100]}.')
-        items_box = '\n'.join(f'<li style="margin-bottom:6px;">{p}</li>' for p in puntos_box)
-        box_inject = (f'<div style="background:#f0f4ff;border-left:4px solid #1a56db;padding:16px 20px;margin:0 0 24px 0;border-radius:0 8px 8px 0;">'
-                      f'<p style="margin:0 0 8px 0;font-weight:700;color:#1a56db;font-size:0.95em;">⚡ Lo que debes saber</p>'
-                      f'<ul style="margin:0;padding-left:20px;color:#374151;">{items_box}</ul></div>')
-        contenido_html = box_inject + contenido_html
-
-    _tiene_toc = any(t in contenido_html for t in ['tabla-contenidos','table-of-contents','<nav'])
-    if not _tiene_toc:
-        log("⚠️ Sin tabla de contenidos — inyectando TOC básica",'advertencia')
-        h2_textos = re.findall(r'<h2[^>]*id=["\']seccion-(\d+)["\'][^>]*>(.*?)</h2>', contenido_html, flags=re.IGNORECASE|re.DOTALL)
-        if not h2_textos:
-            h2_textos_raw = re.findall(r'<h2[^>]*>(.*?)</h2>', contenido_html, flags=re.IGNORECASE|re.DOTALL)
-            h2_textos = [(str(i+1), re.sub(r'<[^>]+>','',t).strip()) for i, t in enumerate(h2_textos_raw)]
-        items_toc = '\n'.join(f'<li style="margin-bottom:4px;"><a href="#seccion-{n}" style="color:#1a56db;text-decoration:none;">{re.sub(chr(60)+r"[^>]+>","",t).strip()}</a></li>' for n, t in h2_textos[:4])
-        if items_toc:
-            toc_html = (f'<nav class="tabla-contenidos" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin:0 0 24px 0;">'
-                        f'<p style="margin:0 0 8px 0;font-weight:700;color:#1e293b;font-size:0.9em;">📋 En este artículo</p>'
-                        f'<ol style="margin:0;padding-left:20px;color:#475569;font-size:0.9em;">{items_toc}</ol></nav>')
-            contenido_html = toc_html + contenido_html
-
-    contenido_html = insertar_enlaces_internos(contenido_html)
-
-    tags_ids = []
-    for kw in resultado_ia.get('keywords_secundarias', [])[:5]:
-        tag_id = obtener_crear_tag_wp(kw)
-        if tag_id: tags_ids.append(tag_id)
-
-    if categoria_ia not in CATEGORIA_WP:
-        categoria_ia = tema if tema in CATEGORIA_WP else 'general'
-    categorias_paraguas = {'desastre','guerra','crimen','religion','educacion','general','mundo'}
-    slug_cat_secundario = None
-    if categoria_ia in categorias_paraguas:
-        slug_cat = resolver_categoria_wp(categoria_ia, titulo, contenido_html)
-        if slug_cat in ('latinoamerica','europa','asia','africa','medio-oriente','oceania'):
-            slug_cat_secundario = 'internacional'
-    else:
-        slug_cat = resolver_categoria_wp(categoria_ia, titulo, contenido_html)
-    cat_id = obtener_id_categoria_wp(slug_cat)
-    if not cat_id and slug_cat != 'internacional':
-        cat_id = obtener_id_categoria_wp('internacional')
-        slug_cat = 'internacional'
-        slug_cat_secundario = None
-    categorias_ids = [cat_id] if cat_id else []
-    if slug_cat_secundario:
-        cat_id_sec = obtener_id_categoria_wp(slug_cat_secundario)
-        if cat_id_sec and cat_id_sec not in categorias_ids: categorias_ids.append(cat_id_sec)
-
-    alt_text_imagen = f"{frase_clave} - {titulo_final}"[:125] if frase_clave else titulo_final[:125]
-
-    imagen_id = subir_imagen_wp(imagen_path, titulo_final, alt_text=alt_text_imagen,
-                                 frase_clave=frase_clave, meta_descripcion=meta_desc)
-    if not imagen_id:
-        log("❌ No se pudo subir imagen — cancelando",'error')
-        return None, None
-
-    fecha_schema = datetime.now().strftime('%Y-%m-%dT%H:%M:%S+00:00')
-    if fecha_fuente:
-        try:
-            fecha_str = str(fecha_fuente).replace('Z','+00:00')
-            datetime.fromisoformat(fecha_str)
-            fecha_schema = fecha_str if ('+' in fecha_str or fecha_str.endswith('Z')) else fecha_str + '+00:00'
-        except: pass
-    titulo_schema = titulo_final.replace('"',"'").replace('\\','')
-    meta_schema = (meta_desc or contenido[:155]).replace('"',"'").replace('\\\\','')
-    LOGO_URL_FIJO = f"{WP_URL}/wp-content/uploads/favicon_512.png"
-    schema_markup = f"""
-<script type="application/ld+json">
-{{
-  "@context": "https://schema.org",
-  "@type": "NewsArticle",
-  "headline": "{titulo_schema}",
-  "datePublished": "{fecha_schema}",
-  "dateModified": "{datetime.now().strftime('%Y-%m-%dT%H:%M:%S+00:00')}",
-  "description": "{meta_schema}",
-  "inLanguage": "es",
-  "isAccessibleForFree": "True",
-  "author": {{"@type":"Organization","name":"Verdad Hoy","url":"{WP_URL}"}},
-  "publisher": {{"@type":"Organization","name":"Verdad Hoy","url":"{WP_URL}","logo":{{"@type":"ImageObject","url":"{LOGO_URL_FIJO}","width":512,"height":512}}}},
-  "mainEntityOfPage": {{"@type":"WebPage","@id":"{WP_URL}/"}}
-}}
-</script>"""
-
-    palabras_art = len(re.sub(r'<[^>]+>','',contenido_html).split())
-    minutos_lect = max(2, round(palabras_art / 200))
-    barra_lectura = f'<p style="font-size:0.82em;color:#6b7280;margin:0 0 20px 0;">🕐 Tiempo de lectura: <strong>{minutos_lect} min</strong></p>'
-
-    enlace_fuente_html = (f'<a href="{fuente_url}" target="_blank" rel="noopener">{nombre_medio}</a>' if fuente_url else nombre_medio)
-
-    contenido_final = f"""
-{barra_lectura}
-{contenido_html}
-<hr>
-<p><strong>Fuente:</strong> {enlace_fuente_html}</p>
-<p><em>Información verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
-{schema_markup}
-"""
-
-    fecha_wp = None
-    if fecha_fuente:
-        try:
-            dt = datetime.fromisoformat(str(fecha_fuente).replace('Z','+00:00'))
-            fecha_wp = dt.strftime('%Y-%m-%dT%H:%M:%S')
-        except: pass
-
-    status_wp = 'draft' if es_borrador else 'publish'
-    log(f"📤 Publicando como '{status_wp}' — {'BORRADOR evergreen' if es_borrador else 'VISIBLE al público'}",'info')
-
-    post_data = {
-        'title':          titulo_final,
-        'slug':           slug_post,
-        'content':        contenido_final,
-        'excerpt':        meta_desc,
-        'status':         status_wp,
-        'featured_media': imagen_id,
-        'categories':     categorias_ids,
-        'tags':           tags_ids,
-        'meta': {
-            '_yoast_wpseo_title':    titulo_seo,
-            '_yoast_wpseo_metadesc': meta_desc,
-            '_yoast_wpseo_focuskw':  frase_clave,
-        }
-    }
-    if fecha_wp: post_data['date'] = fecha_wp
-
-    try:
-        r = requests.post(f"{WP_URL}/wp-json/wp/v2/posts",
-            json=post_data, auth=(WP_USER, WP_APP_PASSWORD), timeout=30).json()
-        if 'id' in r:
-            post_id      = r['id']
-            url_articulo = r.get('link', f"{WP_URL}/?p={post_id}")
-            tipo_str = "BORRADOR" if es_borrador else "PUBLICADO"
-            log(f"✅ {tipo_str} en WordPress: {url_articulo}",'exito')
-
-            seo_guardado = False
-            try:
-                rankmath_payload = {
-                    'objectID':post_id,'objectType':'post',
-                    'meta':{'rank_math_focus_keyword':frase_clave,'rank_math_title':titulo_seo,
-                            'rank_math_description':meta_desc,'rank_math_robots':['index','follow']}
-                }
-                r_rm = requests.post(f"{WP_URL}/wp-json/rankmath/v1/updateMeta",
-                    json=rankmath_payload, auth=(WP_USER, WP_APP_PASSWORD), timeout=10)
-                if r_rm.status_code in (200,201):
-                    log(f"✅ Rank Math SEO guardado (focuskw: {frase_clave[:40]})",'exito')
-                    seo_guardado = True
-            except Exception as e_rm:
-                log(f"ℹ️ Rank Math no disponible ({e_rm})",'debug')
-
-            if not seo_guardado:
-                try:
-                    meta_patch = {
-                        'rank_math_focus_keyword':frase_clave,'rank_math_title':titulo_seo,'rank_math_description':meta_desc,
-                        '_yoast_wpseo_focuskw':frase_clave,'_yoast_wpseo_title':titulo_seo,'_yoast_wpseo_metadesc':meta_desc,
-                    }
-                    r_patch = requests.post(f"{WP_URL}/wp-json/wp/v2/posts/{post_id}",
-                        json={'meta':meta_patch}, auth=(WP_USER, WP_APP_PASSWORD), timeout=10)
-                    if r_patch.status_code in (200,201):
-                        log(f"✅ SEO guardado via PATCH REST",'exito')
-                except Exception as e_patch:
-                    log(f"⚠️ No se pudo guardar SEO meta: {e_patch}",'advertencia')
-
-            if es_borrador:
-                log(f"📝 Borrador listo para revisión manual en: {WP_URL}/wp-admin/post.php?post={post_id}&action=edit",'info')
-
-            return url_articulo, slug_cat
-        else:
-            log(f"❌ Error WP: {r.get('message','desconocido')}",'error')
-    except Exception as e:
-        log(f"❌ Excepción WP: {e}",'error')
-    return None, None
-
-
-# ══════════════════════════════════════════════════════════
-# FUENTES RSS, NEWSAPI, GNEWS, NEWSDATA
-# ══════════════════════════════════════════════════════════
-def extraer_contenido(url):
-    if not url: return None, None
-    try:
-        r = requests.get(url, headers={'User-Agent':'Mozilla/5.0'}, timeout=20)
-        s = BeautifulSoup(r.content, 'html.parser')
-        for e in s(['script','style','nav','header','footer']): e.decompose()
-        for selector in ['article','[class*="article-content"]','[class*="entry-content"]','[class*="post-content"]']:
-            art = s.select_one(selector)
-            if art:
-                ps = [p for p in art.find_all('p') if len(p.get_text()) > 40]
-                if len(ps) >= 2:
-                    txt = ' '.join([limpiar_texto(p.get_text()) for p in ps])
-                    if len(txt) > 200: return txt[:5000], None
-        return None, None
-    except: return None, None
-
-def extraer_imagen_web(url):
-    if not url: return None
-    try:
-        r = requests.get(url, headers={'User-Agent':'Mozilla/5.0'}, timeout=15)
-        s = BeautifulSoup(r.content, 'html.parser')
-        for prop in ['og:image','twitter:image']:
-            tag = s.find('meta', property=prop) or s.find('meta', attrs={'name':prop})
-            if tag:
-                img = tag.get('content','').strip()
-                if img and img.startswith('http') and 'google' not in img.lower(): return img
-        return None
-    except: return None
 
 def agregar_watermark(img):
     try:
@@ -2148,16 +1026,14 @@ def agregar_watermark(img):
         y = alto - txt_h - margen - padding*2
         overlay = Image.new('RGBA', img.size, (0,0,0,0))
         overlay_draw = ImageDraw.Draw(overlay)
-        overlay_draw.rounded_rectangle([x-padding, y-padding, x+txt_w+padding, y+txt_h+padding], radius=6, fill=(0,0,0,180))
+        overlay_draw.rounded_rectangle([x-padding,y-padding,x+txt_w+padding,y+txt_h+padding],radius=6,fill=(0,0,0,180))
         img = img.convert('RGBA')
         img = Image.alpha_composite(img, overlay).convert('RGB')
         draw = ImageDraw.Draw(img)
-        draw.text((x+1, y+1), texto_wm, font=font_wm, fill=(0,0,0,200))
-        draw.text((x, y), texto_wm, font=font_wm, fill='#f5c518')
+        draw.text((x+1,y+1), texto_wm, font=font_wm, fill=(0,0,0,200))
+        draw.text((x,y), texto_wm, font=font_wm, fill='#f5c518')
         return img
-    except Exception as e:
-        log(f"⚠️ Watermark error: {e}",'debug')
-        return img
+    except: return img
 
 def descargar_imagen(url):
     if not url: return None
@@ -2170,28 +1046,31 @@ def descargar_imagen(url):
         if r.status_code != 200: return None
         ct = r.headers.get('content-type','')
         if 'image' not in ct and 'octet' not in ct: return None
-        data = r.content
-        img = Image.open(BytesIO(data))
+        img = Image.open(BytesIO(r.content))
         w, h = img.size
         if w < 300 or h < 200: return None
         if img.mode in ('RGBA','P','LA'): img = img.convert('RGB')
-        MIN_W, MAX_W = 1200, 1600
-        if w < MIN_W:
-            ratio = MIN_W / w
-            img = img.resize((MIN_W, int(h*ratio)), Image.LANCZOS)
-        elif w > MAX_W:
-            ratio = MAX_W / w
-            img = img.resize((MAX_W, int(h*ratio)), Image.LANCZOS)
+        if w < 1200: img = img.resize((1200, int(h*(1200/w))), Image.LANCZOS)
+        elif w > 1600: img = img.resize((1600, int(h*(1600/w))), Image.LANCZOS)
         img = agregar_watermark(img)
         p = f'/tmp/noticia_{generar_hash(url)}.jpg'
         img.save(p, 'JPEG', quality=92, optimize=True)
-        if os.path.getsize(p) < 3000:
-            os.remove(p)
-            return None
+        if os.path.getsize(p) < 3000: os.remove(p); return None
         return p
-    except Exception as e:
-        log(f"⚠️ Error descargando imagen: {e}",'debug')
+    except: return None
+
+def extraer_imagen_web(url):
+    if not url: return None
+    try:
+        r = requests.get(url, headers={'User-Agent':'Mozilla/5.0'}, timeout=15)
+        s = BeautifulSoup(r.content, 'html.parser')
+        for prop in ['og:image','twitter:image']:
+            tag = s.find('meta', property=prop) or s.find('meta', attrs={'name':prop})
+            if tag:
+                img = tag.get('content','').strip()
+                if img and img.startswith('http') and 'google' not in img.lower(): return img
         return None
+    except: return None
 
 def crear_imagen_titulo(titulo, categoria='general'):
     try:
@@ -2202,17 +1081,22 @@ def crear_imagen_titulo(titulo, categoria='general'):
         draw = ImageDraw.Draw(img)
         for i in range(H):
             ratio = i/H
-            r_c = int(15+(30-15)*ratio); g_c = int(23+(41-23)*ratio); b_c = int(42+(69-42)*ratio)
-            draw.line([(0,i),(W,i)], fill=(r_c,g_c,b_c))
+            draw.line([(0,i),(W,i)], fill=(int(15+(30-15)*ratio),int(23+(41-23)*ratio),int(42+(69-42)*ratio)))
         draw.rectangle([(0,0),(W,10)], fill='#dc2626')
-        colores_cat = {'guerra':'#dc2626','politica':'#7c3aed','economia':'#059669','tecnologia':'#2563eb',
-                       'deportes':'#d97706','ciencia':'#0891b2','salud':'#16a34a','entretenimiento':'#db2777',
-                       'latinoamerica':'#ea580c','clima':'#0284c7','medio_ambiente':'#15803d',
-                       'crimen':'#9f1239','desastre':'#b45309','mundo':'#4338ca','general':'#475569'}
-        nombres_cat = {'guerra':'CONFLICTO','politica':'POLÍTICA','economia':'ECONOMÍA','tecnologia':'TECNOLOGÍA',
-                       'deportes':'DEPORTES','ciencia':'CIENCIA','salud':'SALUD','entretenimiento':'ENTRETENIMIENTO',
-                       'latinoamerica':'LATINOAMÉRICA','clima':'CLIMA','medio_ambiente':'MEDIO AMBIENTE',
-                       'crimen':'SEGURIDAD','desastre':'EMERGENCIA','mundo':'MUNDO','general':'NOTICIAS'}
+        colores_cat = {
+            'misterios':'#6d28d9','historia':'#92400e','geopolitica':'#1e40af',
+            'innovacion':'#0891b2','tecnologia':'#2563eb','ciencia':'#0891b2',
+            'salud':'#16a34a','economia':'#059669','politica':'#7c3aed',
+            'deportes':'#d97706','entretenimiento':'#db2777','cultura':'#db2777',
+            'medio_ambiente':'#15803d','latinoamerica':'#ea580c','mundo':'#4338ca','general':'#475569',
+        }
+        nombres_cat = {
+            'misterios':'MISTERIOS','historia':'HISTORIA','geopolitica':'GEOPOLITICA',
+            'innovacion':'INNOVACION','tecnologia':'TECNOLOGIA','ciencia':'CIENCIA',
+            'salud':'SALUD','economia':'ECONOMIA','politica':'POLITICA',
+            'deportes':'DEPORTES','entretenimiento':'ENTRETENIMIENTO','cultura':'CULTURA',
+            'medio_ambiente':'MEDIO AMBIENTE','latinoamerica':'LATINOAMERICA','mundo':'MUNDO','general':'NOTICIAS',
+        }
         color_badge = colores_cat.get(categoria,'#475569')
         texto_badge = nombres_cat.get(categoria,'NOTICIAS')
         try:
@@ -2220,15 +1104,14 @@ def crear_imagen_titulo(titulo, categoria='general'):
             font_titulo = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 62)
             font_marca  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
             font_sub    = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
-        except:
-            font_badge = font_titulo = font_marca = font_sub = ImageFont.load_default()
+        except: font_badge = font_titulo = font_marca = font_sub = ImageFont.load_default()
         badge_x, badge_y = 70, 70
         try:
             bbox_b = draw.textbbox((0,0), texto_badge, font=font_badge)
             bw, bh = bbox_b[2]-bbox_b[0], bbox_b[3]-bbox_b[1]
         except: bw, bh = 160, 32
-        draw.rounded_rectangle([badge_x, badge_y, badge_x+bw+28, badge_y+bh+16], radius=6, fill=color_badge)
-        draw.text((badge_x+14, badge_y+8), texto_badge, font=font_badge, fill='white')
+        draw.rounded_rectangle([badge_x,badge_y,badge_x+bw+28,badge_y+bh+16],radius=6,fill=color_badge)
+        draw.text((badge_x+14,badge_y+8), texto_badge, font=font_badge, fill='white')
         chars_pl = 38 if len(titulo) > 80 else 44
         font_size_t = 52 if len(titulo) > 100 else 62
         try: font_titulo = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size_t)
@@ -2246,15 +1129,207 @@ def crear_imagen_titulo(titulo, categoria='general'):
             y_texto += font_size_t+14
         draw.rectangle([(0,H-90),(W,H)], fill='#1e293b')
         draw.rectangle([(0,H-90),(W,H-87)], fill=color_badge)
-        draw.text((70,H-65), "🌍 VERDAD HOY", font=font_marca, fill='#f1f5f9')
+        draw.text((70,H-65), "VERDAD HOY", font=font_marca, fill='#f1f5f9')
         draw.text((W-420,H-60), "verdadhoy.com", font=font_sub, fill='#94a3b8')
-        p = f'/tmp/noticia_gen_{generar_hash(titulo)}.jpg'
         img = agregar_watermark(img)
+        p = f'/tmp/noticia_gen_{generar_hash(titulo)}.jpg'
         img.save(p, 'JPEG', quality=92, optimize=True)
         return p
+    except: return None
+
+def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descripcion=""):
+    if not imagen_path or not os.path.exists(imagen_path): return None
+    try:
+        nombre = f"verdadhoy-{generar_hash(titulo)}.jpg"
+        with open(imagen_path,'rb') as f:
+            r = requests.post(f"{WP_URL}/wp-json/wp/v2/media",
+                headers={'Content-Disposition':f'attachment; filename="{nombre}"','Content-Type':'image/jpeg'},
+                data=f.read(), auth=(WP_USER,WP_APP_PASSWORD), timeout=60).json()
+        if 'id' in r:
+            media_id = r['id']
+            kw_imagen = (frase_clave or titulo)[:125]
+            try:
+                requests.post(f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
+                    json={'title':kw_imagen,'alt_text':kw_imagen,
+                          'caption':f"{titulo[:120]} — Fuente: Verdad Hoy",
+                          'description':(frase_clave or titulo)[:300]},
+                    auth=(WP_USER,WP_APP_PASSWORD), timeout=10)
+            except: pass
+            return media_id
     except Exception as e:
-        log(f"⚠️ Error generando imagen fallback: {e}",'debug')
+        log(f"Excepcion subiendo imagen: {e}",'advertencia')
+    return None
+
+def obtener_articulos_wp_recientes(num=3):
+    if not WP_APP_PASSWORD: return []
+    try:
+        resp = requests.get(f"{WP_URL}/wp-json/wp/v2/posts",
+            params={'per_page':num+1,'status':'publish','orderby':'date','order':'desc','_fields':'id,title,link'},
+            auth=(WP_USER,WP_APP_PASSWORD), timeout=10)
+        if resp.status_code == 200: return resp.json()[:num]
+    except: pass
+    return []
+
+def insertar_enlaces_internos(contenido_html):
+    articulos = obtener_articulos_wp_recientes(2)
+    if not articulos: return contenido_html.replace("[ENLACES_INTERNOS]","")
+    items = ""
+    for art in articulos:
+        t = art.get('title',{}).get('rendered','')
+        l = art.get('link','#')
+        if t and l: items += f'<li><a href="{l}" style="color:#1a1a1a;text-decoration:none;">{t}</a></li>\n'
+    html_rel = ""
+    if items:
+        html_rel = (f'\n<div class="vh-relacionadas" style="margin-top:24px;padding:16px;background:#f8f9fa;border-left:4px solid #cc0000;border-radius:4px;">\n'
+                    f'<h3 style="margin:0 0 10px;font-size:1rem;color:#cc0000;">📰 Te puede interesar</h3>\n'
+                    f'<ul style="margin:0;padding-left:20px;">\n{items}</ul>\n</div>\n')
+    if "[ENLACES_INTERNOS]" in contenido_html: return contenido_html.replace("[ENLACES_INTERNOS]", html_rel)
+    return contenido_html + html_rel
+
+def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_path, fuente_url, pais_foco='global', feedback_correccion=None):
+    if not WP_APP_PASSWORD: return None, None, None
+    if not imagen_path or not os.path.exists(imagen_path): return None, None, None
+
+    resultado_ia = reescribir_noticia_v20(titulo, contenido, categoria, pais_foco, feedback_correccion)
+    if not resultado_ia: return None, None, None
+    resultado_ia = postprocesar_resultado(resultado_ia)
+
+    keyword = resultado_ia.get('keyword_principal','')
+    es_valido, problemas = validar_calidad_articulo(
+        resultado_ia.get('contenido_html',''), resultado_ia.get('meta_descripcion',''),
+        resultado_ia.get('titulo_seo',''), resultado_ia.get('categoria',''), keyword)
+
+    if not es_valido:
+        if not REINTENTAR_CALIDAD_IA: return None, None, None
+        log(f"Reintentando ({len(problemas)} problemas)",'advertencia')
+        for p in problemas: log(f"   - {p}",'advertencia')
+        resultado_reintento = reescribir_noticia_v20(titulo, contenido, categoria, pais_foco, feedback_correccion=problemas)
+        if resultado_reintento:
+            resultado_reintento = postprocesar_resultado(resultado_reintento)
+            es_valido_2, _ = validar_calidad_articulo(
+                resultado_reintento.get('contenido_html',''), resultado_reintento.get('meta_descripcion',''),
+                resultado_reintento.get('titulo_seo',''), resultado_reintento.get('categoria',''),
+                resultado_reintento.get('keyword_principal',''))
+            if es_valido_2: resultado_ia = resultado_reintento
+            else: return None, None, None
+        else: return None, None, None
+
+    titulo_final  = resultado_ia.get('titulo_seo', titulo).strip()
+    if len(titulo_final) > 55:
+        t = ''
+        for p in titulo_final.split():
+            c = (t+' '+p).strip()
+            if len(c) > 55: break
+            t = c
+        titulo_final = t or titulo_final[:55]
+
+    titulo_seo         = titulo_final + ' | Verdad Hoy'
+    meta_desc          = resultado_ia.get('meta_descripcion','')
+    frase_clave        = resultado_ia.get('keyword_principal','')
+    slug_ia            = resultado_ia.get('slug','')
+    contenido_html     = resultado_ia.get('contenido_html','')
+    categoria_ia       = resultado_ia.get('categoria', categoria)
+    desc_pinterest     = resultado_ia.get('descripcion_pinterest','')
+
+    slug_post = slug_ia if (slug_ia and len(slug_ia) <= 50) else generar_slug_seo(titulo_final)
+
+    if '<nav' not in contenido_html and 'tabla-contenidos' not in contenido_html:
+        h2_raw = re.findall(r'<h2[^>]*>(.*?)</h2>', contenido_html, flags=re.IGNORECASE|re.DOTALL)
+        h2_textos = [(str(i+1), re.sub(r'<[^>]+>','',t).strip()) for i,t in enumerate(h2_raw)]
+        items_toc = '\n'.join(f'<li style="margin-bottom:4px;"><a href="#seccion-{n}" style="color:#1a56db;text-decoration:none;">{t}</a></li>' for n,t in h2_textos[:4])
+        if items_toc:
+            toc_html = (f'<nav class="tabla-contenidos" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin:0 0 24px 0;">'
+                        f'<p style="margin:0 0 8px 0;font-weight:700;color:#1e293b;font-size:0.9em;">📋 En este articulo</p>'
+                        f'<ol style="margin:0;padding-left:20px;color:#475569;font-size:0.9em;">{items_toc}</ol></nav>')
+            contenido_html = toc_html + contenido_html
+
+    contenido_html = insertar_enlaces_internos(contenido_html)
+
+    tags_ids = []
+    for kw in resultado_ia.get('keywords_secundarias',[])[:5]:
+        tag_id = obtener_crear_tag_wp(kw)
+        if tag_id: tags_ids.append(tag_id)
+
+    slug_cat = CATEGORIAS_EVERGREEN.get(categoria_ia,{}).get('slug','mundo')
+    cat_id = obtener_id_categoria_wp(slug_cat)
+    if not cat_id: cat_id = obtener_id_categoria_wp('mundo'); slug_cat = 'mundo'
+    categorias_ids = [cat_id] if cat_id else []
+
+    imagen_id = subir_imagen_wp(imagen_path, titulo_final,
+        alt_text=f"{frase_clave} - {titulo_final}"[:125],
+        frase_clave=frase_clave, meta_descripcion=meta_desc)
+    if not imagen_id: return None, None, None
+
+    palabras_art = len(_texto_plano(contenido_html).split())
+    minutos_lect = max(2, round(palabras_art / 200))
+    barra_lectura = f'<p style="font-size:0.82em;color:#6b7280;margin:0 0 20px 0;">🕐 Tiempo de lectura: <strong>{minutos_lect} min</strong></p>'
+
+    nombre_medio = 'Fuente externa'
+    try:
+        dominio = re.sub(r'^(www\.|m\.)','', urlparse(fuente_url).netloc.lower())
+        mapa = {'infobae.com':'Infobae','bbc.com':'BBC Mundo','cnn.com':'CNN','reuters.com':'Reuters','elpais.com':'El Pais','dw.com':'DW'}
+        for dom,nombre in mapa.items():
+            if dom in dominio: nombre_medio = nombre; break
+        else:
+            partes = dominio.split('.')
+            nombre_medio = partes[-2].capitalize() if len(partes) >= 2 else dominio
+    except: pass
+
+    contenido_final = f"""
+{barra_lectura}
+{contenido_html}
+<hr>
+<p><strong>Fuente:</strong> <a href="{fuente_url}" target="_blank" rel="noopener">{nombre_medio}</a></p>
+<p><em>Informacion verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
+"""
+
+    post_data = {
+        'title':          titulo_final,
+        'slug':           slug_post,
+        'content':        contenido_final,
+        'excerpt':        meta_desc,
+        'status':         'draft',
+        'featured_media': imagen_id,
+        'categories':     categorias_ids,
+        'tags':           tags_ids,
+    }
+
+    try:
+        r = requests.post(f"{WP_URL}/wp-json/wp/v2/posts",json=post_data,auth=(WP_USER,WP_APP_PASSWORD),timeout=30).json()
+        if 'id' in r:
+            post_id = r['id']
+            url_articulo = r.get('link', f"{WP_URL}/?p={post_id}")
+            log(f"BORRADOR creado: {WP_URL}/wp-admin/post.php?post={post_id}&action=edit",'exito')
+            try:
+                rm_payload = {'objectID':post_id,'objectType':'post',
+                    'meta':{'rank_math_focus_keyword':frase_clave,'rank_math_title':titulo_seo,
+                            'rank_math_description':meta_desc,'rank_math_robots':['index','follow']}}
+                r_rm = requests.post(f"{WP_URL}/wp-json/rankmath/v1/updateMeta",json=rm_payload,auth=(WP_USER,WP_APP_PASSWORD),timeout=10)
+                if r_rm.status_code in (200,201): log(f"Rank Math SEO guardado",'exito')
+            except: pass
+            return url_articulo, slug_cat, desc_pinterest
+        else: log(f"Error WP: {r.get('message','desconocido')}",'error')
+    except Exception as e: log(f"Excepcion WP: {e}",'error')
+    return None, None, None
+
+# ══════════════════════════════════════════════════════════
+# FUENTES
+# ══════════════════════════════════════════════════════════
+def extraer_contenido(url):
+    if not url: return None
+    try:
+        r = requests.get(url, headers={'User-Agent':'Mozilla/5.0'}, timeout=20)
+        s = BeautifulSoup(r.content, 'html.parser')
+        for e in s(['script','style','nav','header','footer']): e.decompose()
+        for selector in ['article','[class*="article-content"]','[class*="entry-content"]','[class*="post-content"]']:
+            art = s.select_one(selector)
+            if art:
+                ps = [p for p in art.find_all('p') if len(p.get_text()) > 40]
+                if len(ps) >= 2:
+                    txt = ' '.join([limpiar_texto(p.get_text()) for p in ps])
+                    if len(txt) > 200: return txt[:5000]
         return None
+    except: return None
 
 def deduplicar_batch(noticias):
     urls_vistas = set(); titulos_vistos = []; resultado = []
@@ -2263,78 +1338,35 @@ def deduplicar_batch(noticias):
         titulo = n.get('titulo','')
         if not url_n or not titulo: continue
         if url_n in urls_vistas: continue
-        if any(similitud_titulos(titulo, t) > 0.78 for t in titulos_vistos): continue
+        if any(similitud_titulos(titulo,t) > 0.78 for t in titulos_vistos): continue
         urls_vistas.add(url_n); titulos_vistos.append(titulo); resultado.append(n)
-    log(f"Dedup batch: {len(noticias)} → {len(resultado)} únicas",'info')
     return resultado
 
-def obtener_rss():
+def obtener_rss_ampliado():
     fuentes = [
-        ('https://www.infobae.com/arc/outboundfeeds/rss/america/','Infobae América'),
-        ('https://www.infobae.com/arc/outboundfeeds/rss/economia/','Infobae Economía'),
+        ('https://www.infobae.com/arc/outboundfeeds/rss/america/','Infobae America'),
+        ('https://www.infobae.com/arc/outboundfeeds/rss/economia/','Infobae Economia'),
         ('https://www.eluniversal.com.mx/rss.xml','El Universal MX'),
-        ('https://www.milenio.com/rss','Milenio MX'),
-        ('https://www.lanacion.com.ar/arc/outboundfeeds/rss/','La Nación Argentina'),
-        ('https://www.pagina12.com.ar/rss/portada','Página 12 AR'),
-        ('https://www.clarin.com/rss/elmundo/','Clarín Mundo'),
-        ('https://www.eltiempo.com/rss/portada.xml','El Tiempo Colombia'),
-        ('https://www.semana.com/rss.xml','Semana Colombia'),
-        ('https://elcomercio.pe/arcio/rss/','El Comercio Perú'),
-        ('https://rpp.pe/rss/','RPP Perú'),
+        ('https://www.lanacion.com.ar/arc/outboundfeeds/rss/','La Nacion AR'),
+        ('https://www.clarin.com/rss/elmundo/','Clarin Mundo'),
+        ('https://www.eltiempo.com/rss/portada.xml','El Tiempo CO'),
+        ('https://elcomercio.pe/arcio/rss/','El Comercio PE'),
         ('https://efectococuyo.com/feed/','Efecto Cocuyo VE'),
-        ('https://www.eluniverso.com/rss.xml','El Universo Ecuador'),
-        ('https://www.elpais.com.uy/rss.xml','El País Uruguay'),
-        ('http://feeds.bbci.co.uk/mundo/rss.xml','BBC Mundo'),
-        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada','El País Internacional'),
-        ('https://www.dw.com/es/ultimas-noticias/s-30689792/rss','Deutsche Welle ES'),
-        ('https://feeds.france24.com/es/','France 24 ES'),
-        ('https://www.efe.com/efe/espana/1/rss','EFE'),
-        ('https://www.espn.com.mx/rss/deportes.xml','ESPN Deportes'),
-        ('https://e00-marca.uecdn.es/rss/portada.xml','Marca'),
-        ('https://feeds.as.com/mrss-s/pages/as/site/as.com/portada/','AS Deportes'),
         ('https://feeds.xataka.com/xataka','Xataka'),
         ('https://hipertextual.com/feed','Hipertextual'),
+        ('http://feeds.bbci.co.uk/mundo/rss.xml','BBC Mundo'),
+        ('https://www.dw.com/es/ultimas-noticias/s-30689792/rss','DW ES'),
+        ('https://feeds.france24.com/es/','France 24 ES'),
+        ('https://www.espn.com.mx/rss/deportes.xml','ESPN Deportes'),
+        ('https://e00-marca.uecdn.es/rss/portada.xml','Marca'),
+        ('https://www.emol.com/rss/','Emol Chile'),
+        ('https://www.cooperativa.cl/noticias/site/tax/port/all/rss_3___1.xml','Cooperativa CL'),
+        ('https://www.cnnchile.com/feed/','CNN Chile'),
     ]
     noticias = []
     for url_feed, nombre in fuentes:
         try:
             r = requests.get(url_feed, headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
-            if r.status_code != 200: continue
-            feed = feedparser.parse(r.content)
-            if not feed or not feed.entries: continue
-            for e in feed.entries[:8]:
-                t = e.get('title','')
-                if not t: continue
-                t = re.sub(r'\s*-\s*[^-]*$','',t)
-                l = e.get('link','')
-                if not l: continue
-                d = re.sub(r'<[^>]+>','',e.get('summary','') or e.get('description',''))
-                img = None
-                if hasattr(e,'media_content') and e.media_content: img = e.media_content[0].get('url')
-                if not img:
-                    for enc in getattr(e,'enclosures',[]):
-                        if enc.get('type','').startswith('image'):
-                            img = enc.get('href') or enc.get('url'); break
-                if es_noticia_espana_domestica(t, d): continue
-                noticias.append({'titulo':limpiar_texto(t),'descripcion':limpiar_texto(d),'url':l,'imagen':img,
-                                 'fuente':f"RSS:{nombre}",'fecha':e.get('published'),'puntaje':calcular_puntaje(t,d)})
-        except Exception as e:
-            log(f"RSS error ({nombre}): {e}",'advertencia')
-    log(f"RSS: {len(noticias)} noticias",'info')
-    return noticias
-
-def obtener_rss_chile():
-    fuentes_chile = [
-        ('https://www.emol.com/rss/','Emol'),
-        ('https://www.cooperativa.cl/noticias/site/tax/port/all/rss_3___1.xml','Cooperativa'),
-        ('https://www.cnnchile.com/feed/','CNN Chile'),
-        ('https://www.lacuarta.com/feed/','La Cuarta'),
-    ]
-    noticias = []
-    for url_feed, nombre in fuentes_chile:
-        try:
-            try: r = requests.get(url_feed, headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
-            except: time.sleep(1.5); r = requests.get(url_feed, headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
             if r.status_code != 200: continue
             feed = feedparser.parse(r.content)
             if not feed or not feed.entries: continue
@@ -2349,414 +1381,203 @@ def obtener_rss_chile():
                 if hasattr(e,'media_content') and e.media_content: img = e.media_content[0].get('url')
                 if not img:
                     for enc in getattr(e,'enclosures',[]):
-                        if enc.get('type','').startswith('image'):
-                            img = enc.get('href') or enc.get('url'); break
-                noticias.append({'titulo':limpiar_texto(t),'descripcion':limpiar_texto(d),'url':l,'imagen':img,
-                                 'fuente':f"RSS_CL:{nombre}",'fecha':e.get('published'),
-                                 'puntaje':calcular_puntaje(t,d)+5,'pais':'chile'})
-        except Exception as ex:
-            log(f"RSS Chile error ({nombre}): {ex}",'advertencia')
-    log(f"RSS Chile: {len(noticias)} noticias",'info')
+                        if enc.get('type','').startswith('image'): img = enc.get('href') or enc.get('url'); break
+                titulo_limpio = limpiar_texto(t)
+                desc_limpia = limpiar_texto(d)
+                relevancia = calcular_relevancia_evergreen(titulo_limpio, desc_limpia)
+                noticias.append({'titulo':titulo_limpio,'descripcion':desc_limpia,'url':l,'imagen':img,
+                                 'fuente':f"RSS:{nombre}",'fecha':e.get('published'),
+                                 'relevancia':relevancia,'tema':detectar_tema(titulo_limpio,desc_limpia)})
+        except Exception as e: log(f"RSS error ({nombre}): {e}",'advertencia')
+    log(f"RSS: {len(noticias)} noticias",'info')
     return noticias
 
-def obtener_rss_latam():
-    fuentes_latam = [
-        ('https://www.eluniversal.com.mx/rss.xml','El Universal MX','mexico'),
-        ('https://www.milenio.com/rss','Milenio MX','mexico'),
-        ('https://www.infobae.com/arc/outboundfeeds/rss/america/','Infobae América','argentina'),
-        ('https://www.lanacion.com.ar/arc/outboundfeeds/rss/','La Nación AR','argentina'),
-        ('https://www.pagina12.com.ar/rss/portada','Página 12 AR','argentina'),
-        ('https://www.eltiempo.com/rss/portada.xml','El Tiempo CO','colombia'),
-        ('https://www.semana.com/rss.xml','Semana CO','colombia'),
-        ('https://elcomercio.pe/arcio/rss/','El Comercio PE','peru'),
-        ('https://rpp.pe/rss/','RPP Perú','peru'),
-        ('https://efectococuyo.com/feed/','Efecto Cocuyo VE','venezuela'),
-        ('https://www.paginasiete.bo/rss.xml','Página Siete BO','bolivia'),
-        ('https://www.eluniverso.com/rss.xml','El Universo EC','ecuador'),
-        ('https://www.elpais.com.uy/rss.xml','El País UY','uruguay'),
-        ('https://www.clarin.com/rss/elmundo/','Clarín Mundo','latam'),
-    ]
-    noticias = []
-    for url_feed, nombre, pais in fuentes_latam:
-        try:
-            r = requests.get(url_feed, headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
-            if r.status_code != 200: continue
-            feed = feedparser.parse(r.content)
-            if not feed or not feed.entries: continue
-            for e in feed.entries[:8]:
-                t = e.get('title','')
-                if not t: continue
-                t = re.sub(r'\s*-\s*[^-]*$','',t)
-                l = e.get('link','')
-                if not l: continue
-                d = re.sub(r'<[^>]+>','',e.get('summary','') or e.get('description',''))
-                if es_noticia_chile(t, d): continue
-                img = None
-                if hasattr(e,'media_content') and e.media_content: img = e.media_content[0].get('url')
-                if not img:
-                    for enc in getattr(e,'enclosures',[]):
-                        if enc.get('type','').startswith('image'):
-                            img = enc.get('href') or enc.get('url'); break
-                noticias.append({'titulo':limpiar_texto(t),'descripcion':limpiar_texto(d),'url':l,'imagen':img,
-                                 'fuente':f"RSS_LATAM:{nombre}",'fecha':e.get('published'),
-                                 'puntaje':calcular_puntaje(t,d)+3,'pais':pais})
-        except Exception as ex:
-            log(f"RSS LATAM error ({nombre}): {ex}",'advertencia')
-    log(f"RSS LATAM: {len(noticias)} noticias",'info')
-    return noticias
-
-def obtener_newsapi():
+def obtener_newsapi_evergreen():
     if not NEWS_API_KEY: return []
     queries = [
-        'Chile noticias economía política hoy','Chile Argentina Colombia últimas noticias',
-        'México Brasil Perú América Latina hoy','Venezuela Bolivia Ecuador Uruguay noticias',
-        'Latinoamérica economía inversión noticias','Boric Milei Lula Sheinbaum política',
-        'Copa Libertadores Sudamericana fútbol LATAM','eliminatorias Mundial 2026 Sudamérica',
-        'dólar inflación Argentina Chile México','litio cobre minería Latinoamérica',
-        'startups tecnología América Latina fintech','reggaeton música latina Bad Bunny Shakira',
-        'economy inflation markets Latin America impact','technology artificial intelligence Spanish',
-        'Trump tariffs trade Latin America','climate change South America environment',
-        'football soccer Champions League goals','Copa del Mundo 2026 World Cup Messi',
-        'NBA basketball playoffs finals','Formula 1 F1 Grand Prix race',
-        'Netflix series premiere streaming español','music Grammy Billboard Latin',
-        'Ukraine Russia war conflict','science space NASA discovery',
+        'descubrimiento arqueologico America Latina 2026',
+        'civilizacion antigua misterio hallazgo cientifico',
+        'NASA espacio descubrimiento 2026',
+        'inteligencia artificial impacto America Latina',
+        'innovacion tecnologica Chile Argentina Mexico 2026',
+        'economia LATAM tendencias inflacion inversion',
+        'litio cobre recursos naturales Sudamerica',
+        'avance medico cancer tratamiento 2026',
+        'salud publica America Latina investigacion',
+        'longevidad ciencia antienvejecimiento',
+        'BRICS geopolitica America Latina',
+        'acuerdo comercial tratado Latinoamerica',
+        'cultura latinoamericana cine musica 2026',
+        'Amazonia cambio climatico glaciares',
+        'energia renovable solar eolica LATAM',
+        'criptomoneda fintech America Latina regulacion',
     ]
     noticias = []
     for q in queries:
         try:
             r = requests.get('https://newsapi.org/v2/everything',
-                params={'apiKey':NEWS_API_KEY,'q':q,'language':'es','sortBy':'publishedAt','pageSize':5},
+                params={'apiKey':NEWS_API_KEY,'q':q,'language':'es','sortBy':'relevancy','pageSize':5},
                 timeout=15).json()
             if r.get('status') == 'ok':
                 for a in r.get('articles',[]):
-                    t = a.get('title',''); img = a.get('urlToImage')
-                    if not t or '[Removed]' in t or not img: continue
+                    t = a.get('title','')
+                    if not t or '[Removed]' in t: continue
                     d = a.get('description','')
-                    if es_noticia_espana_domestica(t, d): continue
-                    noticias.append({'titulo':limpiar_texto(t),'descripcion':limpiar_texto(d),
-                                     'url':a.get('url',''),'imagen':img,'fuente':f"NewsAPI:{a.get('source',{}).get('name','')}",
-                                     'fecha':a.get('publishedAt'),'puntaje':calcular_puntaje(t,d)})
-        except Exception as e:
-            log(f"NewsAPI error ({q[:20]}): {e}",'advertencia')
-    log(f"NewsAPI: {len(noticias)} noticias",'info')
+                    titulo_limpio = limpiar_texto(t)
+                    desc_limpia = limpiar_texto(d)
+                    relevancia = calcular_relevancia_evergreen(titulo_limpio, desc_limpia)
+                    noticias.append({'titulo':titulo_limpio,'descripcion':desc_limpia,
+                                     'url':a.get('url',''),'imagen':a.get('urlToImage'),
+                                     'fuente':f"NewsAPI:{a.get('source',{}).get('name','')}",
+                                     'fecha':a.get('publishedAt'),'relevancia':relevancia,
+                                     'tema':detectar_tema(titulo_limpio,desc_limpia)})
+        except Exception as e: log(f"NewsAPI evergreen error: {e}",'advertencia')
+    log(f"NewsAPI evergreen: {len(noticias)} noticias",'info')
     return noticias
-
-def obtener_newsdata():
-    if not NEWSDATA_API_KEY: return []
-    categorias = ['world','politics','business','technology','science','health','entertainment','sports']
-    PAISES_NEWSDATA = 'cl,ar,mx,co,pe'
-    noticias = []
-    for cat in categorias:
-        try:
-            r = requests.get('https://newsdata.io/api/1/news',
-                params={'apikey':NEWSDATA_API_KEY,'language':'es','country':PAISES_NEWSDATA,
-                        'category':cat,'size':10,'image':1},
-                timeout=15).json()
-            if r.get('status') == 'success':
-                for a in r.get('results',[]):
-                    t = a.get('title') or ''; img = a.get('image_url')
-                    if not t or not img: continue
-                    d = a.get('description') or ''
-                    if es_noticia_espana_domestica(t, d): continue
-                    noticias.append({'titulo':limpiar_texto(t),'descripcion':limpiar_texto(d),
-                                     'url':a.get('link',''),'imagen':img,'fuente':f"NewsData:{a.get('source_id','')}",
-                                     'fecha':a.get('pubDate'),'puntaje':calcular_puntaje(t,d)})
-        except Exception as e:
-            log(f"NewsData error ({cat}): {e}",'advertencia')
-    log(f"NewsData: {len(noticias)} noticias",'info')
-    return noticias
-
-def obtener_gnews():
-    if not GNEWS_API_KEY: return []
-    topicos_paises = [('world','mx'),('nation','cl'),('business','ar'),('technology','co'),
-                      ('sports','mx'),('health','cl'),('science','ar'),('entertainment','co')]
-    noticias = []
-    for topic, pais in topicos_paises:
-        try:
-            r = requests.get('https://gnews.io/api/v4/top-headlines',
-                params={'apikey':GNEWS_API_KEY,'lang':'es','max':10,'topic':topic,'country':pais},
-                timeout=15).json()
-            for a in r.get('articles',[]):
-                t = a.get('title') or ''; img = a.get('image')
-                if not t or not img: continue
-                d = a.get('description') or ''
-                if es_noticia_espana_domestica(t, d): continue
-                noticias.append({'titulo':limpiar_texto(t),'descripcion':limpiar_texto(d),
-                                 'url':a.get('url',''),'imagen':img,'fuente':f"GNews:{a.get('source',{}).get('name','')}",
-                                 'fecha':a.get('publishedAt'),'puntaje':calcular_puntaje(t,d)})
-        except Exception as e:
-            log(f"GNews error ({topic}/{pais}): {e}",'advertencia')
-    log(f"GNews: {len(noticias)} noticias",'info')
-    return noticias
-
-def obtener_newsapi_chile():
-    if not NEWS_API_KEY: return []
-    queries_chile = ['Chile noticias hoy Santiago','Chile economía dólar peso chileno inflación',
-                     'Chile Boric gobierno política','Chile Carabineros seguridad',
-                     'Chile fútbol Colo-Colo Universidad Chile La Roja','Chile terremoto sismo',
-                     'Chile litio cobre minería Codelco','Chile salud hospital sistema público']
-    noticias = []
-    for q in queries_chile:
-        try:
-            r = requests.get('https://newsapi.org/v2/everything',
-                params={'apiKey':NEWS_API_KEY,'q':q,'language':'es','sortBy':'publishedAt','pageSize':5},
-                timeout=15).json()
-            if r.get('status') == 'ok':
-                for a in r.get('articles',[]):
-                    t = a.get('title',''); img = a.get('urlToImage')
-                    if not t or '[Removed]' in t or not img: continue
-                    d = a.get('description','')
-                    if not es_noticia_chile(t, d): continue
-                    noticias.append({'titulo':limpiar_texto(t),'descripcion':limpiar_texto(d),
-                                     'url':a.get('url',''),'imagen':img,'fuente':f"NewsAPI_CL:{a.get('source',{}).get('name','')}",
-                                     'fecha':a.get('publishedAt'),'puntaje':calcular_puntaje(t,d),'pais':'chile'})
-        except Exception as ex:
-            log(f"NewsAPI Chile error ({q[:25]}): {ex}",'advertencia')
-    log(f"NewsAPI Chile: {len(noticias)} noticias",'info')
-    return noticias
-
-def obtener_newsapi_latam():
-    if not NEWS_API_KEY: return []
-    queries_latam = ['México noticias CDMX Sheinbaum','Argentina Milei economía inflación',
-                     'Colombia Petro Bogotá noticias','Brasil Lula sao paulo',
-                     'Venezuela Maduro Caracas crisis','Perú Lima noticias gobierno',
-                     'Ecuador Quito Noboa noticias','Bolivia La Paz gobierno',
-                     'El Salvador Bukele noticias','América Latina economía política',
-                     'Centroamérica migración crisis']
-    noticias = []
-    for q in queries_latam:
-        try:
-            r = requests.get('https://newsapi.org/v2/everything',
-                params={'apiKey':NEWS_API_KEY,'q':q,'language':'es','sortBy':'publishedAt','pageSize':5},
-                timeout=15).json()
-            if r.get('status') == 'ok':
-                for a in r.get('articles',[]):
-                    t = a.get('title',''); img = a.get('urlToImage')
-                    if not t or '[Removed]' in t or not img: continue
-                    d = a.get('description','')
-                    if es_noticia_chile(t, d): continue
-                    noticias.append({'titulo':limpiar_texto(t),'descripcion':limpiar_texto(d),
-                                     'url':a.get('url',''),'imagen':img,'fuente':f"NewsAPI_LATAM:{a.get('source',{}).get('name','')}",
-                                     'fecha':a.get('publishedAt'),'puntaje':calcular_puntaje(t,d),'pais':'latam'})
-        except Exception as ex:
-            log(f"NewsAPI LATAM error ({q[:25]}): {ex}",'advertencia')
-    log(f"NewsAPI LATAM: {len(noticias)} noticias",'info')
-    return noticias
-
 
 # ══════════════════════════════════════════════════════════
-# MAIN V19 — FLUJO PRINCIPAL CON PUBLICACIÓN MIXTA
+# MAIN V20
 # ══════════════════════════════════════════════════════════
-def es_candidata_evergreen(noticia):
-    tema = detectar_tema(noticia.get('titulo',''), noticia.get('descripcion',''))
-    return tema in {'ciencia','tecnologia','salud','medio_ambiente'}
-
 def main():
     print("\n" + "="*60)
-    print(f"🌍 BOT DE NOTICIAS - {VERSION_BOT}")
-    print(f"   Publicación mixta: {MAX_POSTS_DIA_DIRECTOS} directas + {MAX_POSTS_DIA_BORRADORES} borradores/día")
-    print(f"   Foco LATAM: Tier1=Chile/Argentina/México (+{BONUS_TIER1})")
-    print(f"              Tier2=Colombia/Brasil (+{BONUS_TIER2})")
-    print(f"              Tier3=resto LATAM (+{BONUS_TIER3})")
-    print(f"   Rank Math 80+ sin edición (noticias directas)")
-    print(f"   Prompt mejorado V19.0.1: densidad+transiciones+H2+número")
-    print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"VERDAD HOY BOT - {VERSION_BOT}")
+    print(f"  Modo: 100% EVERGREEN — todo en BORRADOR")
+    print(f"  Borradores/dia: {MAX_BORRADORES_DIA}")
+    print(f"  Rotacion equitativa por paises")
+    print(f"  Pinterest: {'ACTIVO' if PINTEREST_TOKEN else 'SIN TOKEN'}")
+    print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*60)
 
-    if MODO_LATAM:
-        log("ℹ️ MODO_LATAM detectado — desde V18/V19 se usa flujo único. Puedes quitar MODO_LATAM del .yml.",'advertencia')
-
-    h = cargar_historial()
-    publicar_wp = puede_publicar_wp()
-    publicar_fb = PUBLICAR_EN_FACEBOOK and puede_publicar_fb(h)
-
-    if not PUBLICAR_EN_FACEBOOK:
-        log("📘 Facebook DESACTIVADO (intencional)",'info')
-
-    if not publicar_wp and not publicar_fb:
-        log("⏱️ Nada que publicar — esperando próximo ciclo",'info')
+    if not puede_publicar_wp():
+        log("Cuota diaria completada",'info')
         return None
 
-    exito_wp = False
-    exito_fb = False
+    h = cargar_historial()
+    rotacion = cargar_rotacion()
+    paises_ciclo = seleccionar_paises_ciclo(rotacion, n=MAX_BORRADORES_DIA)
+    log(f"Paises de este ciclo: {', '.join(paises_ciclo)}",'info')
 
-    if publicar_wp:
-        cuotas_hoy = cargar_cuotas_hoy()
-        directos_hoy   = cuotas_hoy.get('directos', 0)
-        borradores_hoy = cuotas_hoy.get('borradores', 0)
-        log(f"📊 Estado hoy: {directos_hoy}/{MAX_POSTS_DIA_DIRECTOS} directas | {borradores_hoy}/{MAX_POSTS_DIA_BORRADORES} borradores",'info')
+    noticias = []
+    noticias.extend(obtener_rss_ampliado())
+    if NEWS_API_KEY: noticias.extend(obtener_newsapi_evergreen())
+    if not noticias: log("ERROR: Sin noticias",'error'); return None
 
-        noticias = []
-        if NEWS_API_KEY: noticias.extend(obtener_newsapi())
-        if NEWSDATA_API_KEY: noticias.extend(obtener_newsdata())
-        if GNEWS_API_KEY: noticias.extend(obtener_gnews())
-        if len(noticias) < 15:
-            log("⚠️ Pocas noticias — complementando con RSS",'advertencia')
-            noticias.extend(obtener_rss())
-        noticias.extend(obtener_rss_chile())
-        noticias.extend(obtener_newsapi_chile())
-        noticias.extend(obtener_rss_latam())
-        noticias.extend(obtener_newsapi_latam())
+    noticias_filtradas = []
+    for n in noticias:
+        tema = n.get('tema') or detectar_tema(n.get('titulo',''), n.get('descripcion',''))
+        if not es_evergreen(tema): continue
+        es_spam, _ = es_contenido_spam(n.get('titulo',''), n.get('descripcion',''))
+        if es_spam: continue
+        n['tema'] = tema
+        noticias_filtradas.append(n)
 
-        if not noticias:
-            log("ERROR: Ninguna fuente devolvió noticias",'error')
-            return None
+    log(f"Noticias evergreen filtradas: {len(noticias_filtradas)}",'info')
+    noticias_filtradas = deduplicar_batch(noticias_filtradas)
+    noticias_filtradas.sort(key=lambda x: x.get('relevancia',0), reverse=True)
 
-        noticias = deduplicar_batch(noticias)
-        for n in noticias:
-            n['puntaje'] = n.get('puntaje',0) + bonus_frescura(n.get('fecha'))
-        noticias.sort(key=lambda x: (x.get('puntaje',0), x.get('fecha','')), reverse=True)
-        log(f"📰 Candidatas ordenadas: {len(noticias)}",'info')
+    candidatas_por_pais = {pais: [] for pais in paises_ciclo}
+    asignadas = set()
 
-        candidatas_directas   = []
-        candidatas_evergreen  = []
-        intentos = 0
+    for pais in paises_ciclo:
+        for n in noticias_filtradas:
+            url = n.get('url','')
+            titulo = n.get('titulo','')
+            if url in asignadas: continue
+            if not noticia_es_de_pais(titulo, n.get('descripcion',''), pais): continue
+            dup, _ = noticia_ya_publicada(h, url, titulo, n.get('descripcion',''))
+            if dup: continue
+            candidatas_por_pais[pais].append(n)
+            asignadas.add(url)
+            if len(candidatas_por_pais[pais]) >= 3: break
 
-        for i, nt in enumerate(noticias):
-            if intentos >= 80: break
-            total_recolectadas = len(candidatas_directas) + len(candidatas_evergreen)
-            if total_recolectadas >= 8: break
-
-            url    = nt.get('url','')
-            titulo = nt.get('titulo','')
-            desc   = nt.get('descripcion','')
-            if not url or not titulo: continue
-            intentos += 1
-
-            dup, razon = noticia_ya_publicada(h, url, titulo, desc)
-            if dup:
-                log(f"   ❌ {razon}",'debug')
-                continue
-            if nt.get('puntaje',0) < 3:
-                log(f"   ❌ Puntaje bajo ({nt.get('puntaje',0)})",'debug')
-                continue
-            es_spam, kw_spam = es_contenido_spam(titulo, desc)
-            if es_spam:
-                log(f"   🚫 SPAM: '{kw_spam}'",'advertencia')
-                continue
-
-            cont_web, _ = extraer_contenido(url)
-            if cont_web and len(cont_web) >= 500: contenido_ok = cont_web
-            elif desc and len(desc) >= 400: contenido_ok = desc
-            elif cont_web and len(cont_web) >= 250: contenido_ok = cont_web + ' ' + desc if desc else cont_web
-            else:
-                log("   ❌ Contenido insuficiente",'advertencia')
-                continue
-
-            es_spam2, kw_spam2 = es_contenido_spam(titulo, contenido_ok[:3000])
-            if es_spam2:
-                log(f"   🚫 SPAM en contenido: '{kw_spam2}'",'advertencia')
-                continue
-
-            imagen_encontrada = None
-            if nt.get('imagen'): imagen_encontrada = descargar_imagen(nt['imagen'])
-            if not imagen_encontrada:
-                img_url = extraer_imagen_web(url)
-                if img_url: imagen_encontrada = descargar_imagen(img_url)
-            if not imagen_encontrada:
-                tema_fb = detectar_tema(titulo, desc)
-                imagen_encontrada = crear_imagen_titulo(titulo, tema_fb)
-            if not imagen_encontrada:
-                log("   ❌ Sin imagen",'advertencia')
-                continue
-
-            if es_candidata_evergreen(nt) and borradores_hoy < MAX_POSTS_DIA_BORRADORES and len(candidatas_evergreen) < MAX_POSTS_DIA_BORRADORES:
-                candidatas_evergreen.append((nt, contenido_ok, imagen_encontrada))
-                log(f"   ✅ Candidata EVERGREEN (borrador): {titulo[:55]}",'info')
-            elif directos_hoy + len(candidatas_directas) < MAX_POSTS_DIA_DIRECTOS:
-                candidatas_directas.append((nt, contenido_ok, imagen_encontrada))
-                log(f"   ✅ Candidata DIRECTA: {titulo[:55]}",'info')
-            else:
-                candidatas_directas.append((nt, contenido_ok, imagen_encontrada))
-
-        categorias_hoy = categorias_usadas_hoy()
-        log(f"🔄 Categorías usadas hoy: {sorted(categorias_hoy) if categorias_hoy else '(ninguna)'}",'info')
-
-        def _slug_estimado(item):
-            nt_x, cont_x, _ = item
-            tema_x = detectar_tema(nt_x.get('titulo',''), nt_x.get('descripcion',''))
-            tema_x = ajustar_categoria_por_cuota(tema_x)
-            return resolver_categoria_wp(tema_x, nt_x.get('titulo',''), cont_x[:1500])
-
-        for lista in [candidatas_directas, candidatas_evergreen]:
-            lista.sort(key=lambda item: (0 if _slug_estimado(item) not in categorias_hoy else 1, -item[0].get('puntaje',0)))
-
-        log(f"\n🚀 Publicando {len(candidatas_directas)} candidatas directas (visibles al público)...",'info')
-        for idx, (nt_pub, cont_pub, img_pub) in enumerate(candidatas_directas):
-            if directos_hoy >= MAX_POSTS_DIA_DIRECTOS:
-                log(f"✅ Cupo directas completado ({MAX_POSTS_DIA_DIRECTOS}/{MAX_POSTS_DIA_DIRECTOS})",'info')
+    for pais in paises_ciclo:
+        if not candidatas_por_pais[pais]:
+            log(f"Sin candidatas para '{pais}' — usando pool general",'advertencia')
+            for n in noticias_filtradas:
+                url = n.get('url','')
+                if url in asignadas: continue
+                dup, _ = noticia_ya_publicada(h, url, n.get('titulo',''), n.get('descripcion',''))
+                if dup: continue
+                candidatas_por_pais[pais].append(n)
+                asignadas.add(url)
                 break
-            log(f"\n📝 DIRECTA ({idx+1}): {nt_pub['titulo'][:70]}")
-            tema_s = detectar_tema(nt_pub['titulo'], nt_pub.get('descripcion',''))
-            tema_s = ajustar_categoria_por_cuota(tema_s)
-            url_wp, cat_final = publicar_en_wordpress(
-                titulo=nt_pub['titulo'], contenido=cont_pub, tema=tema_s,
-                imagen_path=img_pub, fuente_url=nt_pub['url'],
-                fecha_fuente=nt_pub.get('fecha'), fuente_noticia=nt_pub.get('fuente',''),
-                es_borrador=False
-            )
-            try:
-                if img_pub and os.path.exists(img_pub): os.remove(img_pub)
-            except: pass
-            if url_wp:
-                exito_wp = True
-                directos_hoy += 1
-                registrar_cuota(cat_final or tema_s, es_borrador=False)
-                guardar_estado_wp()
-                h['estadisticas']['total_wp'] = h['estadisticas'].get('total_wp',0) + 1
-                desc_full = (nt_pub.get('descripcion','') + ' ' + cont_pub[:400]).strip()
-                h = guardar_en_historial(h, nt_pub['url'], nt_pub['titulo'], desc_full)
-            else:
-                log("   ⚠️ No se pudo publicar — siguiente candidata",'advertencia')
 
-        log(f"\n📝 Guardando {len(candidatas_evergreen)} candidatas evergreen como borradores...",'info')
-        for idx, (nt_pub, cont_pub, img_pub) in enumerate(candidatas_evergreen):
-            cuotas_recheck = cargar_cuotas_hoy()
-            if cuotas_recheck.get('borradores',0) >= MAX_POSTS_DIA_BORRADORES:
-                log(f"✅ Cupo borradores completado ({MAX_POSTS_DIA_BORRADORES}/{MAX_POSTS_DIA_BORRADORES})",'info')
-                break
-            log(f"\n📝 BORRADOR EVERGREEN ({idx+1}): {nt_pub['titulo'][:70]}")
-            tema_s = detectar_tema(nt_pub['titulo'], nt_pub.get('descripcion',''))
-            tema_s = ajustar_categoria_por_cuota(tema_s)
-            url_wp, cat_final = publicar_en_wordpress(
-                titulo=nt_pub['titulo'], contenido=cont_pub, tema=tema_s,
-                imagen_path=img_pub, fuente_url=nt_pub['url'],
-                fecha_fuente=nt_pub.get('fecha'), fuente_noticia=nt_pub.get('fuente',''),
-                es_borrador=True
-            )
-            try:
-                if img_pub and os.path.exists(img_pub): os.remove(img_pub)
-            except: pass
-            if url_wp:
-                exito_wp = True
-                registrar_cuota(cat_final or tema_s, es_borrador=True)
-                guardar_estado_wp()
-                h['estadisticas']['total_borradores'] = h['estadisticas'].get('total_borradores',0) + 1
-                desc_full = (nt_pub.get('descripcion','') + ' ' + cont_pub[:400]).strip()
-                h = guardar_en_historial(h, nt_pub['url'], nt_pub['titulo'], desc_full)
-            else:
-                log("   ⚠️ No se pudo guardar borrador — siguiente",'advertencia')
+    borradores_publicados = 0
+    paises_publicados = []
 
-        for lista in [candidatas_directas, candidatas_evergreen]:
-            for _, _, img_s in lista:
-                try:
-                    if img_s and os.path.exists(img_s): os.remove(img_s)
-                except: pass
+    for pais in paises_ciclo:
+        if borradores_publicados >= MAX_BORRADORES_DIA: break
+        candidatas = candidatas_por_pais.get(pais, [])
+        if not candidatas: log(f"Sin candidata para '{pais}'",'advertencia'); continue
 
-    cuotas_fin = cargar_cuotas_hoy()
+        nt = candidatas[0]
+        titulo = nt.get('titulo','')
+        url    = nt.get('url','')
+        desc   = nt.get('descripcion','')
+        tema   = nt.get('tema','general')
+
+        log(f"\n[{pais.upper()}] {titulo[:70]}",'info')
+        log(f"  Tema: {tema} | Relevancia: {nt.get('relevancia',0)}",'info')
+
+        cont_web = extraer_contenido(url)
+        if cont_web and len(cont_web) >= 500: contenido_ok = cont_web
+        elif desc and len(desc) >= 300: contenido_ok = desc
+        elif cont_web and len(cont_web) >= 200: contenido_ok = (cont_web + ' ' + (desc or ''))
+        else: log("  Contenido insuficiente",'advertencia'); continue
+
+        imagen = None
+        if nt.get('imagen'): imagen = descargar_imagen(nt['imagen'])
+        if not imagen:
+            img_url = extraer_imagen_web(url)
+            if img_url: imagen = descargar_imagen(img_url)
+        if not imagen: imagen = crear_imagen_titulo(titulo, tema)
+        if not imagen: log("  Sin imagen",'advertencia'); continue
+
+        url_wp, slug_cat, desc_pinterest = publicar_borrador_wordpress(
+            titulo=titulo, contenido=contenido_ok, categoria=tema,
+            imagen_path=imagen, fuente_url=url, pais_foco=pais)
+
+        try:
+            if imagen and os.path.exists(imagen): os.remove(imagen)
+        except: pass
+
+        if url_wp:
+            borradores_publicados += 1
+            paises_publicados.append(pais)
+
+            if PINTEREST_TOKEN:
+                img_pin = crear_imagen_titulo(titulo, tema)
+                if img_pin:
+                    exito_pin = publicar_en_pinterest(
+                        titulo=titulo, url_articulo=url_wp, imagen_path=img_pin,
+                        categoria=tema, descripcion_pinterest=desc_pinterest, meta_desc=desc)
+                    try:
+                        if img_pin and os.path.exists(img_pin): os.remove(img_pin)
+                    except: pass
+                    if exito_pin:
+                        h['estadisticas']['total_pinterest'] = h['estadisticas'].get('total_pinterest',0) + 1
+
+            registrar_borrador()
+            h['estadisticas']['total_borradores'] = h['estadisticas'].get('total_borradores',0) + 1
+            h = guardar_en_historial(h, url, titulo, (desc+' '+contenido_ok[:400]).strip())
+        else:
+            log(f"  No se pudo publicar para '{pais}'",'advertencia')
+
+    if paises_publicados:
+        registrar_paises_usados(rotacion, paises_publicados)
+
+    datos_cuotas = cargar_json(CUOTAS_PATH, {})
     stats = h.get('estadisticas',{})
-    log(f"\n{'='*50}",'info')
-    log(f"✅ RESUMEN {VERSION_BOT}:",'exito')
-    log(f"   Directas hoy:   {cuotas_fin.get('directos',0)}/{MAX_POSTS_DIA_DIRECTOS}",'info')
-    log(f"   Borradores hoy: {cuotas_fin.get('borradores',0)}/{MAX_POSTS_DIA_BORRADORES}",'info')
-    log(f"   Total WP acumulado:        {stats.get('total_wp',0)}",'info')
-    log(f"   Total borradores acumulados: {stats.get('total_borradores',0)}",'info')
-    cats_hoy = cuotas_fin.get('conteo',{})
-    if cats_hoy:
-        log(f"   Categorías: {', '.join(f'{c}:{n}' for c,n in cats_hoy.items())}",'info')
-    log(f"   Esta ejecución → WP={'✅' if exito_wp else '❌'}",'info')
-    if exito_wp:
-        log("💡 Hacer git push de los JSON de estado",'advertencia')
+    print(f"\n{'='*50}")
+    log(f"RESUMEN {VERSION_BOT}:",'exito')
+    log(f"  Borradores hoy:    {datos_cuotas.get('borradores',0)}/{MAX_BORRADORES_DIA}",'info')
+    log(f"  Paises publicados: {', '.join(paises_publicados) if paises_publicados else 'ninguno'}",'info')
+    log(f"  Total borradores:  {stats.get('total_borradores',0)}",'info')
+    log(f"  Total Pinterest:   {stats.get('total_pinterest',0)}",'info')
+    log(f"  Ciclo rotacion:    #{rotacion.get('ciclo',0)}",'info')
+
+    if borradores_publicados > 0:
+        log("Hacer git push de los JSON de estado",'advertencia')
         return True
     return False
 
@@ -2765,7 +1586,7 @@ if __name__ == "__main__":
         resultado = main()
         exit(0)
     except Exception as e:
-        log(f"Error crítico: {e}",'error')
+        log(f"Error critico: {e}",'error')
         import traceback
         traceback.print_exc()
         exit(1)

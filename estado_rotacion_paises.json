@@ -1,0 +1,14 @@
+{
+  "fecha": "2026-08-27",
+  "ciclo": 1,
+  "paises_usados_hoy": [
+    "argentina",
+    "chile",
+    "estados_unidos"
+  ],
+  "conteo_por_pais": {
+    "argentina": 1,
+    "chile": 1,
+    "estados_unidos": 1
+  }
+}

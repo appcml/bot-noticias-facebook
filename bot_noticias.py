@@ -1194,25 +1194,15 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_path, fuent
     if not resultado_ia: return None, None
     resultado_ia = postprocesar_resultado(resultado_ia)
 
+    # BORRADORES: sin validacion estricta — el editor los revisa manualmente
+    # Solo log informativo de lo que generó la IA
     keyword = resultado_ia.get('keyword_principal','')
-    es_valido, problemas = validar_calidad_articulo(
-        resultado_ia.get('contenido_html',''), resultado_ia.get('meta_descripcion',''),
-        resultado_ia.get('titulo_seo',''), resultado_ia.get('categoria',''), keyword)
-
-    if not es_valido:
-        if not REINTENTAR_CALIDAD_IA: return None, None
-        log(f"Reintentando ({len(problemas)} problemas)",'advertencia')
-        for p in problemas: log(f"   - {p}",'advertencia')
-        resultado_reintento = reescribir_noticia_v20(titulo, contenido, categoria, pais_foco, feedback_correccion=problemas)
-        if resultado_reintento:
-            resultado_reintento = postprocesar_resultado(resultado_reintento)
-            es_valido_2, _ = validar_calidad_articulo(
-                resultado_reintento.get('contenido_html',''), resultado_reintento.get('meta_descripcion',''),
-                resultado_reintento.get('titulo_seo',''), resultado_reintento.get('categoria',''),
-                resultado_reintento.get('keyword_principal',''))
-            if es_valido_2: resultado_ia = resultado_reintento
-            else: return None, None
-        else: return None, None
+    texto_check = _texto_plano(resultado_ia.get('contenido_html',''))
+    n_palabras = len(texto_check.split())
+    log(f"Borrador generado: {n_palabras} palabras | keyword: '{keyword}'",'info')
+    if n_palabras < 200:
+        log("Contenido demasiado corto (<200 palabras) — descartando",'advertencia')
+        return None, None
 
     titulo_final  = resultado_ia.get('titulo_seo', titulo).strip()
     if len(titulo_final) > 55:
@@ -1520,9 +1510,10 @@ def main():
         log(f"  Tema: {tema} | Relevancia: {nt.get('relevancia',0)}",'info')
 
         cont_web = extraer_contenido(url)
-        if cont_web and len(cont_web) >= 500: contenido_ok = cont_web
-        elif desc and len(desc) >= 300: contenido_ok = desc
-        elif cont_web and len(cont_web) >= 200: contenido_ok = (cont_web + ' ' + (desc or ''))
+        if cont_web and len(cont_web) >= 200: contenido_ok = cont_web
+        elif desc and len(desc) >= 150: contenido_ok = desc
+        elif cont_web and len(cont_web) >= 100: contenido_ok = (cont_web + ' ' + (desc or ''))
+        elif desc: contenido_ok = desc
         else: log("  Contenido insuficiente",'advertencia'); continue
 
         imagen = None

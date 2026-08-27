@@ -7,7 +7,7 @@ CAMBIOS VS V19:
   - Enfoque 100% EVERGREEN
   - Rotacion equitativa por paises
   - Prioridad por calidad e interes del tema
-  - Pinterest implementado (Opcion D)
+  - Pinterest manejado por bot_pinterest_diferido.py (sin duplicar logica)
   - Categorias expandidas: misterios, historia, geopolitica, innovacion
 """
 VERSION_BOT = "V20.0.0"
@@ -1307,10 +1307,10 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_path, fuent
                 r_rm = requests.post(f"{WP_URL}/wp-json/rankmath/v1/updateMeta",json=rm_payload,auth=(WP_USER,WP_APP_PASSWORD),timeout=10)
                 if r_rm.status_code in (200,201): log(f"Rank Math SEO guardado",'exito')
             except: pass
-            return url_articulo, slug_cat, desc_pinterest
+            return url_articulo, slug_cat
         else: log(f"Error WP: {r.get('message','desconocido')}",'error')
     except Exception as e: log(f"Excepcion WP: {e}",'error')
-    return None, None, None
+    return None, None
 
 # ══════════════════════════════════════════════════════════
 # FUENTES
@@ -1533,7 +1533,7 @@ def main():
         if not imagen: imagen = crear_imagen_titulo(titulo, tema)
         if not imagen: log("  Sin imagen",'advertencia'); continue
 
-        url_wp, slug_cat, desc_pinterest = publicar_borrador_wordpress(
+        url_wp, slug_cat = publicar_borrador_wordpress(
             titulo=titulo, contenido=contenido_ok, categoria=tema,
             imagen_path=imagen, fuente_url=url, pais_foco=pais)
 
@@ -1545,18 +1545,7 @@ def main():
             borradores_publicados += 1
             paises_publicados.append(pais)
 
-            if PINTEREST_TOKEN:
-                img_pin = crear_imagen_titulo(titulo, tema)
-                if img_pin:
-                    exito_pin = publicar_en_pinterest(
-                        titulo=titulo, url_articulo=url_wp, imagen_path=img_pin,
-                        categoria=tema, descripcion_pinterest=desc_pinterest, meta_desc=desc)
-                    try:
-                        if img_pin and os.path.exists(img_pin): os.remove(img_pin)
-                    except: pass
-                    if exito_pin:
-                        h['estadisticas']['total_pinterest'] = h['estadisticas'].get('total_pinterest',0) + 1
-
+            # Pinterest lo maneja bot_pinterest_diferido.py — no se publica aqui
             registrar_borrador()
             h['estadisticas']['total_borradores'] = h['estadisticas'].get('total_borradores',0) + 1
             h = guardar_en_historial(h, url, titulo, (desc+' '+contenido_ok[:400]).strip())

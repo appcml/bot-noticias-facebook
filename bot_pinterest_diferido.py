@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-bot_pinterest_diferido.py — Verdad Hoy V2.0
+bot_pinterest_diferido.py — Verdad Hoy V2.1
 ────────────────────────────────────────────────────────────────────────────
 Bot INDEPENDIENTE que revisa publicaciones activas en verdadhoy.com
 y publica Pines en Pinterest con retraso configurable (para que las
 ediciones manuales estén listas antes de difundir).
+
+MEJORAS V2.1:
+  - Verificación de token Pinterest al INICIO — aborta si es inválido (401)
+  - Error 401 NO consume intentos fallidos del post (el post no tiene la culpa)
+  - Error 401 aborta el loop completo inmediatamente (no sigue intentando)
+  - Log claro con instrucciones para renovar el token
+  - Separación de errores de autenticación vs errores reales del post
 
 MEJORAS V2.0 vs V1:
   - Descripciones enriquecidas con hashtags por categoría evergreen
@@ -37,21 +44,14 @@ FORZAR_POST_ID         = os.getenv('FORZAR_POST_ID', '').strip()
 UTM_CAMPAIGN           = 'pinterest_diferido'
 
 # ── MAPA CATEGORÍA WP → TABLERO PINTEREST ──────────────────
-# Usa los slugs exactos de tus tableros Pinterest
 CATEGORIA_A_TABLERO = {
-    # Latinoamérica
     'chile':           'latinoamerica',
     'latinoamerica':   'latinoamerica',
-    # Política
     'politica':        'politica',
-    # Economía
     'economia':        'economia',
-    # Tecnología e innovación
     'tecnologia':      'tecnologia',
     'innovacion':      'tecnologia',
-    # Deportes
     'deportes':        'deportes',
-    # Todo lo demás → Noticias del Mundo
     'europa':          'noticias-del-mundo',
     'asia':            'noticias-del-mundo',
     'africa':          'noticias-del-mundo',
@@ -102,6 +102,43 @@ def log(msg, nivel='info'):
     print(f"[{ts}] {iconos.get(nivel, 'ℹ️')} {msg}", flush=True)
 
 
+# ── VERIFICACIÓN DE TOKEN ────────────────────────────────────
+def verificar_token_pinterest():
+    """
+    Llama a /v5/user_account para verificar si el token es válido.
+    Retorna True si OK, False si 401/403, lanza excepción en error de red.
+    """
+    if not PINTEREST_TOKEN:
+        log("PINTEREST_TOKEN no está configurado", 'error')
+        log("→ Configura la variable de entorno PINTEREST_TOKEN con tu token OAuth de Pinterest", 'error')
+        return False
+
+    try:
+        resp = requests.get(
+            'https://api.pinterest.com/v5/user_account',
+            headers={'Authorization': f'Bearer {PINTEREST_TOKEN}'},
+            timeout=15
+        )
+    except Exception as e:
+        log(f"No se pudo conectar con Pinterest: {e}", 'error')
+        return False
+
+    if resp.status_code == 200:
+        username = resp.json().get('username', '?')
+        log(f"Token Pinterest válido — cuenta: @{username}", 'exito')
+        return True
+
+    if resp.status_code in (401, 403):
+        log("Token Pinterest INVÁLIDO o EXPIRADO (401/403)", 'error')
+        log("→ Ve a https://developers.pinterest.com/ y genera un nuevo token OAuth", 'error')
+        log("→ Actualiza la variable de entorno PINTEREST_TOKEN y vuelve a ejecutar", 'error')
+        log("→ Los posts pendientes NO fueron marcados como fallidos — se reintentarán cuando el token sea válido", 'info')
+        return False
+
+    log(f"Respuesta inesperada verificando token: {resp.status_code}", 'advertencia')
+    return False
+
+
 # ── ESTADO ──────────────────────────────────────────────────
 def cargar_estado():
     if os.path.exists(ESTADO_PATH):
@@ -122,10 +159,13 @@ def limpiar_fallidos_antiguos(fallidos, dias=30):
     a_borrar = []
     for post_id, datos in fallidos.items():
         try:
-            fecha = datetime.fromisoformat(datos.get('ultima_fecha','2000-01-01'))
-            if fecha.tzinfo is None: fecha = fecha.replace(tzinfo=timezone.utc)
-            if fecha < limite: a_borrar.append(post_id)
-        except: a_borrar.append(post_id)
+            fecha = datetime.fromisoformat(datos.get('ultima_fecha', '2000-01-01'))
+            if fecha.tzinfo is None:
+                fecha = fecha.replace(tzinfo=timezone.utc)
+            if fecha < limite:
+                a_borrar.append(post_id)
+        except:
+            a_borrar.append(post_id)
     for post_id in a_borrar:
         del fallidos[post_id]
     if a_borrar:
@@ -137,17 +177,15 @@ def limpiar_html(texto_html):
     if not texto_html: return ''
     texto = re.sub(r'<[^>]+>', ' ', texto_html)
     texto = html.unescape(texto)
-    # Eliminar sufijo "| Verdad Hoy" del título
     texto = re.sub(r'\s*\|\s*Verdad Hoy\s*$', '', texto, flags=re.IGNORECASE)
     return re.sub(r'\s+', ' ', texto).strip()
 
 def construir_descripcion(excerpt, titulo, categoria_slug):
     hashtags = HASHTAGS_POR_CATEGORIA.get(categoria_slug, HASHTAGS_DEFECTO)
     base = excerpt if excerpt and len(excerpt) > 30 else titulo
-    # Espacio disponible: 490 - len(hashtags) - 2 (separador)
     espacio_base = 490 - len(hashtags) - 2
     if len(base) > espacio_base:
-        base = base[:espacio_base-3].rsplit(' ', 1)[0] + '...'
+        base = base[:espacio_base - 3].rsplit(' ', 1)[0] + '...'
     return f"{base} {hashtags}"
 
 
@@ -156,8 +194,10 @@ def obtener_posts_candidatos(ahora):
     if FORZAR_POST_ID:
         log(f"FORZAR_POST_ID={FORZAR_POST_ID} — obteniendo post específico", 'info')
         try:
-            resp = requests.get(f"{WP_URL}/wp-json/wp/v2/posts/{FORZAR_POST_ID}",
-                                params={'_embed': 1}, timeout=20)
+            resp = requests.get(
+                f"{WP_URL}/wp-json/wp/v2/posts/{FORZAR_POST_ID}",
+                params={'_embed': 1}, timeout=20
+            )
             if resp.status_code == 200:
                 return [resp.json()]
             log(f"Post {FORZAR_POST_ID} no encontrado: {resp.status_code}", 'error')
@@ -180,10 +220,12 @@ def obtener_posts_candidatos(ahora):
         try:
             resp = requests.get(f"{WP_URL}/wp-json/wp/v2/posts", params=params, timeout=20)
         except Exception as e:
-            log(f"Error consultando WP página {page}: {e}", 'error'); break
+            log(f"Error consultando WP página {page}: {e}", 'error')
+            break
         if resp.status_code == 400: break
         if resp.status_code != 200:
-            log(f"WP respondió {resp.status_code}", 'advertencia'); break
+            log(f"WP respondió {resp.status_code}", 'advertencia')
+            break
         posts = resp.json()
         if not posts: break
         candidatos.extend(posts)
@@ -197,8 +239,10 @@ def extraer_imagen_destacada(post):
         media_list = post.get('_embedded', {}).get('wp:featuredmedia', [])
         if media_list and isinstance(media_list, list):
             media = media_list[0]
-            if media and media.get('source_url'): return media['source_url']
-    except: pass
+            if media and media.get('source_url'):
+                return media['source_url']
+    except:
+        pass
     return None
 
 def extraer_categoria_slug(post):
@@ -207,8 +251,10 @@ def extraer_categoria_slug(post):
             for termino in grupo:
                 if termino.get('taxonomy') == 'category':
                     slug = (termino.get('slug') or '').lower()
-                    if slug and slug != 'uncategorized': return slug
-    except: pass
+                    if slug and slug != 'uncategorized':
+                        return slug
+    except:
+        pass
     return ''
 
 
@@ -218,20 +264,25 @@ def obtener_tableros_pinterest():
     if _cache_tableros: return _cache_tableros
     if not PINTEREST_TOKEN: return {}
     try:
-        resp = requests.get('https://api.pinterest.com/v5/boards',
-                            headers={'Authorization': f'Bearer {PINTEREST_TOKEN}'},
-                            params={'page_size': 50}, timeout=15)
+        resp = requests.get(
+            'https://api.pinterest.com/v5/boards',
+            headers={'Authorization': f'Bearer {PINTEREST_TOKEN}'},
+            params={'page_size': 50}, timeout=15
+        )
         if resp.status_code == 200:
             for board in resp.json().get('items', []):
-                nombre = board['name']
+                nombre   = board['name']
                 board_id = board['id']
                 _cache_tableros[nombre] = board_id
-                # Guardar también por slug normalizado
                 nfkd = unicodedata.normalize('NFKD', nombre.lower())
                 slug = ''.join(c for c in nfkd if not unicodedata.combining(c))
                 slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
                 _cache_tableros[slug] = board_id
             log(f"Tableros Pinterest cargados: {[k for k in _cache_tableros if not k.lstrip('0123456789').startswith('')]}")
+        elif resp.status_code in (401, 403):
+            # Este caso ya fue capturado en verificar_token_pinterest(),
+            # pero por si acaso se llama directamente:
+            log(f"Error tableros Pinterest: {resp.status_code} (token inválido)", 'advertencia')
         else:
             log(f"Error tableros Pinterest: {resp.status_code}", 'advertencia')
     except Exception as e:
@@ -241,13 +292,12 @@ def obtener_tableros_pinterest():
 def obtener_board_id(categoria_slug):
     tableros = obtener_tableros_pinterest()
     slug_tablero = CATEGORIA_A_TABLERO.get(categoria_slug, TABLERO_DEFECTO)
-    # Intentar por slug primero, luego por nombre directo
     board_id = tableros.get(slug_tablero)
     if not board_id:
-        # Buscar coincidencia parcial
         for key, bid in tableros.items():
             if slug_tablero in key.lower() or key.lower() in slug_tablero:
-                board_id = bid; break
+                board_id = bid
+                break
     if not board_id and tableros:
         board_id = list(tableros.values())[0]
         log(f"Tablero '{slug_tablero}' no encontrado — usando primero disponible", 'advertencia')
@@ -256,7 +306,7 @@ def obtener_board_id(categoria_slug):
 def publicar_pin(titulo, descripcion, url_articulo, imagen_url, categoria_slug):
     board_id, nombre_tablero = obtener_board_id(categoria_slug)
     if not board_id:
-        return False, "no se encontró ningún tablero en Pinterest"
+        return False, "no se encontró ningún tablero en Pinterest", False
 
     url_utm = f"{url_articulo}?utm_source=pinterest&utm_medium=social&utm_campaign={UTM_CAMPAIGN}"
 
@@ -269,30 +319,38 @@ def publicar_pin(titulo, descripcion, url_articulo, imagen_url, categoria_slug):
     }
 
     try:
-        resp = requests.post('https://api.pinterest.com/v5/pins',
-                             headers={'Authorization': f'Bearer {PINTEREST_TOKEN}',
-                                      'Content-Type': 'application/json'},
-                             json=payload, timeout=20)
+        resp = requests.post(
+            'https://api.pinterest.com/v5/pins',
+            headers={
+                'Authorization': f'Bearer {PINTEREST_TOKEN}',
+                'Content-Type':  'application/json'
+            },
+            json=payload, timeout=20
+        )
     except Exception as e:
-        return False, f"excepción de red: {e}"
+        return False, f"excepción de red: {e}", False
 
     if resp.status_code in (200, 201):
         pin_id = resp.json().get('id', '')
-        return True, f"pin_id={pin_id} tablero='{nombre_tablero}'"
-    return False, f"{resp.status_code} — {resp.text[:200]}"
+        return True, f"pin_id={pin_id} tablero='{nombre_tablero}'", False
+
+    # ── Detectar 401/403: error de autenticación, NO del post ──
+    es_error_auth = resp.status_code in (401, 403)
+    return False, f"{resp.status_code} — {resp.text[:200]}", es_error_auth
 
 
 # ── MAIN ─────────────────────────────────────────────────────
 def main():
     log("=" * 60)
-    log(f"BOT PINTEREST DIFERIDO V2.0 — Verdad Hoy")
+    log("BOT PINTEREST DIFERIDO V2.1 — Verdad Hoy")
     log(f"Retraso: {'SIN RETRASO (FORZAR)' if FORZAR else f'{RETRASO_HORAS}h'}")
     log(f"Ventana: últimos {VENTANA_MAX_DIAS} días")
     log(f"Max pines por corrida: {MAX_PINS_POR_EJECUCION}")
     log("=" * 60)
 
-    if not PINTEREST_TOKEN:
-        log("Falta PINTEREST_TOKEN", 'error')
+    # ── 1. Verificar token ANTES de hacer cualquier otra cosa ──
+    if not verificar_token_pinterest():
+        log("Abortando ejecución — corrige el token y vuelve a correr", 'error')
         sys.exit(0)
 
     estado = cargar_estado()
@@ -300,14 +358,15 @@ def main():
     fallidos   = estado.setdefault('fallidos', {})
     limpiar_fallidos_antiguos(fallidos)
 
-    ahora = datetime.now(timezone.utc)
+    ahora      = datetime.now(timezone.utc)
     candidatos = obtener_posts_candidatos(ahora)
     log(f"Posts en ventana de tiempo: {len(candidatos)}")
 
     pendientes = []
     for post in candidatos:
         post_id = str(post.get('id'))
-        if post_id in publicados: continue
+        if post_id in publicados:
+            continue
         intentos_previos = fallidos.get(post_id, {}).get('intentos', 0)
         if intentos_previos >= MAX_INTENTOS_FALLIDOS:
             log(f"Post {post_id} descartado ({intentos_previos} intentos fallidos)", 'advertencia')
@@ -344,7 +403,7 @@ def main():
         descripcion = construir_descripcion(excerpt, titulo, categoria)
         log(f"Pineando post {post_id} [{categoria}]: '{titulo[:55]}'")
 
-        ok, resultado = publicar_pin(titulo, descripcion, url_post, imagen, categoria)
+        ok, resultado, es_error_auth = publicar_pin(titulo, descripcion, url_post, imagen, categoria)
 
         if ok:
             log(f"Pin publicado — {resultado}", 'exito')
@@ -358,7 +417,18 @@ def main():
             fallidos.pop(post_id, None)
             publicados_corrida += 1
             time.sleep(TIEMPO_ENTRE_PINS_SEG)
+
+        elif es_error_auth:
+            # ── Token inválido detectado durante el loop ──
+            # NO marcamos el post como fallido (no es culpa del post)
+            log(f"Error 401/403 al pinear post {post_id} — token inválido", 'error')
+            log("Abortando loop — los posts pendientes NO fueron penalizados", 'error')
+            log("→ Renueva PINTEREST_TOKEN y vuelve a ejecutar", 'error')
+            guardar_estado(estado)  # guardar lo que se publicó hasta ahora
+            sys.exit(0)
+
         else:
+            # Error real del post (imagen inaccesible, contenido rechazado, etc.)
             log(f"Error pineando post {post_id}: {resultado}", 'error')
             reg = fallidos.setdefault(post_id, {'intentos': 0})
             reg['intentos'] += 1
@@ -368,7 +438,10 @@ def main():
     guardar_estado(estado)
 
     log("=" * 60)
-    log(f"Resumen: {publicados_corrida} pin(es) publicados en esta corrida", 'exito' if publicados_corrida else 'info')
+    log(
+        f"Resumen: {publicados_corrida} pin(es) publicados en esta corrida",
+        'exito' if publicados_corrida else 'info'
+    )
     log(f"Total histórico: {len(publicados)} | En reintento: {len(fallidos)}")
     log("=" * 60)
 

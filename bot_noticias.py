@@ -69,6 +69,7 @@ TABLEROS_PINTEREST = {
     'historia':       'noticias-del-mundo',
     'misterios':      'noticias-del-mundo',
     'geopolitica':    'noticias-del-mundo',
+    'historia':       'noticias-del-mundo',
     'economia':       'economia',
     'politica':       'politica',
     'medio_ambiente': 'noticias-del-mundo',
@@ -368,8 +369,12 @@ def detectar_tema(titulo, descripcion=""):
                                "enigma historico","historia antigua","tumba","piramide","ruinas antiguas","fosil","mayas","incas","aztecas"]): return 'misterios'
     if any(p in txt for p in ["historia de","siglo xix","siglo xx","segunda guerra","primera guerra","revolucion",
                                "colonia","independencia","dictadura","operacion condor","guerra fria","archivo historico"]): return 'historia'
-    if any(p in txt for p in ["geopolitica","brics","otan","g7","g20","acuerdo comercial","tratado internacional",
-                               "diplomacia","relaciones internacionales","potencia mundial","hegemonia","orden mundial"]): return 'geopolitica'
+    if any(p in txt for p in ["geopolitica","brics","otan","nato","g7","g20","acuerdo comercial","tratado internacional",
+                               "diplomacia","relaciones internacionales","potencia mundial","hegemonia","orden mundial",
+                               "guerra fria","conflicto historico","segunda guerra mundial","primera guerra mundial",
+                               "guerra civil","revolucion","independencia","colonialismo","imperialismo",
+                               "ucrania rusia historia","israel palestina historia","tension nuclear",
+                               "por que existe","origen del conflicto","historia del conflicto"]): return 'geopolitica'
     if any(p in txt for p in ["innovacion","startup","emprendimiento","fintech","biotech","nanotecnologia",
                                "biotecnologia","fusion nuclear","computacion cuantica","quantum"]): return 'innovacion'
     if any(p in txt for p in ["inteligencia artificial","chatgpt","openai","gemini","robot","ciberataque","hackeo",
@@ -585,17 +590,37 @@ def reescribir_noticia_v20(titulo, contenido, categoria='general', pais_foco='gl
 
 MISION: contenido EVERGREEN. Util hoy y en 6 meses. NO es noticia del dia. ES articulo de fondo.
 
-TIPOS VALIDOS:
-- "Por que [tema] importa para America Latina"
-- "La historia detras de [tema]: lo que nadie te conto"
-- "[N] datos sorprendentes sobre [tema]"
-- "Que es [tema] y por que deberias prestarle atencion"
+NICHOS PRIORITARIOS (en este orden de importancia):
+1. SALUD Y MEDICINA: sintomas, causas, tratamientos, prevencion, avances medicos
+2. IA Y TECNOLOGIA EXPLICADA: como funciona, impacto real, que cambia en la vida diaria
+3. HISTORIA LATINOAMERICANA Y MUNDIAL: civilizaciones, eventos historicos, personajes olvidados
+4. MISTERIOS Y CIENCIA: fenomenos inexplicados, descubrimientos arqueologicos, enigmas
+5. ECONOMIA PERSONAL: inflacion explicada, finanzas, criptomonedas, como protegerse
+6. POLITICA Y GEOPOLITICA ESTRUCTURAL: por que existen los conflictos, historia detras de las guerras,
+   como funcionan los sistemas de poder, que es la OTAN/BRICS/ONU y por que importa a LATAM.
+   IMPORTANTE: NO cubrir la noticia del dia de un conflicto. SI cubrir el contexto historico
+   y geopolitico que lo explica. Ejemplo correcto: "Por que Rusia y Ucrania llevan siglos en conflicto"
+   Ejemplo incorrecto: "Rusia bombardeo Kiev esta semana".
 
-EXTENSION MINIMA: 750 palabras. Incluye SIEMPRE:
-- Antecedentes historicos o cientificos
+FORMATOS QUE FUNCIONAN MEJOR:
+- "Que es [tema] y como te afecta en [pais/region]"
+- "Por que [fenomeno] esta creciendo en America Latina"
+- "[N] cosas que no sabias sobre [tema]"
+- "La historia real de [evento/civilizacion]: lo que no te contaron"
+- "Como funciona [tecnologia/enfermedad]: la guia completa"
+- "Por que [problema economico] ocurre y que puedes hacer"
+
+REGLA CLAVE — IGNORAR EL ANGULO NOTICIOSO:
+Si la fuente es una noticia del dia, IGNORA la coyuntura y usa el TEMA SUBYACENTE.
+Ejemplo: "EEUU pausa visas para inmigrantes" → escribir sobre "Como funciona el sistema de visas de EEUU para latinoamericanos"
+Ejemplo: "Sube el dolar en Argentina" → escribir sobre "Por que sube el dolar y como proteger tus ahorros en America Latina"
+Ejemplo: "Nuevo tratamiento contra cancer" → escribir sobre "Los avances mas prometedores contra el cancer en 2026"
+
+EXTENSION MINIMA: 700 palabras. Incluye SIEMPRE:
+- Explicacion de fondo (no solo la noticia)
 - Al menos 3 cifras o datos verificables
-- Impacto en America Latina
-- Proyeccion a futuro
+- Angulo especifico para America Latina
+- Seccion de que esperar o que hacer al respecto
 
 FUENTE/TEMA BASE:
 Titulo: {titulo}
@@ -1072,6 +1097,127 @@ def extraer_imagen_web(url):
         return None
     except: return None
 
+def buscar_imagen_secundaria(titulo, categoria, keyword):
+    """
+    Busca una segunda imagen relacionada al tema via DuckDuckGo Images API
+    (sin autenticacion). Si no encuentra, retorna None y el bot
+    sugiere terminos de busqueda para agregar manualmente.
+    """
+    # Construir query de busqueda especifica al tema
+    query_por_cat = {
+        'salud':         f"{keyword} salud medicina ilustracion",
+        'ciencia':       f"{keyword} ciencia descubrimiento",
+        'historia':      f"{keyword} historia antigua civilizacion",
+        'misterios':     f"{keyword} misterio arqueologia",
+        'tecnologia':    f"{keyword} tecnologia inteligencia artificial",
+        'innovacion':    f"{keyword} innovacion tecnologia futuro",
+        'economia':      f"{keyword} economia finanzas latinoamerica",
+        'geopolitica':   f"{keyword} geopolitica mapa mundo",
+        'medio_ambiente':f"{keyword} medio ambiente naturaleza",
+        'cultura':       f"{keyword} cultura latinoamerica arte",
+        'latinoamerica': f"{keyword} latinoamerica america latina",
+    }
+    query = query_por_cat.get(categoria, f"{keyword} {categoria} ilustracion")
+
+    # Intentar DuckDuckGo Image Search (endpoint publico)
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        # Primero obtener token vqd
+        resp_init = requests.get('https://duckduckgo.com/',
+                                  params={'q': query}, headers=headers, timeout=10)
+        vqd_match = re.search(r'vqd=([\d-]+)', resp_init.text)
+        if not vqd_match:
+            return None, query
+
+        vqd = vqd_match.group(1)
+        resp_img = requests.get('https://duckduckgo.com/i.js',
+                                 params={'q': query, 'vqd': vqd, 'f': ',,,,,',
+                                         'p': '1', 'v7exp': 'a'},
+                                 headers=headers, timeout=10)
+        data = resp_img.json()
+        resultados = data.get('results', [])
+
+        # Filtrar imagenes de buena calidad
+        for r in resultados[:10]:
+            img_url = r.get('image', '')
+            w = r.get('width', 0)
+            h = r.get('height', 0)
+            if not img_url: continue
+            if w < 400 or h < 300: continue
+            # Evitar logos, iconos, avatares
+            if any(b in img_url.lower() for b in ['logo','icon','avatar','thumb','favicon']): continue
+            # Intentar descargar
+            img_path = descargar_imagen(img_url)
+            if img_path:
+                log(f"Imagen secundaria encontrada: {img_url[:60]}",'info')
+                return img_path, query
+    except Exception as e:
+        log(f"DuckDuckGo imagen secundaria fallo: {e}",'debug')
+
+    return None, query
+
+
+def subir_imagen_secundaria_wp(imagen_path, titulo, keyword):
+    """Sube la imagen secundaria a WordPress y retorna el HTML del bloque."""
+    if not imagen_path or not os.path.exists(imagen_path):
+        return None, None
+    try:
+        nombre = f"verdadhoy-sec-{generar_hash(titulo+keyword)}.jpg"
+        with open(imagen_path, 'rb') as f:
+            r = requests.post(f"{WP_URL}/wp-json/wp/v2/media",
+                headers={'Content-Disposition': f'attachment; filename="{nombre}"',
+                         'Content-Type': 'image/jpeg'},
+                data=f.read(), auth=(WP_USER, WP_APP_PASSWORD), timeout=60).json()
+        if 'id' in r:
+            media_id  = r['id']
+            media_url = r.get('source_url', '')
+            alt_text  = keyword[:125]
+            try:
+                requests.post(f"{WP_URL}/wp-json/wp/v2/media/{media_id}",
+                    json={'title': alt_text, 'alt_text': alt_text,
+                          'caption': f"{titulo[:100]} — Verdad Hoy"},
+                    auth=(WP_USER, WP_APP_PASSWORD), timeout=10)
+            except: pass
+            log(f"Imagen secundaria subida WP ID: {media_id}",'info')
+            return media_id, media_url
+    except Exception as e:
+        log(f"Error subiendo imagen secundaria: {e}",'advertencia')
+    return None, None
+
+
+def crear_html_imagen_secundaria(media_url, alt_text, caption=""):
+    """Genera el bloque HTML de la imagen secundaria para insertar en el articulo."""
+    if not media_url: return ""
+    caption_html = f'<figcaption style="text-align:center;font-size:0.82em;color:#6b7280;margin-top:6px;">{caption}</figcaption>' if caption else ''
+    return f"""
+<figure style="margin:28px 0;text-align:center;">
+  <img src="{media_url}" alt="{alt_text}"
+       style="max-width:100%;height:auto;border-radius:8px;box-shadow:0 2px 12px rgba(0,0,0,0.12);"
+       loading="lazy"/>
+  {caption_html}
+</figure>
+"""
+
+
+def insertar_imagen_en_articulo(contenido_html, media_url, alt_text, keyword):
+    """Inserta la imagen secundaria despues del segundo H2 del articulo."""
+    if not media_url: return contenido_html
+    html_img = crear_html_imagen_secundaria(media_url, alt_text,
+                   caption=f"Imagen relacionada: {keyword} — Verdad Hoy")
+    # Insertar despues del H2 #2
+    h2_matches = list(re.finditer(r'</h2>', contenido_html, flags=re.IGNORECASE))
+    if len(h2_matches) >= 2:
+        pos = h2_matches[1].end()
+        return contenido_html[:pos] + html_img + contenido_html[pos:]
+    elif len(h2_matches) == 1:
+        pos = h2_matches[0].end()
+        return contenido_html[:pos] + html_img + contenido_html[pos:]
+    else:
+        # Sin H2s, insertar en el medio del articulo
+        mitad = len(contenido_html) // 2
+        return contenido_html[:mitad] + html_img + contenido_html[mitad:]
+
+
 def crear_imagen_titulo(titulo, categoria='general'):
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -1250,6 +1396,22 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_path, fuent
         frase_clave=frase_clave, meta_descripcion=meta_desc)
     if not imagen_id: return None, None
 
+    # ── IMAGEN SECUNDARIA ──────────────────────────────────
+    img_secundaria_path, query_sugerido = buscar_imagen_secundaria(titulo_final, categoria_ia, frase_clave)
+    if img_secundaria_path:
+        _, media_url_sec = subir_imagen_secundaria_wp(img_secundaria_path, titulo_final, frase_clave)
+        try:
+            if img_secundaria_path and os.path.exists(img_secundaria_path): os.remove(img_secundaria_path)
+        except: pass
+        if media_url_sec:
+            contenido_html = insertar_imagen_en_articulo(contenido_html, media_url_sec, frase_clave, frase_clave)
+            log(f"Imagen secundaria insertada en el articulo",'exito')
+        else:
+            log(f"SUGERENCIA IMAGEN: busca en Google Imagenes → '{query_sugerido}'",'advertencia')
+    else:
+        log(f"SUGERENCIA IMAGEN MANUAL: '{query_sugerido}'",'advertencia')
+    # ───────────────────────────────────────────────────────
+
     palabras_art = len(_texto_plano(contenido_html).split())
     minutos_lect = max(2, round(palabras_art / 200))
     barra_lectura = f'<p style="font-size:0.82em;color:#6b7280;margin:0 0 20px 0;">🕐 Tiempo de lectura: <strong>{minutos_lect} min</strong></p>'
@@ -1269,8 +1431,13 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_path, fuent
 {barra_lectura}
 {contenido_html}
 <hr>
-<p><strong>Fuente:</strong> <a href="{fuente_url}" target="_blank" rel="noopener">{nombre_medio}</a></p>
-<p><em>Informacion verificada por Verdad Hoy — Tu fuente confiable de noticias internacionales.</em></p>
+<p style="font-size:0.9em;color:#374151;">
+  <strong>Investigación y redacción:</strong> Equipo Editorial Verdad Hoy<br>
+  <strong>Fuente consultada:</strong> <a href="{fuente_url}" target="_blank" rel="noopener" style="color:#1a56db;">{nombre_medio}</a>
+</p>
+<p style="font-size:0.9em;color:#6b7280;font-style:italic;border-left:3px solid #e5e7eb;padding:8px 12px;margin:12px 0;">
+  En Verdad Hoy encontrarás análisis, contexto y la información que realmente importa sobre América Latina y el mundo.
+</p>
 """
 
     post_data = {
@@ -1333,25 +1500,45 @@ def deduplicar_batch(noticias):
     return resultado
 
 def obtener_rss_ampliado():
+    # FUENTES EVERGREEN V20.1 — priorizadas por nicho y durabilidad
     fuentes = [
-        ('https://www.infobae.com/arc/outboundfeeds/rss/america/','Infobae America'),
-        ('https://www.infobae.com/arc/outboundfeeds/rss/economia/','Infobae Economia'),
-        ('https://www.eluniversal.com.mx/rss.xml','El Universal MX'),
-        ('https://www.lanacion.com.ar/arc/outboundfeeds/rss/','La Nacion AR'),
-        ('https://www.clarin.com/rss/elmundo/','Clarin Mundo'),
-        ('https://www.eltiempo.com/rss/portada.xml','El Tiempo CO'),
-        ('https://elcomercio.pe/arcio/rss/','El Comercio PE'),
-        ('https://efectococuyo.com/feed/','Efecto Cocuyo VE'),
+        # ── SALUD Y MEDICINA (Prioridad 1) ──────────────────────────
+        ('https://www.infobae.com/arc/outboundfeeds/rss/salud/','Infobae Salud'),
+        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada','El Pais Ciencia'),
+        ('https://www.bbc.com/mundo/topics/cidjknjekjxt/rss.xml','BBC Salud Ciencia'),
+        ('https://www.nationalgeographicla.com/rss.xml','National Geographic ES'),
+        # ── IA Y TECNOLOGIA EXPLICADA (Prioridad 2) ─────────────────
         ('https://feeds.xataka.com/xataka','Xataka'),
         ('https://hipertextual.com/feed','Hipertextual'),
+        ('https://www.technologyreview.com/feed/','MIT Tech Review'),
+        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/tecnologia/portada','El Pais Tecnologia'),
+        # ── HISTORIA Y CULTURA LATAM (Prioridad 3) ──────────────────
+        ('https://www.nationalgeographic.com.es/rss/all','NatGeo ES'),
+        ('https://arqueologiamexicana.mx/feed','Arqueologia Mexicana'),
+        # ── MISTERIOS Y CIENCIA (Prioridad 4) ───────────────────────
+        ('https://www.muyinteresante.es/rss','Muy Interesante'),
+        ('https://www.muyhistoria.es/rss','Muy Historia'),
+        ('https://www.cientifica.online/feed','Cientifica Online'),
+        # ── ECONOMIA PERSONAL Y FINANZAS (Prioridad 5) ──────────────
+        ('https://www.infobae.com/arc/outboundfeeds/rss/economia/','Infobae Economia'),
+        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/economia/portada','El Pais Economia'),
+        # ── CIENCIA GENERAL ─────────────────────────────────────────
+        ('https://www.dw.com/es/ciencia-y-tecnologia/s-30688/rss','DW Ciencia'),
         ('http://feeds.bbci.co.uk/mundo/rss.xml','BBC Mundo'),
-        ('https://www.dw.com/es/ultimas-noticias/s-30689792/rss','DW ES'),
-        ('https://feeds.france24.com/es/','France 24 ES'),
-        ('https://www.espn.com.mx/rss/deportes.xml','ESPN Deportes'),
-        ('https://e00-marca.uecdn.es/rss/portada.xml','Marca'),
+        # ── LATINOAMERICA (contexto regional) ───────────────────────
+        ('https://www.infobae.com/arc/outboundfeeds/rss/america/','Infobae America'),
+        ('https://www.eltiempo.com/rss/portada.xml','El Tiempo CO'),
+        ('https://efectococuyo.com/feed/','Efecto Cocuyo VE'),
         ('https://www.emol.com/rss/','Emol Chile'),
         ('https://www.cooperativa.cl/noticias/site/tax/port/all/rss_3___1.xml','Cooperativa CL'),
-        ('https://www.cnnchile.com/feed/','CNN Chile'),
+        # ── POLITICA Y GEOPOLITICA MUNDIAL ──────────────────────────
+        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada','El Pais Internacional'),
+        ('https://www.dw.com/es/mundo/s-30684/rss','DW Mundo'),
+        ('http://feeds.bbci.co.uk/mundo/internacional/rss.xml','BBC Internacional'),
+        ('https://feeds.france24.com/es/','France 24 ES'),
+        # ── HISTORIA MUNDIAL ─────────────────────────────────────────
+        ('https://www.muyhistoria.es/rss','Muy Historia'),
+        ('https://www.lavanguardia.com/historiayvida/rss','Historia y Vida'),
     ]
     noticias = []
     for url_feed, nombre in fuentes:
@@ -1385,22 +1572,39 @@ def obtener_rss_ampliado():
 def obtener_newsapi_evergreen():
     if not NEWS_API_KEY: return []
     queries = [
-        'descubrimiento arqueologico America Latina 2026',
-        'civilizacion antigua misterio hallazgo cientifico',
-        'NASA espacio descubrimiento 2026',
-        'inteligencia artificial impacto America Latina',
-        'innovacion tecnologica Chile Argentina Mexico 2026',
-        'economia LATAM tendencias inflacion inversion',
-        'litio cobre recursos naturales Sudamerica',
-        'avance medico cancer tratamiento 2026',
-        'salud publica America Latina investigacion',
-        'longevidad ciencia antienvejecimiento',
-        'BRICS geopolitica America Latina',
-        'acuerdo comercial tratado Latinoamerica',
-        'cultura latinoamericana cine musica 2026',
-        'Amazonia cambio climatico glaciares',
-        'energia renovable solar eolica LATAM',
-        'criptomoneda fintech America Latina regulacion',
+        # Salud y medicina (Prioridad 1)
+        'cancer causas prevencion America Latina investigacion',
+        'alzheimer diabetes tratamiento cientifico 2026',
+        'salud mental ansiedad depresion jovenes latinoamerica',
+        'vacuna enfermedad descubrimiento medico 2026',
+        'longevidad envejecimiento ciencia como vivir mas',
+        # IA y tecnologia (Prioridad 2)
+        'inteligencia artificial que es como funciona explicacion',
+        'IA empleos trabajo futuro America Latina impacto',
+        'deepfake ciberseguridad riesgos como protegerse',
+        'tecnologia innovacion cambio vida cotidiana LATAM',
+        # Historia latinoamericana (Prioridad 3)
+        'historia antigua civilizaciones precolombinas secretos',
+        'mayas incas aztecas descubrimiento arqueologico reciente',
+        'historia latinoamerica dictadura memoria archivo secreto',
+        'patrimonio UNESCO America Latina hallazgo',
+        # Misterios y ciencia (Prioridad 4)
+        'misterio cientifico sin resolver descubrimiento',
+        'arqueologia hallazgo inexplicable civilizacion perdida',
+        'espacio NASA descubrimiento planeta universo 2026',
+        'fenomeno natural inexplicable ciencia datos',
+        # Economia personal (Prioridad 5)
+        'inflacion por que sube dolar America Latina explicacion',
+        'criptomoneda bitcoin como funciona para principiantes',
+        'finanzas personales ahorro inversion America Latina guia',
+        'economia mundial crisis impacto latinoamerica 2026',
+        # Politica y geopolitica evergreen (Prioridad 6)
+        'por que existe conflicto origen historia explicacion',
+        'geopolitica latinoamerica poder influencia historia',
+        'dictadura democracia historia latinoamerica leccion',
+        'guerra fria impacto latinoamerica historia secreta',
+        'conflicto mundial historia causas consecuencias analisis',
+        'otan brics orden mundial nuevo explicacion sencilla',
     ]
     noticias = []
     for q in queries:

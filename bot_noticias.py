@@ -1187,11 +1187,11 @@ def insertar_enlaces_internos(contenido_html):
     return contenido_html + html_rel
 
 def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_path, fuente_url, pais_foco='global', feedback_correccion=None):
-    if not WP_APP_PASSWORD: return None, None, None
-    if not imagen_path or not os.path.exists(imagen_path): return None, None, None
+    if not WP_APP_PASSWORD: return None, None
+    if not imagen_path or not os.path.exists(imagen_path): return None, None
 
     resultado_ia = reescribir_noticia_v20(titulo, contenido, categoria, pais_foco, feedback_correccion)
-    if not resultado_ia: return None, None, None
+    if not resultado_ia: return None, None
     resultado_ia = postprocesar_resultado(resultado_ia)
 
     keyword = resultado_ia.get('keyword_principal','')
@@ -1200,7 +1200,7 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_path, fuent
         resultado_ia.get('titulo_seo',''), resultado_ia.get('categoria',''), keyword)
 
     if not es_valido:
-        if not REINTENTAR_CALIDAD_IA: return None, None, None
+        if not REINTENTAR_CALIDAD_IA: return None, None
         log(f"Reintentando ({len(problemas)} problemas)",'advertencia')
         for p in problemas: log(f"   - {p}",'advertencia')
         resultado_reintento = reescribir_noticia_v20(titulo, contenido, categoria, pais_foco, feedback_correccion=problemas)
@@ -1211,8 +1211,8 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_path, fuent
                 resultado_reintento.get('titulo_seo',''), resultado_reintento.get('categoria',''),
                 resultado_reintento.get('keyword_principal',''))
             if es_valido_2: resultado_ia = resultado_reintento
-            else: return None, None, None
-        else: return None, None, None
+            else: return None, None
+        else: return None, None
 
     titulo_final  = resultado_ia.get('titulo_seo', titulo).strip()
     if len(titulo_final) > 55:
@@ -1258,7 +1258,7 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_path, fuent
     imagen_id = subir_imagen_wp(imagen_path, titulo_final,
         alt_text=f"{frase_clave} - {titulo_final}"[:125],
         frase_clave=frase_clave, meta_descripcion=meta_desc)
-    if not imagen_id: return None, None, None
+    if not imagen_id: return None, None
 
     palabras_art = len(_texto_plano(contenido_html).split())
     minutos_lect = max(2, round(palabras_art / 200))

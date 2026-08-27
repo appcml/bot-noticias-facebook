@@ -1,30 +1,29 @@
-name: Bot Pinterest Diferido (24h)
+name: Bot Pinterest Diferido V2
+
 on:
   schedule:
-    # Corre cada 2 horas. El bot internamente decide qué posts ya
-    # cumplieron las 24h (RETRASO_HORAS) desde su publicación en WP,
-    # así que esta frecuencia es solo un "sondeo" — no publica todo cada vez.
+    # Corre cada 2 horas — publica pines de articulos ya editados y publicados
     - cron: '0 */2 * * *'
   workflow_dispatch:
     inputs:
       forzar:
-        description: 'Forzar publicación inmediata (ignora las 24h de espera, solo para pruebas)'
+        description: 'Ignorar retraso de horas (publica aunque sea reciente)'
         required: false
         default: 'false'
         type: choice
         options:
           - 'false'
           - 'true'
-
-concurrency:
-  group: bot-pinterest-diferido
-  cancel-in-progress: false
+      forzar_post_id:
+        description: 'ID de post especifico a pinear (dejar vacio para modo normal)'
+        required: false
+        default: ''
 
 jobs:
-  publicar-pinterest:
+  pinterest:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # necesario para hacer commit del estado
+      contents: write
 
     steps:
       - name: Checkout repositorio
@@ -39,50 +38,46 @@ jobs:
           python-version: '3.11'
 
       - name: Instalar dependencias
-        run: pip install -r requirements_pinterest.txt
+        run: pip install requests
 
       - name: Ejecutar bot Pinterest diferido
         env:
-          # ── WordPress (solo lectura, API pública) ──────────
-          WP_URL:                  ${{ secrets.WP_URL }}
-
-          # ── Pinterest ───────────────────────────────────────
-          PINTEREST_TOKEN:         ${{ secrets.PINTEREST_TOKEN }}
-
-          # ── Control de tiempos ──────────────────────────────
-          RETRASO_HORAS:           '24'
-          VENTANA_MAX_DIAS:        '10'
-          MAX_PINS_POR_EJECUCION:  '5'
-          TIEMPO_ENTRE_PINS_SEG:   '8'
-          MAX_INTENTOS_FALLIDOS:   '5'
-          TABLERO_DEFECTO:         'Noticias del Mundo'
-          ESTADO_PATH:             'estado_pinterest_diferido.json'
-          FORZAR:                  ${{ github.event.inputs.forzar || 'false' }}
+          PINTEREST_TOKEN:        ${{ secrets.PINTEREST_TOKEN }}
+          WP_URL:                 ${{ secrets.WP_URL }}
+          FORZAR:                 ${{ github.event.inputs.forzar || 'false' }}
+          FORZAR_POST_ID:         ${{ github.event.inputs.forzar_post_id || '' }}
+          RETRASO_HORAS:          '2'
+          VENTANA_MAX_DIAS:       '10'
+          MAX_PINS_POR_EJECUCION: '5'
+          TIEMPO_ENTRE_PINS_SEG:  '8'
+          MAX_INTENTOS_FALLIDOS:  '5'
+          TABLERO_DEFECTO:        'noticias-del-mundo'
+          ESTADO_PATH:            estado_pinterest_diferido.json
 
         run: python bot_pinterest_diferido.py
 
-      - name: Guardar estado en el repositorio
+      - name: Guardar estado Pinterest en repositorio
         if: always()
         run: |
-          git config user.name  "bot-pinterest-diferido[bot]"
-          git config user.email "bot-pinterest-diferido@users.noreply.github.com"
+          git config user.name  "bot-pinterest[bot]"
+          git config user.email "bot-pinterest@users.noreply.github.com"
 
-          if [ -f estado_pinterest_diferido.json ]; then
+          if [ -f "estado_pinterest_diferido.json" ]; then
             git add estado_pinterest_diferido.json
           fi
 
           if git diff --cached --quiet; then
-            echo "ℹ️ Sin cambios en estado — no se hace commit"
+            echo "Sin cambios en estado Pinterest"
           else
-            git commit -m "📌 Estado Pinterest diferido actualizado [skip ci]"
+            git commit -m "📌 Estado Pinterest diferido [skip ci]"
             git push
-            echo "✅ Estado guardado en repositorio"
+            echo "Estado Pinterest guardado"
           fi
 
       - name: Subir artefacto de estado
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: pinterest-diferido-state-${{ github.run_number }}
+          name: estado-pinterest-${{ github.run_number }}
           path: estado_pinterest_diferido.json
           retention-days: 7

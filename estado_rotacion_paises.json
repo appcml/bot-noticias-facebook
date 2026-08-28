@@ -1,14 +1,8 @@
 {
-  "fecha": "2026-08-27",
-  "ciclo": 3,
+  "fecha": "2026-08-28",
+  "ciclo": 4,
   "paises_usados_hoy": [
-    "mexico",
-    "chile",
-    "estados_unidos",
-    "global",
-    "argentina",
-    "brasil",
-    "colombia"
+    "europa"
   ],
   "conteo_por_pais": {
     "argentina": 1,
@@ -17,6 +11,7 @@
     "mexico": 1,
     "global": 1,
     "colombia": 1,
-    "brasil": 1
+    "brasil": 1,
+    "europa": 1
   }
 }

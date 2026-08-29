@@ -1,7 +1,5 @@
 {
   "urls": [
-    "https://www.cooperativa.cl/noticias/economia/impuestos/megarreforma-gobierno-y-oposicion-se-adjudican-triunfo-tras-fallo-del-tc/2026-08-14/142412.html",
-    "https://www.cooperativa.cl/noticias/pais/relaciones-exteriores/chile-ratifico-su-permanencia-en-la-cpi-pese-a-la-presion-de-estados/2026-08-14/172146.html",
     "https://www.cooperativa.cl/noticias/pais/gabriel-boric/boric-pide-autocritica-en-la-izquierda-es-un-error-cancelar-el-debate/2026-08-14/200245.html",
     "https://redgol.cl/mercado-de-fichajes/arsenal-rechaza-oferta-del-milan-por-nwaneri-el-panorama-del-posible-gran-salto-de-dario-osorio",
     "https://www.qore.com/ai/removedores-de-claude-solo-borran-metadatos/",
@@ -76,11 +74,10 @@
     "https://elpais.com/tecnologia/2026-08-26/asi-logra-un-robot-humanoide-hacer-una-voltereta-sin-manos.html",
     "https://www.technologyreview.com/2026/08/25/1140902/addressing-a-sticking-point-in-sustainable-adhesives/",
     "https://elpais.com/opinion/2026-08-25/carta-abierta-de-sergio-ramirez-al-presidente-lula-da-silva.html",
-    "https://elpais.com/economia/2026-08-28/francia-se-estanca-en-el-segundo-trimestre-tras-una-revision-a-la-baja-del-pib.html"
+    "https://elpais.com/economia/2026-08-28/francia-se-estanca-en-el-segundo-trimestre-tras-una-revision-a-la-baja-del-pib.html",
+    "https://elpais.com/opinion/2026-08-22/la-ruta-de-la-seda-artica-de-china-ya-es-una-realidad.html"
   ],
   "hashes": [
-    "74f150b76c14b6c6d013aab208712e57",
-    "05363719c3a02fd2a3aa59b13c8c46d4",
     "1ffe6a36482f0816da1b7a0329641068",
     "7c65c3714854f6edaabadbe1f9a0b5ee",
     "18a049b9f38c0e920a13cce7010eed99",
@@ -155,11 +152,10 @@
     "8920ca5cc6e0c7cbebdb33a47bf365ad",
     "00ee102527263d70233dca9687e7e60d",
     "1e65409b93f16fa1146b97df6866eb72",
-    "d021b04dd51d26e0f33607b82a8ee6ef"
+    "d021b04dd51d26e0f33607b82a8ee6ef",
+    "159de5b67dcb1a12d7de8a30b0da8c12"
   ],
   "timestamps": [
-    "2026-08-14T19:13:23.173175",
-    "2026-08-14T23:19:52.140731",
     "2026-08-15T02:56:14.282473",
     "2026-08-15T07:28:27.700409",
     "2026-08-15T11:18:21.668314",
@@ -234,11 +230,10 @@
     "2026-08-27T01:54:46.506155",
     "2026-08-27T01:55:20.259515",
     "2026-08-27T19:53:36.143182",
-    "2026-08-28T19:08:54.109696"
+    "2026-08-28T19:08:54.109696",
+    "2026-08-29T01:56:53.062688"
   ],
   "titulos": [
-    "Megarreforma: Gobierno y oposición se adjudican triunfo tras fallo del TC.",
-    "Chile ratificó su permanencia en la CPI pese a la presión de Estados Unidos.",
     "Boric pide autocrítica en la izquierda: Es un error cancelar el debate por temor al qué dirán.",
     "Arsenal rechaza oferta del Milan por Nwaneri: el panorama del posible gran salto de Darío Osorio.",
     "Removedores de Claude solo borran metadatos.",
@@ -313,11 +308,10 @@
     "Así logra un robot humanoide hacer una voltereta sin manos.",
     "Addressing a sticking point in sustainable adhesives.",
     "Carta abierta de Sergio Ramírez al presidente Lula da Silva.",
-    "Francia se estanca en el segundo trimestre tras una revisión a la baja del PIB."
+    "Francia se estanca en el segundo trimestre tras una revisión a la baja del PIB.",
+    "La ruta de la seda ártica de China ya es una realidad."
   ],
   "descripciones": [
-    "Un escenario de interpretaciones cruzadas dejó la resolución del Tribunal Constitucional (TC) que acogió de forma parcial los requerimientos presentados por parlamentarios contra la megarreforma impulsada por el Ejecutivo. A pesar de que el fallo suprimió diversos artículos y atribuciones específicas de la iniciativa, tanto el oficialismo como la oposición se declararon satisfechos y atribuyeron la decisión a triunfos propios. El TC mantuvo en pie el pilar central del proyecto respecto a la invariabilidad tributaria, mecanismo que permite a grandes proyectos de inversión celebrar contratos con",
-    "El canciller Francisco Pérez Mackenna ratificó este viernes el rol de Chile como miembro de la Corte Penal Internacional (CPI), en medio de la presión del Gobierno estadounidense del presidente, Donald Trump, para que países de América Latina abandonen el organismo. \"Nosotros somos miembros de la Corte Penal Internacional, y sin perjuicio que todos los organismos pueden ser perfectibles y mejorables, seguimos siendo miembros de la CPI\", dijo Pérez Mackenna a la prensa desde el Palacio de La Moneda. El ministro de Relaciones Exteriores respondió así ante la consulta sobre la petición que el sec",
     "El expresidente Gabriel Boric compartió este viernes una reflexión sobre el estado actual de la izquierda y el progresismo en Chile, enfatizando la urgencia de un debate honesto y público que trascienda la lucha por la atención en redes sociales. La declaración surge como respuesta a la controversia generada por su reciente intervención en la presentación de la obra \"La Resaca\" de Eugenio Tironi, donde realizó una autocrítica de su administración al mando del Gobierno y apuntó contra la gestión del Presidente José Antonio Kast. Se ha generado un interesante debate a partir de mi intervención e",
     "El extremo chileno todavía pertenece al Midtjylland, pero desde Inglaterra recibió una noticia positiva que lo hace aferrarse a las chances de dar el gran salto de su carrera hacia el gigante italiano. El Arsenal de Inglaterra recibió una propuesta del AC Milan por un jugador que asoma como rival de Darío Osorio en el mercado de fichajes del verano europeo. Aunque el actual campeón de la Premier League rechazó esa oferta y, probablemente, dejó en carrera al seleccionado chileno. Se trata de un ofrecimiento que el elenco italiano hizo para quedarse con Ethan Nwaneri . Fue un préstamo co",
     "✨︎ Resumen (TL;DR): En cuestión de días surgieron proyectos y servicios que prometen quitar la marca invisible de Claude; lo que puede comprobarse hoy es la eliminación de caracteres ocultos y metadatos. El proyecto de GitHub con licencia MIT supera las 4,500 estrellas y al menos dos servicios comerciales ya ofrecen evasión para Claude, uno de ellos con una opción explícita para trabajos escolares. La señal se incorpora en la elección de palabras del modelo. Anthropic aún no publica su método ni un detector, así que nadie puede verificar que los removedores la eliminen. En cuestión",
@@ -392,11 +386,10 @@
     "El proyecto de investigación ‘BeyondMimic’ ensaya un nuevo método de entrenamiento basado en los movimientos humanos. Ejecutar piruetas, golpes de tenis o celebrar los goles de un partido con la naturalidad de un ser humano es ahora posible para un robot. El proyecto BeyondMimic presenta un nuevo marco de aprendizaje robótico alimentado con datos de movimiento humano con el que se crean comportamientos físicos naturales. El robot puede caminar, correr y ejecutar movimientos complejos inspirados en las artes marci",
     "Petroleum-based adhesives are everywhere: bonding the wood and drywall in a construction project, holding together the joints of furniture, and even sticking labels to otherwise recyclable containers. “The labels on a container are held up with petroleum-based glue. And because of that, even though you’re putting the container in the recycle bin, it will not…. Petroleum-based adhesives are everywhere: bonding the wood and drywall in a construction project, holding together the joints of furniture, and even sticking labels to otherwise recyclable containers. “The labels on a container are held ",
     "Ortega ha suprimido las elecciones. No le niegue usted a Nicaragua el derecho a elegir libremente, el mismo que puede hacerlo presidente de Brasil por cuarta vez. La última vez que nos vimos fue hace muchos años, en ocasión del primer congreso del Frente Sandinista celebrado en Managua en julio de 1991, cuando usted dijo un discurso en la sesión inaugural. Fue un discurso que nunca olvidé, y nos ayudó a fijar el rumbo a quienes buscábamos afianzar una corriente democrática dentro de aquel partido que venía de sufrir una derrota electoral que puso fin a la r",
-    "El instituto estadístico oficial estima que el crecimiento económico entre abril y junio fue nulo frente a la estimación inicial del 0,2% y profundiza la caída de principio de año. La economía francesa se estancó en el segundo trimestre del año, con un crecimiento nulo, según ha informado este viernes el instituto estadístico oficial, el Insee, que revisa a la baja la estimación del 0,2% que había hecho para el periodo. También corrige los datos de los tres primeros meses del año, cuando el Producto Interior Bruto (PIB) se contrajo un 0,2%, frente a la caída del 0,1% previst"
+    "El instituto estadístico oficial estima que el crecimiento económico entre abril y junio fue nulo frente a la estimación inicial del 0,2% y profundiza la caída de principio de año. La economía francesa se estancó en el segundo trimestre del año, con un crecimiento nulo, según ha informado este viernes el instituto estadístico oficial, el Insee, que revisa a la baja la estimación del 0,2% que había hecho para el periodo. También corrige los datos de los tres primeros meses del año, cuando el Producto Interior Bruto (PIB) se contrajo un 0,2%, frente a la caída del 0,1% previst",
+    "El avance global de Pekín no es principalmente militar ni diplomático; es sobre todo industrial. El avance global de Pekín no es principalmente militar ni diplomático; es sobre todo industrial."
   ],
   "hashes_contenido": [
-    "58a5714e8608dee273fb9b0fc1c0f515",
-    "72a33b784e0c26d57d5f455ea3928acd",
     "2aaddc6163c9df27cdcf819db41aad20",
     "bc62c931d591341a77d65d5f59d36c04",
     "cb77c2f9b15328c3bd03498fad5282b7",
@@ -471,10 +464,10 @@
     "e30fc69e323fd3848ddea041cfdcc99b",
     "8b9126f22bb325fb02f434db1fbacd55",
     "a0ed2c35c1c16b96f6c09249e79bbf2a",
-    "07cb0368250d318a675ca94399cda438"
+    "07cb0368250d318a675ca94399cda438",
+    "7546f07e8575892dc3c9f2502558d241"
   ],
   "hashes_permanentes": [
-    "dd3e6abf70f05573172dd13eb2204e36",
     "e47f7e7933697623867e4fa41dfbca14",
     "00ccfae85a401f384103aada09ab77ec",
     "18d5725bd4df4d8e0e413d4f8d2636a3",
@@ -973,17 +966,16 @@
     "8920ca5cc6e0c7cbebdb33a47bf365ad",
     "00ee102527263d70233dca9687e7e60d",
     "1e65409b93f16fa1146b97df6866eb72",
-    "d021b04dd51d26e0f33607b82a8ee6ef"
+    "d021b04dd51d26e0f33607b82a8ee6ef",
+    "159de5b67dcb1a12d7de8a30b0da8c12"
   ],
   "estadisticas": {
-    "total_publicadas": 1118,
+    "total_publicadas": 1119,
     "total_fb": 226,
     "total_wp": 991,
-    "total_borradores": 21
+    "total_borradores": 22
   },
   "urls_normalizadas": [
-    "cooperativa.cl/noticias/economia/impuestos/megarreforma-gobierno-y-oposicion-se-adjudican-triunfo-tras-fallo-del-tc/2026-08-14/142412",
-    "cooperativa.cl/noticias/pais/relaciones-exteriores/chile-ratifico-su-permanencia-en-la-cpi-pese-a-la-presion-de-estados/2026-08-14/172146",
     "cooperativa.cl/noticias/pais/gabriel-boric/boric-pide-autocritica-en-la-izquierda-es-un-error-cancelar-el-debate/2026-08-14/200245",
     "redgol.cl/mercado-de-fichajes/arsenal-rechaza-oferta-del-milan-por-nwaneri-el-panorama-del-posible-gran-salto-de-dario-osorio",
     "qore.com/ai/removedores-de-claude-solo-borran-metadatos",
@@ -1058,7 +1050,8 @@
     "elpais.com/tecnologia/2026-08-26/asi-logra-un-robot-humanoide-hacer-una-voltereta-sin-manos",
     "technologyreview.com/2026/08/25/1140902/addressing-a-sticking-point-in-sustainable-adhesives",
     "elpais.com/opinion/2026-08-25/carta-abierta-de-sergio-ramirez-al-presidente-lula-da-silva",
-    "elpais.com/economia/2026-08-28/francia-se-estanca-en-el-segundo-trimestre-tras-una-revision-a-la-baja-del-pib"
+    "elpais.com/economia/2026-08-28/francia-se-estanca-en-el-segundo-trimestre-tras-una-revision-a-la-baja-del-pib",
+    "elpais.com/opinion/2026-08-22/la-ruta-de-la-seda-artica-de-china-ya-es-una-realidad"
   ],
   "urls_fb_publicadas": [
     "1001",

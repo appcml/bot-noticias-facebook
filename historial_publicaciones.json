@@ -1,13 +1,5 @@
 {
   "urls": [
-    "https://www.cooperativa.cl/noticias/pais/gabriel-boric/boric-pide-autocritica-en-la-izquierda-es-un-error-cancelar-el-debate/2026-08-14/200245.html",
-    "https://redgol.cl/mercado-de-fichajes/arsenal-rechaza-oferta-del-milan-por-nwaneri-el-panorama-del-posible-gran-salto-de-dario-osorio",
-    "https://www.qore.com/ai/removedores-de-claude-solo-borran-metadatos/",
-    "https://www.cooperativa.cl/noticias/pais/region-de-los-lagos/incautaron-1-500-kilos-de-almejas-con-marea-roja-en-quellon/2026-08-14/232127.html",
-    "https://www.cooperativa.cl/noticias/pais/politica/frente-amplio/frente-amplio-inicio-sus-elecciones-generales-para-definir-su-directiva/2026-08-15/113612.html",
-    "https://www.cooperativa.cl/noticias/pais/sismos/norte-grande/sismo-se-registro-en-la-region-de-atacama/2026-08-15/163037.html",
-    "https://www.cooperativa.cl/noticias/pais/vivienda/poduje-amenazo-con-ir-a-contraloria-por-sobrecostos-en-viviendas/2026-08-15/231318.html",
-    "https://www.cooperativa.cl/noticias/pais/relaciones-exteriores/colombia/chile-envio-ayuda-humanitaria-a-colombia-tras-el-terremoto-de-7-4/2026-08-15/181345.html",
     "https://www.elcolombiano.com/colombia/gna-y-science-debate-polemica-MK39990783",
     "https://www.cooperativa.cl/noticias/pais/salud/hospitales/minsal-audita-contratos-de-hospitales-con-sociedades-medicas-por-mas-de/2026-08-16/112447.html",
     "https://www.cooperativa.cl/noticias/pais/ff-aa-y-de-orden/carabineros/exgeneral-yanez-critico-transmision-de-operacion-cancerbero-habria/2026-08-16/164918.html",
@@ -75,17 +67,10 @@
     "https://www.technologyreview.com/2026/08/25/1140902/addressing-a-sticking-point-in-sustainable-adhesives/",
     "https://elpais.com/opinion/2026-08-25/carta-abierta-de-sergio-ramirez-al-presidente-lula-da-silva.html",
     "https://elpais.com/economia/2026-08-28/francia-se-estanca-en-el-segundo-trimestre-tras-una-revision-a-la-baja-del-pib.html",
-    "https://elpais.com/opinion/2026-08-22/la-ruta-de-la-seda-artica-de-china-ya-es-una-realidad.html"
+    "https://elpais.com/opinion/2026-08-22/la-ruta-de-la-seda-artica-de-china-ya-es-una-realidad.html",
+    "https://www.cooperativa.cl/noticias/pais/policial/crimen-organizado/cayo-en-lima-r15-un-presunto-lider-del-tren-de-aragua-en-chile/2026-08-29/174137.html"
   ],
   "hashes": [
-    "1ffe6a36482f0816da1b7a0329641068",
-    "7c65c3714854f6edaabadbe1f9a0b5ee",
-    "18a049b9f38c0e920a13cce7010eed99",
-    "68f12e6c31af443bab5496bea971bc59",
-    "c06d8f30d69532822c3fdbe475a39eb1",
-    "da80b9d3cc1804422c897174ca86dd8b",
-    "11daa273ec4c4cbd7ad47148d5d15c7f",
-    "f3341a6bbffa4ecbb504588f0408ca86",
     "f6b58b66f65aad80af557efbc58d3c7c",
     "da4200848f8817bb25fc8da83e1a0e56",
     "d3f930ab169c1ed2cd680fa6d6ca41ee",
@@ -153,17 +138,10 @@
     "00ee102527263d70233dca9687e7e60d",
     "1e65409b93f16fa1146b97df6866eb72",
     "d021b04dd51d26e0f33607b82a8ee6ef",
-    "159de5b67dcb1a12d7de8a30b0da8c12"
+    "159de5b67dcb1a12d7de8a30b0da8c12",
+    "fa364c14111719b286feed6e03862b98"
   ],
   "timestamps": [
-    "2026-08-15T02:56:14.282473",
-    "2026-08-15T07:28:27.700409",
-    "2026-08-15T11:18:21.668314",
-    "2026-08-15T15:18:31.122677",
-    "2026-08-15T19:20:12.499794",
-    "2026-08-15T23:45:11.818140",
-    "2026-08-16T05:24:52.654785",
-    "2026-08-16T09:51:51.784533",
     "2026-08-16T13:54:46.372529",
     "2026-08-16T18:25:43.114207",
     "2026-08-16T22:18:54.198682",
@@ -231,17 +209,10 @@
     "2026-08-27T01:55:20.259515",
     "2026-08-27T19:53:36.143182",
     "2026-08-28T19:08:54.109696",
-    "2026-08-29T01:56:53.062688"
+    "2026-08-29T01:56:53.062688",
+    "2026-08-30T12:24:57.109604"
   ],
   "titulos": [
-    "Boric pide autocrítica en la izquierda: Es un error cancelar el debate por temor al qué dirán.",
-    "Arsenal rechaza oferta del Milan por Nwaneri: el panorama del posible gran salto de Darío Osorio.",
-    "Removedores de Claude solo borran metadatos.",
-    "Incautaron 1.500 kilos de almejas con marea roja en Quellón.",
-    "Frente Amplio inició sus elecciones generales para definir su directiva.",
-    "Sismo se registró en la Región de Atacama.",
-    "Poduje amenazó con ir a Contraloría por sobrecostos en viviendas sociales por hallazgos arqueológicos.",
-    "Chile envió ayuda humanitaria a Colombia tras el terremoto de 7,4.",
     "Science cuestionó el trabajo investigativo de científicos colombianos asociados al GNA.",
     "Minsal audita contratos de hospitales con sociedades médicas por más de 206 mil millones.",
     "Exgeneral Yáñez criticó transmisión de operación \"Cancerbero\": \"Habría sido más restrictivo\".",
@@ -309,17 +280,10 @@
     "Addressing a sticking point in sustainable adhesives.",
     "Carta abierta de Sergio Ramírez al presidente Lula da Silva.",
     "Francia se estanca en el segundo trimestre tras una revisión a la baja del PIB.",
-    "La ruta de la seda ártica de China ya es una realidad."
+    "La ruta de la seda ártica de China ya es una realidad.",
+    "Cayó en Lima \"R15\", un presunto líder del Tren de Aragua en Chile."
   ],
   "descripciones": [
-    "El expresidente Gabriel Boric compartió este viernes una reflexión sobre el estado actual de la izquierda y el progresismo en Chile, enfatizando la urgencia de un debate honesto y público que trascienda la lucha por la atención en redes sociales. La declaración surge como respuesta a la controversia generada por su reciente intervención en la presentación de la obra \"La Resaca\" de Eugenio Tironi, donde realizó una autocrítica de su administración al mando del Gobierno y apuntó contra la gestión del Presidente José Antonio Kast. Se ha generado un interesante debate a partir de mi intervención e",
-    "El extremo chileno todavía pertenece al Midtjylland, pero desde Inglaterra recibió una noticia positiva que lo hace aferrarse a las chances de dar el gran salto de su carrera hacia el gigante italiano. El Arsenal de Inglaterra recibió una propuesta del AC Milan por un jugador que asoma como rival de Darío Osorio en el mercado de fichajes del verano europeo. Aunque el actual campeón de la Premier League rechazó esa oferta y, probablemente, dejó en carrera al seleccionado chileno. Se trata de un ofrecimiento que el elenco italiano hizo para quedarse con Ethan Nwaneri . Fue un préstamo co",
-    "✨︎ Resumen (TL;DR): En cuestión de días surgieron proyectos y servicios que prometen quitar la marca invisible de Claude; lo que puede comprobarse hoy es la eliminación de caracteres ocultos y metadatos. El proyecto de GitHub con licencia MIT supera las 4,500 estrellas y al menos dos servicios comerciales ya ofrecen evasión para Claude, uno de ellos con una opción explícita para trabajos escolares. La señal se incorpora en la elección de palabras del modelo. Anthropic aún no publica su método ni un detector, así que nadie puede verificar que los removedores la eliminen. En cuestión",
-    "En un operativo de fiscalización preventiva, la Capitanía de Puerto de Quellón, en conjunto con la Seremi de Salud de Chiloé, logró interceptar un cargamento de 1.500 kilos de almejas contaminadas con veneno paralizante de moluscos, fenómeno conocido como marea roja. El hallazgo se produjo en el muelle artesanal de Quellón durante la inspección de la lancha a motor \"Nautilus\". En la embarcación se encontraron 50 mallas de recurso almeja, las cuales fueron sometidas a análisis de laboratorio para verificar su seguridad para el consumo humano. Niveles críticos de toxicidad Respecto a los detalle",
-    "El Frente Amplio celebra este fin de semana elecciones internas para definir a la nueva directiva nacional, el comité central y las direcciones regionales y comunales de la colectividad. El proceso está cruzado por la discusión sobre el rol opositor que debe asumir el partido frente a la actual Administrativa y el análisis del legado del expresidente y fundador del partido, Gabriel Boric (2022-2026): un debate reavivado tras las reflexiones y autocríticas expresadas por el otrora Mandatario a propósito de la publicación del libro \"La Resaca\", de Eugenio Tironi. La actual presidenta, Constanza ",
-    "Sismología informó esta jornada de un temblor originado en el norte de Chile, específicamente en la Región de Atacama. De acuerdo con el ente dependiente de la Universidad de Chile, el movimiento fue detectado a las 15:57 horas, mientras que Senapred informó que su magnitud fue de 4,1. El Servicio localizó el movimiento a 31 kilómetros al suroeste de Carrizal Bajo, localidad ubicada en la comuna de Huasco. #Ahora Se registra #sismo en la Región de Atacama. Se inicia monitoreo con Red de Informantes Mercalli. pic.twitter.com/vdlIuTXovu — SENAPRED (@Senapred) August 15, 2026. Sismología informó ",
-    "El ministro de Vivienda y Urbanismo, Iván Poduje, arremetió este sábado contra el impacto que los hallazgos arqueológicos están teniendo en la ejecución de la política habitacional en Chile. Según un reciente informe de la cartera revelado por Ex-Ante, entre el 2021 y 2026, el Estado debió desembolsar un total de 322.153,01 UF (aproximadamente 13.160 millones de pesos) para cubrir costos derivados de hallazgos paleontológicos y arqueológicos en terrenos destinados a viviendas sociales. \"En los últimos cinco años tuvimos que gastar 13.200 millones de pesos en 'hallazgos arqueológicos'. Además d",
-    "Un avión del Gobierno llegó este sábado a la ciudad de Pereira con ayuda humanitaria para los afectados por el terremoto de magnitud 7,4 que sacudió Colombia el lunes, mientras equipos internacionales apoyan las labores de evaluación de las edificaciones dañadas de la zona. La asistencia enviada por Chile incluye 320 kits de alimentación, 200 de aseo domiciliario, 346 de higiene para hombres, mujeres y niños y 27 mil unidades de medicamentos, informó la Cancillería colombiana, que agradeció al Presidente José Antonio Kast, y al pueblo chileno, por su solidaridad. 🇨🇴🤝🇨🇱 Llegó a Pereira un avión",
     "Desde el 13 de agosto, el Grupo de Neurociencias de Antioquia (GNA), uno de los más importantes en en la búsqueda de la comprensión y la cura del Alzheimer, está en mitad de un debate académico por las dudas que un artículo periodístico de Science Magazine plantea respecto de algunos resultados y estudios de los científicos colombianos Joseph Arboleda-Velasquez, de la Escuela de Medicina de Harvard: Yakeel Quiroz, neuropsicóloga de la Universidad de Boston, colaboradores frecuentes del GNA, y David Aguillón Niño, coordinador del Grupo de la Universidad de Antioquia. Siga leyendo: Ne",
     "El Ministerio de Salud inició una auditoría a los contratos de hospitales públicos con sociedades médicas, luego de que durante 2025 la red asistencial destinara más de 206.619 millones de pesos a este tipo de empresas, según cifras de la Subsecretaría de Redes Asistenciales obtenidas por El Mercurio mediante Transparencia. La revisión apunta, entre otros aspectos, a contrataciones con sociedades integradas por médicos que también trabajan en los establecimientos que adquieren sus servicios. Desde diciembre de 2023, la Ley de Compras restringe estos contratos, aunque contempla excepciones que ",
     "El exgeneral director de Carabineros Ricardo Yáñez cuestionó la manera en que se llevó a cabo el masivo traslado de reos hasta la nueva cárcel \"La Laguna de Talca\", en el marco de la denominada operación \"Cancerbero\", especialmente por la transmisión en vivo del procedimiento. En entrevista con TVN, el otrora jefe de la policía uniformada aseguró que se expuso innecesariamente el operativo y, que de haber estado al mando de la institución, hubiese optado por mostrar solo algunas imágenes para informar. [Lea también] \"Muy al estilo Bukele\": Oposición criticó \"show\" de la Operación Cancerbero Yá",
@@ -387,17 +351,10 @@
     "Petroleum-based adhesives are everywhere: bonding the wood and drywall in a construction project, holding together the joints of furniture, and even sticking labels to otherwise recyclable containers. “The labels on a container are held up with petroleum-based glue. And because of that, even though you’re putting the container in the recycle bin, it will not…. Petroleum-based adhesives are everywhere: bonding the wood and drywall in a construction project, holding together the joints of furniture, and even sticking labels to otherwise recyclable containers. “The labels on a container are held ",
     "Ortega ha suprimido las elecciones. No le niegue usted a Nicaragua el derecho a elegir libremente, el mismo que puede hacerlo presidente de Brasil por cuarta vez. La última vez que nos vimos fue hace muchos años, en ocasión del primer congreso del Frente Sandinista celebrado en Managua en julio de 1991, cuando usted dijo un discurso en la sesión inaugural. Fue un discurso que nunca olvidé, y nos ayudó a fijar el rumbo a quienes buscábamos afianzar una corriente democrática dentro de aquel partido que venía de sufrir una derrota electoral que puso fin a la r",
     "El instituto estadístico oficial estima que el crecimiento económico entre abril y junio fue nulo frente a la estimación inicial del 0,2% y profundiza la caída de principio de año. La economía francesa se estancó en el segundo trimestre del año, con un crecimiento nulo, según ha informado este viernes el instituto estadístico oficial, el Insee, que revisa a la baja la estimación del 0,2% que había hecho para el periodo. También corrige los datos de los tres primeros meses del año, cuando el Producto Interior Bruto (PIB) se contrajo un 0,2%, frente a la caída del 0,1% previst",
-    "El avance global de Pekín no es principalmente militar ni diplomático; es sobre todo industrial. El avance global de Pekín no es principalmente militar ni diplomático; es sobre todo industrial."
+    "El avance global de Pekín no es principalmente militar ni diplomático; es sobre todo industrial. El avance global de Pekín no es principalmente militar ni diplomático; es sobre todo industrial.",
+    "La Policía Nacional de Perú detuvo a un presunto cabecilla en Chile de la banda criminal transnacional de origen venezolano Tren de Aragua que se encuentra requerido por la Justicia chilena por presuntamente integrar una red de secuestros y extorsiones. El detenido, de nacionalidad venezolana, contaba con una orden de detención vigente y fue identificado bajo el nombre de Ibelmery Adon Colina Maldonado, más conocido en criminal bajo el apodo de \"R15\". La captura se realizó en el distrito de San Martín de Porres, situado en el norte de Lima, con la colaboración de la Brigada de Investigaciones "
   ],
   "hashes_contenido": [
-    "2aaddc6163c9df27cdcf819db41aad20",
-    "bc62c931d591341a77d65d5f59d36c04",
-    "cb77c2f9b15328c3bd03498fad5282b7",
-    "d5a21367ad7f540afbfd7b2fb2843b56",
-    "cff0c2465d9ec91772f4e326681f141b",
-    "644d3685e5b3a03a709b1c9477c9f65e",
-    "4a89ae7c14a85a31ee05fc0f4057fda0",
-    "3f18e8f05ba3d8342fb5b21eaf116800",
     "c6d733c8a4d7a27ab51ed64c08ea543e",
     "5bbadf476e4837cf32e3393a00605262",
     "24b927e94913e74b4ad166cb2991a353",
@@ -465,10 +422,10 @@
     "8b9126f22bb325fb02f434db1fbacd55",
     "a0ed2c35c1c16b96f6c09249e79bbf2a",
     "07cb0368250d318a675ca94399cda438",
-    "7546f07e8575892dc3c9f2502558d241"
+    "7546f07e8575892dc3c9f2502558d241",
+    "32d32d7ec3efc1fe082228310da62061"
   ],
   "hashes_permanentes": [
-    "e47f7e7933697623867e4fa41dfbca14",
     "00ccfae85a401f384103aada09ab77ec",
     "18d5725bd4df4d8e0e413d4f8d2636a3",
     "cff56c836cfb67b20a53a0866cb902ad",
@@ -967,23 +924,16 @@
     "00ee102527263d70233dca9687e7e60d",
     "1e65409b93f16fa1146b97df6866eb72",
     "d021b04dd51d26e0f33607b82a8ee6ef",
-    "159de5b67dcb1a12d7de8a30b0da8c12"
+    "159de5b67dcb1a12d7de8a30b0da8c12",
+    "fa364c14111719b286feed6e03862b98"
   ],
   "estadisticas": {
-    "total_publicadas": 1119,
+    "total_publicadas": 1120,
     "total_fb": 226,
     "total_wp": 991,
-    "total_borradores": 22
+    "total_borradores": 23
   },
   "urls_normalizadas": [
-    "cooperativa.cl/noticias/pais/gabriel-boric/boric-pide-autocritica-en-la-izquierda-es-un-error-cancelar-el-debate/2026-08-14/200245",
-    "redgol.cl/mercado-de-fichajes/arsenal-rechaza-oferta-del-milan-por-nwaneri-el-panorama-del-posible-gran-salto-de-dario-osorio",
-    "qore.com/ai/removedores-de-claude-solo-borran-metadatos",
-    "cooperativa.cl/noticias/pais/region-de-los-lagos/incautaron-1-500-kilos-de-almejas-con-marea-roja-en-quellon/2026-08-14/232127",
-    "cooperativa.cl/noticias/pais/politica/frente-amplio/frente-amplio-inicio-sus-elecciones-generales-para-definir-su-directiva/2026-08-15/113612",
-    "cooperativa.cl/noticias/pais/sismos/norte-grande/sismo-se-registro-en-la-region-de-atacama/2026-08-15/163037",
-    "cooperativa.cl/noticias/pais/vivienda/poduje-amenazo-con-ir-a-contraloria-por-sobrecostos-en-viviendas/2026-08-15/231318",
-    "cooperativa.cl/noticias/pais/relaciones-exteriores/colombia/chile-envio-ayuda-humanitaria-a-colombia-tras-el-terremoto-de-7-4/2026-08-15/181345",
     "elcolombiano.com/colombia/gna-y-science-debate-polemica-mk39990783",
     "cooperativa.cl/noticias/pais/salud/hospitales/minsal-audita-contratos-de-hospitales-con-sociedades-medicas-por-mas-de/2026-08-16/112447",
     "cooperativa.cl/noticias/pais/ff-aa-y-de-orden/carabineros/exgeneral-yanez-critico-transmision-de-operacion-cancerbero-habria/2026-08-16/164918",
@@ -1051,7 +1001,8 @@
     "technologyreview.com/2026/08/25/1140902/addressing-a-sticking-point-in-sustainable-adhesives",
     "elpais.com/opinion/2026-08-25/carta-abierta-de-sergio-ramirez-al-presidente-lula-da-silva",
     "elpais.com/economia/2026-08-28/francia-se-estanca-en-el-segundo-trimestre-tras-una-revision-a-la-baja-del-pib",
-    "elpais.com/opinion/2026-08-22/la-ruta-de-la-seda-artica-de-china-ya-es-una-realidad"
+    "elpais.com/opinion/2026-08-22/la-ruta-de-la-seda-artica-de-china-ya-es-una-realidad",
+    "cooperativa.cl/noticias/pais/policial/crimen-organizado/cayo-en-lima-r15-un-presunto-lider-del-tren-de-aragua-en-chile/2026-08-29/174137"
   ],
   "urls_fb_publicadas": [
     "1001",

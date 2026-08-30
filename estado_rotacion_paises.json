@@ -1,8 +1,8 @@
 {
-  "fecha": "2026-08-29",
-  "ciclo": 5,
+  "fecha": "2026-08-30",
+  "ciclo": 6,
   "paises_usados_hoy": [
-    "asia"
+    "venezuela"
   ],
   "conteo_por_pais": {
     "argentina": 1,
@@ -13,6 +13,7 @@
     "colombia": 1,
     "brasil": 1,
     "europa": 1,
-    "asia": 1
+    "asia": 1,
+    "venezuela": 1
   }
 }

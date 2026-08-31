@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias - V21.0.0
-CAMBIOS VS V20:
-  - MAX_BORRADORES_DIA = 1 (1 por corrida, 3 corridas/dia via workflow)
-  - Títulos MIXTOS: mitad preguntas (¿Por qué...? ¿Cómo...?) + mitad afirmaciones con número
-  - Imagen destacada = descargada de fuente + watermark (generada como fallback)
-  - Imágenes adicionales dentro del artículo (hasta 3 temáticas via DuckDuckGo)
-  - Horarios workflow: 07:00, 13:00, 19:00 UTC (optimizado LATAM)
-  - Pinterest manejado por bot_pinterest_diferido.py
+Bot de Noticias - V22.0.0
+CAMBIOS VS V21:
+  - MAX_BORRADORES_DIA = 3 (3 por corrida única diaria a las 10:00 UTC)
+  - TEMAS EVERGREEN PREDEFINIDOS: pool de 60+ temas LATAM — el bot elige 3 al día
+  - SIN DEPENDENCIA DE RSS para el tema: el tema lo define el pool, Tavily busca contexto
+  - RSS solo como fuente de datos secundaria para enriquecer el contenido
+  - Eliminada la función ya_corrio_esta_hora() que bloqueaba corridas
+  - Títulos MIXTOS mantenidos (preguntas + afirmaciones con número)
+  - Imagen destacada = og:image de fuente Tavily + watermark (generada como fallback)
+  - Imágenes adicionales dentro del artículo (hasta 2 vía DuckDuckGo)
+  - Workflow recomendado: 1 corrida/día a las 10:00 UTC que publica 3 borradores
 """
-VERSION_BOT = "V21.0.0"
+VERSION_BOT = "V22.0.0"
 
 import requests, feedparser, re, hashlib, json, os, random, time, unicodedata
 from datetime import datetime, timedelta, timezone
@@ -18,26 +21,93 @@ from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
 
-MAX_BORRADORES_DIA = 1   # 1 por corrida — el workflow corre 3 veces al día
-MAX_POSTS_WP_DIA   = MAX_BORRADORES_DIA
+MAX_BORRADORES_DIA = 3   # 3 borradores por corrida
+ROTACION_TEMAS_PATH = 'estado_rotacion_temas.json'
 ROTACION_PAISES_PATH = 'estado_rotacion_paises.json'
 
-POOL_PAISES = {
-    'chile':          {'peso': 10, 'region': 'latinoamerica'},
-    'argentina':      {'peso': 9,  'region': 'latinoamerica'},
-    'mexico':         {'peso': 9,  'region': 'latinoamerica'},
-    'colombia':       {'peso': 7,  'region': 'latinoamerica'},
-    'brasil':         {'peso': 7,  'region': 'latinoamerica'},
-    'venezuela':      {'peso': 6,  'region': 'latinoamerica'},
-    'peru':           {'peso': 5,  'region': 'latinoamerica'},
-    'ecuador':        {'peso': 4,  'region': 'latinoamerica'},
-    'bolivia':        {'peso': 3,  'region': 'latinoamerica'},
-    'uruguay':        {'peso': 3,  'region': 'latinoamerica'},
-    'estados_unidos': {'peso': 8,  'region': 'mundo'},
-    'europa':         {'peso': 7,  'region': 'mundo'},
-    'asia':           {'peso': 6,  'region': 'mundo'},
-    'global':         {'peso': 8,  'region': 'mundo'},
-}
+# ══════════════════════════════════════════════════════════
+# POOL EVERGREEN PREDEFINIDO — 60+ temas LATAM
+# El bot elige de aquí, NO de RSS/noticias del día
+# ══════════════════════════════════════════════════════════
+POOL_EVERGREEN = [
+    # HISTORIA Y CIVILIZACIONES
+    {'tema': 'Los secretos de los mayas que aún no se han descifrado', 'categoria': 'historia', 'pais': 'mexico', 'keyword': 'mayas'},
+    {'tema': 'Por qué los incas construyeron Machu Picchu y qué pasó con ellos', 'categoria': 'historia', 'pais': 'peru', 'keyword': 'incas Machu Picchu'},
+    {'tema': 'Los aztecas y Tenochtitlán: la ciudad más grande del mundo medieval', 'categoria': 'historia', 'pais': 'mexico', 'keyword': 'aztecas Tenochtitlán'},
+    {'tema': 'La conquista española de América Latina: causas y consecuencias reales', 'categoria': 'historia', 'pais': 'global', 'keyword': 'conquista española América Latina'},
+    {'tema': 'Dictaduras en América Latina en el siglo XX: qué pasó y qué dejaron', 'categoria': 'historia', 'pais': 'global', 'keyword': 'dictaduras América Latina'},
+    {'tema': 'La Operación Cóndor: el plan secreto que unió dictaduras en Sudamérica', 'categoria': 'historia', 'pais': 'global', 'keyword': 'Operación Cóndor'},
+    {'tema': 'Por qué cayó el Imperio Inca tan rápido ante los españoles', 'categoria': 'historia', 'pais': 'peru', 'keyword': 'caída Imperio Inca'},
+    {'tema': 'Simón Bolívar: quién fue realmente y qué logró en América Latina', 'categoria': 'historia', 'pais': 'global', 'keyword': 'Simón Bolívar'},
+    {'tema': 'La historia del Canal de Panamá y por qué cambió al mundo', 'categoria': 'historia', 'pais': 'global', 'keyword': 'Canal de Panamá historia'},
+    {'tema': 'Civilizaciones precolombinas que existían antes de que llegaran los europeos', 'categoria': 'historia', 'pais': 'global', 'keyword': 'civilizaciones precolombinas'},
+
+    # MISTERIOS Y ARQUEOLOGÍA
+    {'tema': 'Las líneas de Nazca: qué son, cómo se hicieron y para qué servían', 'categoria': 'misterios', 'pais': 'peru', 'keyword': 'líneas de Nazca'},
+    {'tema': 'El misterio de la ciudad perdida de El Dorado y dónde podría estar', 'categoria': 'misterios', 'pais': 'global', 'keyword': 'El Dorado ciudad perdida'},
+    {'tema': 'Hallazgos arqueológicos recientes que cambian la historia de América Latina', 'categoria': 'misterios', 'pais': 'global', 'keyword': 'hallazgos arqueológicos América Latina'},
+    {'tema': 'Los moais de la Isla de Pascua: cómo los movieron y qué significan', 'categoria': 'misterios', 'pais': 'chile', 'keyword': 'moais Isla de Pascua'},
+    {'tema': 'Fenómenos inexplicables en América Latina que la ciencia no ha resuelto', 'categoria': 'misterios', 'pais': 'global', 'keyword': 'fenómenos inexplicables América Latina'},
+
+    # CIENCIA Y SALUD
+    {'tema': 'Por qué el cáncer sigue siendo tan difícil de curar y qué avances hay', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'cáncer tratamiento avances'},
+    {'tema': 'Qué es el Alzheimer y cómo afecta a las familias latinoamericanas', 'categoria': 'salud', 'pais': 'global', 'keyword': 'Alzheimer América Latina'},
+    {'tema': 'La diabetes en América Latina: por qué somos de los más afectados del mundo', 'categoria': 'salud', 'pais': 'global', 'keyword': 'diabetes América Latina'},
+    {'tema': 'Qué sabemos sobre la longevidad y cómo vivir más años con calidad', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'longevidad ciencia'},
+    {'tema': 'Cómo funciona el cerebro humano y por qué aún no lo entendemos del todo', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'cerebro humano funcionamiento'},
+    {'tema': 'El microbioma intestinal: por qué los bacterias en tu barriga importan', 'categoria': 'salud', 'pais': 'global', 'keyword': 'microbioma intestinal salud'},
+    {'tema': 'Medicamentos más importantes descubiertos en América Latina', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'medicamentos descubrimientos América Latina'},
+    {'tema': 'Por qué América Latina tiene tasas altas de hipertensión y qué hacer', 'categoria': 'salud', 'pais': 'global', 'keyword': 'hipertensión América Latina'},
+
+    # TECNOLOGÍA E IA
+    {'tema': 'Qué es la inteligencia artificial y cómo cambia tu trabajo en LATAM', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'inteligencia artificial trabajo LATAM'},
+    {'tema': 'Cómo la IA está reemplazando empleos en América Latina y cuáles sobrevivirán', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'IA empleos América Latina'},
+    {'tema': 'Qué es el bitcoin y por qué algunos países de LATAM lo adoptaron', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'bitcoin América Latina'},
+    {'tema': 'Por qué América Latina se está quedando atrás en tecnología y cómo cambiar eso', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'brecha tecnológica América Latina'},
+    {'tema': 'Deepfakes: qué son, cómo detectarlos y por qué son peligrosos en política LATAM', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'deepfakes política LATAM'},
+    {'tema': 'Startups latinoamericanas que cambiaron la región: los casos de éxito', 'categoria': 'innovacion', 'pais': 'global', 'keyword': 'startups latinoamericanas éxito'},
+    {'tema': 'Cómo funciona la computación cuántica y qué significa para el futuro', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'computación cuántica futuro'},
+
+    # ECONOMÍA Y RECURSOS
+    {'tema': 'Por qué el litio de Chile y Bolivia es clave para el futuro del mundo', 'categoria': 'economia', 'pais': 'chile', 'keyword': 'litio Chile Bolivia'},
+    {'tema': 'Qué es la inflación y por qué destroza los ahorros en América Latina', 'categoria': 'economia', 'pais': 'global', 'keyword': 'inflación América Latina'},
+    {'tema': 'El cobre chileno: cuánto vale, quién lo compra y por qué importa', 'categoria': 'economia', 'pais': 'chile', 'keyword': 'cobre Chile economía'},
+    {'tema': 'Por qué el dólar domina América Latina y qué pasa cuando sube', 'categoria': 'economia', 'pais': 'global', 'keyword': 'dólar América Latina'},
+    {'tema': 'Narcoeconomía en LATAM: cuánto mueve el narcotráfico y cómo lo blanquean', 'categoria': 'economia', 'pais': 'global', 'keyword': 'narcoeconomía América Latina'},
+    {'tema': 'El petróleo venezolano: por qué siendo tan rico Venezuela está en crisis', 'categoria': 'economia', 'pais': 'venezuela', 'keyword': 'petróleo Venezuela crisis'},
+    {'tema': 'Qué es el BRICS y por qué varios países de LATAM quieren entrar', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'BRICS América Latina'},
+    {'tema': 'La soya brasileña y cómo Brasil se convirtió en potencia agrícola mundial', 'categoria': 'economia', 'pais': 'brasil', 'keyword': 'soya Brasil agrícola'},
+
+    # SEGURIDAD Y GEOPOLÍTICA
+    {'tema': 'Por qué América Latina es la región más violenta del mundo', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'violencia América Latina'},
+    {'tema': 'El Tren de Aragua: origen, expansión y por qué llegó a Chile y EEUU', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'Tren de Aragua'},
+    {'tema': 'Cárteles mexicanos: cómo operan y por qué controlan tantos países', 'categoria': 'geopolitica', 'pais': 'mexico', 'keyword': 'cárteles mexicanos expansión'},
+    {'tema': 'La crisis de Venezuela: qué pasó, por qué emigran y adónde van', 'categoria': 'geopolitica', 'pais': 'venezuela', 'keyword': 'crisis Venezuela emigración'},
+    {'tema': 'Nayib Bukele y El Salvador: cómo bajó el crimen y qué costo tuvo', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'Bukele El Salvador seguridad'},
+    {'tema': 'Influencia de China en América Latina: inversiones, deudas y poder', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'China América Latina inversión'},
+    {'tema': 'La migración latinoamericana a EEUU: causas, riesgos y datos reales', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'migración latinoamericana EEUU'},
+    {'tema': 'Por qué Colombia no ha podido acabar con las FARC en décadas', 'categoria': 'geopolitica', 'pais': 'colombia', 'keyword': 'FARC Colombia conflicto'},
+
+    # MEDIO AMBIENTE
+    {'tema': 'La Amazonía en peligro: cuánta selva se pierde cada año y qué significa', 'categoria': 'medio_ambiente', 'pais': 'brasil', 'keyword': 'Amazonía deforestación'},
+    {'tema': 'Cambio climático en Chile: glaciares que desaparecen y sequías históricas', 'categoria': 'medio_ambiente', 'pais': 'chile', 'keyword': 'cambio climático Chile glaciares'},
+    {'tema': 'Por qué América Latina sufre más el cambio climático que otras regiones', 'categoria': 'medio_ambiente', 'pais': 'global', 'keyword': 'cambio climático América Latina'},
+    {'tema': 'La minería de litio en el desierto de Atacama y su impacto ambiental', 'categoria': 'medio_ambiente', 'pais': 'chile', 'keyword': 'minería litio Atacama impacto'},
+    {'tema': 'Especies en extinción en América Latina que puedes perder en tu vida', 'categoria': 'medio_ambiente', 'pais': 'global', 'keyword': 'extinción especies América Latina'},
+
+    # CULTURA Y SOCIEDAD
+    {'tema': 'Por qué la cumbia se extendió por toda América Latina y el mundo', 'categoria': 'cultura', 'pais': 'global', 'keyword': 'cumbia América Latina historia'},
+    {'tema': 'El fútbol en América Latina: por qué es más que un deporte', 'categoria': 'deportes', 'pais': 'global', 'keyword': 'fútbol América Latina cultura'},
+    {'tema': 'Machismo en América Latina: origen histórico y cómo está cambiando', 'categoria': 'cultura', 'pais': 'global', 'keyword': 'machismo América Latina'},
+    {'tema': 'Boom del anime en América Latina: por qué somos de los mayores consumidores', 'categoria': 'entretenimiento', 'pais': 'global', 'keyword': 'anime América Latina'},
+    {'tema': 'La brecha educativa en América Latina: por qué nuestros hijos aprenden menos', 'categoria': 'cultura', 'pais': 'global', 'keyword': 'educación brecha América Latina'},
+
+    # ESPACIO Y FÍSICA
+    {'tema': 'Qué hay más allá del universo observable y qué dice la ciencia', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'universo observable límites'},
+    {'tema': 'NASA y la carrera espacial 2026: qué misiones están activas ahora', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'NASA misiones espaciales 2026'},
+    {'tema': 'Agujeros negros: qué son, cómo se forman y qué pasaría si te cae uno encima', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'agujeros negros ciencia'},
+    {'tema': 'Vida en otros planetas: qué ha encontrado la NASA y qué falta por descubrir', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'vida extraterrestre NASA'},
+]
 
 CATEGORIAS_EVERGREEN = {
     'tecnologia':     {'slug': 'tecnologia',     'cpm': 1.45, 'evergreen': True},
@@ -55,46 +125,27 @@ CATEGORIAS_EVERGREEN = {
     'deportes':       {'slug': 'deportes',        'cpm': 1.25, 'evergreen': True},
     'latinoamerica':  {'slug': 'latinoamerica',   'cpm': 1.18, 'evergreen': True},
     'mundo':          {'slug': 'mundo',           'cpm': 1.00, 'evergreen': True},
-    'guerra':         {'slug': 'internacional',   'cpm': 0.90, 'evergreen': False},
-    'crimen':         {'slug': 'internacional',   'cpm': 0.85, 'evergreen': False},
-    'desastre':       {'slug': 'internacional',   'cpm': 0.95, 'evergreen': False},
     'general':        {'slug': 'mundo',           'cpm': 1.00, 'evergreen': True},
 }
 
-TEMAS_ALTA_RELEVANCIA = [
-    'inteligencia artificial','nasa','espacio','descubrimiento cientifico',
-    'fisica cuantica','genetica','cambio climatico','energia renovable',
-    'civilizacion perdida','arqueologia','historia antigua','misterio historico',
-    'mayas','incas','aztecas','egipto antiguo','manuscrito','artefacto inexplicable',
-    'robot','quantum','deepfake','neuralink','elon musk','openai','biotecnologia',
-    'cancer tratamiento','vacuna','longevidad','medicina del futuro','alzheimer',
-    'brics','geopolitica','litio','cobre','recursos naturales','acuerdo comercial',
-    'inflacion','criptomoneda','bitcoin','fintech','economia mundial',
-    'oscar','grammy','netflix','cultura pop','anime','cine latinoamericano',
-]
-
 NEWS_API_KEY       = os.getenv('NEWS_API_KEY','')
 NEWSDATA_API_KEY   = os.getenv('NEWSDATA_API_KEY','')
-GNEWS_API_KEY      = os.getenv('GNEWS_API_KEY','')
 WP_URL             = os.getenv('WP_URL','https://verdadhoy.com')
 WP_USER            = os.getenv('WP_USER','verdadhoy_admin')
 WP_APP_PASSWORD    = os.getenv('WP_APP_PASSWORD','')
-PINTEREST_TOKEN    = os.getenv('PINTEREST_TOKEN','')
 GROQ_API_KEY       = os.getenv('GROQ_API_KEY','')
 GEMINI_API_KEY     = os.getenv('GEMINI_API_KEY','')
 TAVILY_API_KEY     = os.getenv('TAVILY_API_KEY','')
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY','')
 OPENAI_API_KEY     = os.getenv('OPENAI_API_KEY','')
 
-HISTORIAL_PATH  = os.getenv('HISTORIAL_PATH','historial_publicaciones.json')
-ESTADO_WP_PATH  = 'estado_wp.json'
-CUOTAS_PATH     = 'estado_cuotas.json'
+HISTORIAL_PATH = os.getenv('HISTORIAL_PATH','historial_publicaciones.json')
+CUOTAS_PATH    = 'estado_cuotas.json'
 
-REINTENTAR_CALIDAD_IA      = True
 UMBRAL_SIMILITUD_TITULO    = 0.72
 UMBRAL_SIMILITUD_CONTENIDO = 0.62
-MAX_TITULOS_HISTORIA       = 300
-DIAS_HISTORIAL             = 14
+MAX_TITULOS_HISTORIA       = 500
+DIAS_HISTORIAL             = 60   # más largo para no repetir temas
 
 PALABRAS_TRANSICION = [
     'sin embargo','ademas','por otro lado','en consecuencia','a su vez',
@@ -149,18 +200,6 @@ TRANSICIONES_INYECTABLES = [
     'Cabe destacar que ',
 ]
 
-BLACKLIST_CONTENIDO_SPAM = [
-    'rojabet','bet365','1xbet','betano','casino online',
-    'apuestas deportivas','apuestas en linea','bono sin deposito',
-    'giros gratis casino','tragamonedas','ruleta online',
-    'prestamo rapido','bitcoin gratis','ganar criptomonedas',
-]
-
-BLACKLIST_TITULOS = [
-    r'^\s*ultima hora\s*$', r'^\s*breaking news\s*$',
-    r'^\s*noticias de hoy\s*$', r'^\s*\d+\s*$',
-]
-
 _FUENTES_INCRUSTADAS = re.compile(
     r'\b(LISTIN DIARIO|EL PAIS|El Pais|BBC|CNN|Reuters|AFP|AP News|INFOBAE|Infobae|'
     r'EFE|France 24|DW|Euronews|RT|Al Jazeera|The Guardian|NYT|New York Times|'
@@ -175,9 +214,8 @@ _FRASES_SUSCRIPCION = re.compile(
     re.IGNORECASE
 )
 
-_cache_categorias_wp    = {}
-_cache_tags_wp          = {}
-_cache_boards_pinterest = {}
+_cache_categorias_wp = {}
+_cache_tags_wp       = {}
 
 # ══════════════════════════════════════════════════════════
 # UTILIDADES
@@ -244,15 +282,6 @@ def similitud_contenido(c1, c2, longitud=120):
         return re.sub(r'\s+',' ',c)[:longitud]
     return SequenceMatcher(None, n(c1), n(c2)).ratio()
 
-def es_titulo_generico(titulo):
-    if not titulo: return True
-    tl = titulo.lower().strip()
-    for patron in BLACKLIST_TITULOS:
-        if re.match(patron, tl): return True
-    stop = {'el','la','de','y','en','the','of','to','hoy','los','las'}
-    palabras = [p for p in re.findall(r'\b\w+\b',tl) if p not in stop and len(p) > 3]
-    return len(set(palabras)) < 4
-
 def limpiar_texto(texto):
     if not texto: return ""
     import html
@@ -265,12 +294,6 @@ def limpiar_texto(texto):
     t = re.sub(r'\s+',' ',t).strip()
     if t and t[-1] not in '.!?': t += '.'
     return t.strip()
-
-def es_contenido_spam(titulo, descripcion=""):
-    txt = f"{titulo} {descripcion}".lower()
-    for keyword in BLACKLIST_CONTENIDO_SPAM:
-        if keyword.lower() in txt: return True, keyword
-    return False, None
 
 def _texto_plano(html_content):
     t = re.sub(r'<[^>]+>',' ', html_content or '')
@@ -292,12 +315,83 @@ def generar_slug_seo(titulo, max_chars=50):
     return slug or 'articulo'
 
 # ══════════════════════════════════════════════════════════
-# TÍTULOS MIXTOS V21 — preguntas + afirmaciones con número
+# ROTACIÓN DE TEMAS EVERGREEN
 # ══════════════════════════════════════════════════════════
-# El turno (par/impar según hora UTC) decide el formato
-def es_turno_pregunta():
-    """Par = pregunta, impar = afirmación con número."""
-    return datetime.now(timezone.utc).hour % 2 == 0
+def cargar_rotacion_temas():
+    datos = cargar_json(ROTACION_TEMAS_PATH, {
+        'temas_publicados': [],   # lista de keywords ya publicadas
+        'fecha_ultimo_reset': '',
+        'conteo_por_categoria': {}
+    })
+    return datos
+
+def seleccionar_temas_dia(rotacion, n=3):
+    """
+    Selecciona N temas del pool que NO se hayan publicado aún.
+    Prioriza categorías con menos artículos publicados.
+    Dentro de la misma sesión, no repite categoría si hay alternativas.
+    """
+    publicados = set(rotacion.get('temas_publicados', []))
+    conteo_cat = rotacion.get('conteo_por_categoria', {})
+
+    # Filtrar temas no publicados
+    disponibles = [t for t in POOL_EVERGREEN if t['keyword'] not in publicados]
+
+    # Si ya publicamos más de 80% del pool, resetear
+    if len(disponibles) < len(POOL_EVERGREEN) * 0.2:
+        log(f"Pool evergreen casi agotado ({len(disponibles)} restantes) — reseteando ciclo", 'advertencia')
+        rotacion['temas_publicados'] = []
+        rotacion['conteo_por_categoria'] = {}
+        guardar_json(ROTACION_TEMAS_PATH, rotacion)
+        disponibles = list(POOL_EVERGREEN)
+
+    if not disponibles:
+        return []
+
+    # Ordenar por: menor conteo de categoría primero + randomness
+    def score_tema(t):
+        cat_count = conteo_cat.get(t['categoria'], 0)
+        return cat_count + random.uniform(0, 2)
+
+    disponibles_ordenados = sorted(disponibles, key=score_tema)
+
+    # Seleccionar N temas evitando repetir categoría en la misma sesión
+    seleccionados = []
+    categorias_usadas = set()
+    for tema in disponibles_ordenados:
+        if len(seleccionados) >= n:
+            break
+        # Preferir no repetir categoría en la misma corrida
+        if tema['categoria'] not in categorias_usadas or len(seleccionados) < n:
+            seleccionados.append(tema)
+            categorias_usadas.add(tema['categoria'])
+
+    # Si no alcanzamos n por restricción de categorías, completar sin restricción
+    if len(seleccionados) < n:
+        for tema in disponibles_ordenados:
+            if tema not in seleccionados:
+                seleccionados.append(tema)
+            if len(seleccionados) >= n:
+                break
+
+    return seleccionados[:n]
+
+def registrar_tema_publicado(rotacion, tema):
+    publicados = rotacion.get('temas_publicados', [])
+    if tema['keyword'] not in publicados:
+        publicados.append(tema['keyword'])
+    rotacion['temas_publicados'] = publicados
+    conteo = rotacion.get('conteo_por_categoria', {})
+    conteo[tema['categoria']] = conteo.get(tema['categoria'], 0) + 1
+    rotacion['conteo_por_categoria'] = conteo
+    guardar_json(ROTACION_TEMAS_PATH, rotacion)
+
+# ══════════════════════════════════════════════════════════
+# TÍTULOS MIXTOS — preguntas + afirmaciones con número
+# ══════════════════════════════════════════════════════════
+def es_turno_pregunta(indice=0):
+    """Alterna entre pregunta y afirmación según índice del artículo."""
+    return indice % 2 == 0
 
 PREFIJOS_PREGUNTA = [
     '¿Por qué', '¿Cómo funciona', '¿Qué es', '¿Cuál es',
@@ -339,125 +433,11 @@ def formato_titulo_afirmacion(keyword, categoria):
     power = random.choice(['clave', 'que debes saber', 'reveladores', 'históricos', 'esenciales'])
     return f"{sufijo} {keyword}: {n} {power} en {año}"
 
-def generar_titulo_mixto(keyword, categoria):
-    """Alterna entre pregunta y afirmación con número según la hora."""
-    if es_turno_pregunta():
+def generar_titulo_mixto(keyword, categoria, indice=0):
+    if es_turno_pregunta(indice):
         return formato_titulo_pregunta(keyword, categoria)
     else:
         return formato_titulo_afirmacion(keyword, categoria)
-
-# ══════════════════════════════════════════════════════════
-# ROTACION DE PAISES V21
-# ══════════════════════════════════════════════════════════
-def cargar_rotacion():
-    datos = cargar_json(ROTACION_PAISES_PATH, {
-        'fecha':'','ciclo':0,'paises_usados_hoy':[],'conteo_por_pais':{}
-    })
-    hoy = datetime.now().strftime('%Y-%m-%d')
-    if datos.get('fecha') != hoy:
-        datos['fecha'] = hoy
-        datos['paises_usados_hoy'] = []
-    return datos
-
-def seleccionar_paises_ciclo(rotacion, n=1):
-    usados_hoy = set(rotacion.get('paises_usados_hoy',[]))
-    conteo = rotacion.get('conteo_por_pais',{})
-    todos = list(POOL_PAISES.keys())
-    candidatos = [p for p in todos if p not in usados_hoy]
-    if not candidatos: candidatos = todos
-    def score(pais):
-        veces = conteo.get(pais, 0)
-        peso  = POOL_PAISES[pais]['peso']
-        return (peso / (veces + 1)) * random.uniform(0.8, 1.2)
-    candidatos_ord = sorted(candidatos, key=score, reverse=True)
-    return candidatos_ord[:n]
-
-def registrar_paises_usados(rotacion, paises):
-    rotacion['paises_usados_hoy'] = list(set(rotacion.get('paises_usados_hoy',[]))|set(paises))
-    rotacion['ciclo'] = rotacion.get('ciclo',0) + 1
-    conteo = rotacion.get('conteo_por_pais',{})
-    for p in paises: conteo[p] = conteo.get(p,0) + 1
-    rotacion['conteo_por_pais'] = conteo
-    guardar_json(ROTACION_PAISES_PATH, rotacion)
-
-# ══════════════════════════════════════════════════════════
-# DETECCION DE TEMA
-# ══════════════════════════════════════════════════════════
-def detectar_tema(titulo, descripcion=""):
-    txt = f"{titulo} {descripcion}".lower()
-    if any(p in txt for p in ["terremoto","sismo","huracan","inundacion","tsunami","erupcion"]): return 'desastre'
-    if any(p in txt for p in ["asesinato","homicidio","narcotrafico","cartel","crimen organizado","feminicidio","masacre"]): return 'crimen'
-    if any(p in txt for p in ["guerra","bombardeo","misil","conflicto armado","invasion","tropas","ofensiva militar"]): return 'guerra'
-    if any(p in txt for p in ["misterio","arqueologia","civilizacion perdida","artefacto antiguo","oopart","manuscrito",
-                               "enigma historico","historia antigua","tumba","piramide","ruinas antiguas","fosil","mayas","incas","aztecas"]): return 'misterios'
-    if any(p in txt for p in ["historia de","siglo xix","siglo xx","segunda guerra","primera guerra","revolucion",
-                               "colonia","independencia","dictadura","operacion condor","guerra fria","archivo historico"]): return 'historia'
-    if any(p in txt for p in ["geopolitica","brics","otan","nato","g7","g20","acuerdo comercial","tratado internacional",
-                               "diplomacia","relaciones internacionales","potencia mundial"]): return 'geopolitica'
-    if any(p in txt for p in ["innovacion","startup","emprendimiento","fintech","biotech","nanotecnologia",
-                               "biotecnologia","fusion nuclear","computacion cuantica","quantum"]): return 'innovacion'
-    if any(p in txt for p in ["inteligencia artificial","chatgpt","openai","gemini","robot","ciberataque","hackeo",
-                               "elon musk","spacex","starlink","nvidia","blockchain","criptomoneda","machine learning"]): return 'tecnologia'
-    if any(p in txt for p in ["inflacion","recesion","bolsa de valores","mercado financiero","dolar","fmi",
-                               "banco central","crisis economica","aranceles","pib","wall street","deficit fiscal"]): return 'economia'
-    if any(p in txt for p in ["cambio climatico","calentamiento global","sequia","incendio forestal",
-                               "contaminacion","medio ambiente","biodiversidad","extincion","amazonia","glaciar"]): return 'medio_ambiente'
-    if any(p in txt for p in ["cancer","enfermedad","pandemia","vacuna","virus","salud publica","oms","epidemia",
-                               "medicamento","alzheimer","diabetes","salud mental","longevidad"]): return 'salud'
-    if any(p in txt for p in ["descubrimiento cientifico","nasa","espacio","agujero negro","exoplaneta",
-                               "astronomia","telescopio","marte","luna","fisica cuantica","adn","premio nobel"]): return 'ciencia'
-    if any(p in txt for p in ["futbol","copa libertadores","champions league","mundial","olimpiadas",
-                               "nba","formula 1","messi","cristiano ronaldo","seleccion"]): return 'deportes'
-    if any(p in txt for p in ["pelicula","oscar","grammy","netflix","disney","marvel","anime","musica",
-                               "concierto","taylor swift","bad bunny","shakira","cultura pop"]): return 'entretenimiento'
-    if any(p in txt for p in ["eleccion","presidente","gobierno","congreso","senado","reforma","decreto","parlamento"]): return 'politica'
-    if any(p in txt for p in ["chile","argentina","mexico","colombia","brasil","venezuela","peru","ecuador",
-                               "bolivia","uruguay","latinoamerica","america latina","latam"]): return 'latinoamerica'
-    return 'general'
-
-def es_evergreen(tema):
-    return CATEGORIAS_EVERGREEN.get(tema, {}).get('evergreen', True)
-
-def calcular_relevancia_evergreen(titulo, descripcion=""):
-    txt = f"{titulo} {descripcion}".lower()
-    score = 0
-    for tema_r in TEMAS_ALTA_RELEVANCIA:
-        if tema_r in txt: score += 8
-    tema = detectar_tema(titulo, descripcion)
-    cpm = CATEGORIAS_EVERGREEN.get(tema, {}).get('cpm', 1.0)
-    score += int(cpm * 10)
-    palabras_efimeras = ['hoy','ayer','esta manana','ultimas horas','breaking','urgente','ultima hora']
-    for p in palabras_efimeras:
-        if p in txt: score -= 5
-    palabras_profundidad = ['historia','investigacion','estudio','descubrimiento','analisis',
-                             'datos','cifras','expertos','cientificos','investigadores','por que','como funciona']
-    for p in palabras_profundidad:
-        if p in txt: score += 3
-    palabras_titulo = len(titulo.split())
-    if 6 <= palabras_titulo <= 12: score += 5
-    return max(0, score)
-
-KEYWORDS_POR_PAIS = {
-    'chile':          ['chile','chilena','chileno','santiago','boric','codelco'],
-    'argentina':      ['argentina','argentino','buenos aires','milei','cordoba'],
-    'mexico':         ['mexico','mexicano','cdmx','sheinbaum','pemex','guadalajara'],
-    'colombia':       ['colombia','colombiano','bogota','petro','medellin'],
-    'brasil':         ['brasil','brasileno','lula','sao paulo','rio de janeiro'],
-    'venezuela':      ['venezuela','venezolano','maduro','caracas','maracaibo'],
-    'peru':           ['peru','peruano','lima','boluarte','arequipa'],
-    'ecuador':        ['ecuador','ecuatoriano','quito','noboa','guayaquil'],
-    'bolivia':        ['bolivia','boliviano','la paz','santa cruz'],
-    'uruguay':        ['uruguay','uruguayo','montevideo'],
-    'estados_unidos': ['estados unidos','eeuu','trump','washington','wall street','silicon valley','nasa'],
-    'europa':         ['europa','union europea','alemania','francia','reino unido','espana','italia'],
-    'asia':           ['china','japon','corea','india','xi jinping','taiwan','tokio'],
-    'global':         [],
-}
-
-def noticia_es_de_pais(titulo, descripcion, pais):
-    if pais == 'global': return True
-    txt = f"{titulo} {descripcion}".lower()
-    return any(kw in txt for kw in KEYWORDS_POR_PAIS.get(pais, []))
 
 # ══════════════════════════════════════════════════════════
 # HISTORIAL Y CUOTAS
@@ -465,7 +445,7 @@ def noticia_es_de_pais(titulo, descripcion, pais):
 HISTORIAL_DEFAULT = {
     'urls':[],'urls_normalizadas':[],'hashes':[],'timestamps':[],
     'titulos':[],'descripciones':[],'hashes_contenido':[],'hashes_permanentes':[],
-    'estadisticas':{'total_publicadas':0,'total_wp':0,'total_borradores':0,'total_pinterest':0}
+    'estadisticas':{'total_publicadas':0,'total_wp':0,'total_borradores':0}
 }
 
 def cargar_historial():
@@ -485,33 +465,24 @@ def _limpiar_historial_antiguo(h):
     for key in ['urls','urls_normalizadas','hashes','timestamps','titulos','descripciones','hashes_contenido']:
         if key in h and isinstance(h[key], list):
             h[key] = [h[key][i] for i in indices_validos if i < len(h[key])]
-    if len(h.get('hashes_permanentes',[])) > 500:
-        h['hashes_permanentes'] = h['hashes_permanentes'][-500:]
+    if len(h.get('hashes_permanentes',[])) > 800:
+        h['hashes_permanentes'] = h['hashes_permanentes'][-800:]
 
-def noticia_ya_publicada(h, url, titulo, desc=""):
-    if es_titulo_generico(titulo): return True, "titulo_generico"
-    url_n  = normalizar_url(url)
-    hash_t = generar_hash(titulo)
-    hash_d = generar_hash(desc) if desc else ""
-    if url_n in h.get('urls_normalizadas',[]): return True, "url_duplicada"
+def tema_ya_publicado(h, keyword, tema_titulo):
+    """Verifica si ya publicamos sobre este keyword o un tema muy similar."""
+    hash_t = generar_hash(keyword)
     todos_hashes = set(h.get('hashes',[])) | set(h.get('hashes_permanentes',[]))
-    if hash_t in todos_hashes: return True, "hash_titulo"
-    if hash_d and hash_d in h.get('hashes_contenido',[]): return True, "hash_contenido"
+    if hash_t in todos_hashes: return True, "keyword_duplicado"
     for th in h.get('titulos',[]):
         if not isinstance(th,str): continue
-        if similitud_titulos(titulo,th) >= UMBRAL_SIMILITUD_TITULO: return True, "titulo_similar"
-    if desc:
-        for dh in h.get('descripciones',[]):
-            if isinstance(dh,str) and dh:
-                if similitud_contenido(desc,dh,150) >= UMBRAL_SIMILITUD_CONTENIDO: return True, "descripcion_similar"
+        if similitud_titulos(tema_titulo, th) >= UMBRAL_SIMILITUD_TITULO:
+            return True, "titulo_similar"
     return False, "nuevo"
 
-def guardar_en_historial(h, url, titulo, desc=""):
-    url_n  = normalizar_url(url)
-    hash_t = generar_hash(titulo)
-    if url_n in h.get('urls_normalizadas',[]): return h
-    h['urls'].append(url)
-    h['urls_normalizadas'].append(url_n)
+def guardar_en_historial(h, url_fuente, titulo, keyword, desc=""):
+    hash_t = generar_hash(keyword)
+    h['urls'].append(url_fuente or '')
+    h['urls_normalizadas'].append(normalizar_url(url_fuente or ''))
     h['hashes'].append(hash_t)
     h['timestamps'].append(datetime.now().isoformat())
     h['titulos'].append(titulo)
@@ -519,51 +490,57 @@ def guardar_en_historial(h, url, titulo, desc=""):
     h['hashes_contenido'].append(generar_hash(desc) if desc else "")
     h['hashes_permanentes'].append(hash_t)
     h['estadisticas']['total_publicadas'] = h['estadisticas'].get('total_publicadas',0) + 1
+    h['estadisticas']['total_borradores'] = h['estadisticas'].get('total_borradores',0) + 1
     for k in ['urls','urls_normalizadas','hashes','timestamps','titulos','descripciones','hashes_contenido']:
         if len(h[k]) > MAX_TITULOS_HISTORIA: h[k] = h[k][-MAX_TITULOS_HISTORIA:]
-    if len(h['hashes_permanentes']) > 500: h['hashes_permanentes'] = h['hashes_permanentes'][-500:]
+    if len(h['hashes_permanentes']) > 800: h['hashes_permanentes'] = h['hashes_permanentes'][-800:]
     guardar_json(HISTORIAL_PATH, h)
     return h
 
-def puede_publicar_wp():
+def puede_publicar_wp(borradores_esta_corrida):
     if os.getenv('FORZAR_PUBLICACION','').lower() == 'true': return True
-    datos = cargar_json(CUOTAS_PATH, {})
-    hoy = datetime.now().strftime('%Y-%m-%d')
-    if datos.get('fecha') != hoy: return True
-    total = datos.get('borradores', 0)
-    if total >= MAX_BORRADORES_DIA:
-        log(f"Cuota corrida alcanzada ({total}/{MAX_BORRADORES_DIA}) — próxima corrida en siguiente horario",'advertencia')
-        return False
-    return True
-
-def registrar_borrador():
-    datos = cargar_json(CUOTAS_PATH, {})
-    hoy = datetime.now().strftime('%Y-%m-%d')
-    # IMPORTANTE: No resetear por fecha — cada corrida es independiente
-    # El reset lo hace el workflow al correr en nueva hora
-    datos['fecha'] = hoy
-    datos['borradores'] = datos.get('borradores', 0) + 1
-    datos['ultima_corrida'] = datetime.now(timezone.utc).isoformat()
-    guardar_json(CUOTAS_PATH, datos)
-
-def ya_corrio_esta_hora():
-    """Evita doble publicación si el workflow se ejecuta dos veces en la misma hora."""
-    datos = cargar_json(CUOTAS_PATH, {})
-    ultima = datos.get('ultima_corrida','')
-    if not ultima: return False
-    try:
-        dt_ultima = datetime.fromisoformat(ultima)
-        if dt_ultima.tzinfo is None: dt_ultima = dt_ultima.replace(tzinfo=timezone.utc)
-        ahora = datetime.now(timezone.utc)
-        # Si corrió hace menos de 50 minutos en la misma hora UTC = ya corrió
-        diff = ahora - dt_ultima
-        if diff.total_seconds() < 3000 and dt_ultima.hour == ahora.hour:
-            return True
-    except: pass
-    return False
+    return borradores_esta_corrida < MAX_BORRADORES_DIA
 
 # ══════════════════════════════════════════════════════════
-# IMÁGENES V21 — descarga + múltiples imágenes en artículo
+# TAVILY — contexto web para el tema evergreen
+# ══════════════════════════════════════════════════════════
+def buscar_contexto_evergreen(tema_titulo, keyword, n_resultados=5):
+    """
+    Busca contexto web actualizado para generar artículo evergreen.
+    Retorna lista de resultados con título, url, contenido.
+    """
+    if not TAVILY_API_KEY:
+        log("Sin TAVILY_API_KEY — sin contexto web", 'advertencia')
+        return [], ""
+    try:
+        # Query más específica que el título genérico
+        query = f"{keyword} historia explicación datos América Latina"
+        resp = requests.post("https://api.tavily.com/search",
+            json={"api_key": TAVILY_API_KEY,
+                  "query": query,
+                  "search_depth": "advanced",   # más profundo para evergreen
+                  "max_results": n_resultados,
+                  "include_answer": True,        # incluir respuesta sintetizada
+                  "include_raw_content": False},
+            timeout=20)
+        data = resp.json()
+        answer = data.get("answer", "")
+        resultados = data.get("results", [])
+        if not resultados:
+            log(f"Tavily sin resultados para '{keyword}'", 'advertencia')
+            return [], answer
+        fuentes = [{"title": r.get("title",""),
+                    "url":   r.get("url",""),
+                    "content": (r.get("content","") or "")[:800]}
+                   for r in resultados]
+        log(f"Tavily: {len(fuentes)} fuentes para '{keyword}'", 'info')
+        return fuentes, answer
+    except Exception as e:
+        log(f"Tavily error: {e}", 'advertencia')
+        return [], ""
+
+# ══════════════════════════════════════════════════════════
+# IMÁGENES
 # ══════════════════════════════════════════════════════════
 def agregar_watermark(img):
     try:
@@ -594,7 +571,6 @@ def agregar_watermark(img):
     except: return img
 
 def descargar_imagen(url, min_w=400, min_h=250):
-    """Descarga y procesa una imagen. Retorna path local o None."""
     if not url: return None
     for bloqueo in ['google.com','gstatic.com','facebook.com','logo','icon','favicon','1x1','pixel','blank']:
         if bloqueo in url.lower(): return None
@@ -619,7 +595,6 @@ def descargar_imagen(url, min_w=400, min_h=250):
     except: return None
 
 def extraer_imagen_og(url):
-    """Extrae og:image o twitter:image de la página fuente."""
     if not url: return None
     try:
         r = requests.get(url, headers={'User-Agent':'Mozilla/5.0'}, timeout=15)
@@ -630,7 +605,6 @@ def extraer_imagen_og(url):
                 img = tag.get('content','').strip()
                 if img and img.startswith('http') and not any(b in img.lower() for b in ['google','logo','icon']):
                     return img
-        # Buscar primera imagen grande en el artículo
         for img_tag in s.find_all('img', src=True)[:10]:
             src = img_tag.get('src','')
             if src.startswith('http') and not any(b in src.lower() for b in ['logo','icon','avatar']):
@@ -638,8 +612,7 @@ def extraer_imagen_og(url):
     except: pass
     return None
 
-def buscar_imagenes_duckduckgo(query, max_resultados=5):
-    """Busca imágenes en DuckDuckGo. Retorna lista de URLs."""
+def buscar_imagenes_duckduckgo(query, max_resultados=4):
     urls = []
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -664,94 +637,140 @@ def buscar_imagenes_duckduckgo(query, max_resultados=5):
         log(f"DuckDuckGo imagen fallo: {e}",'debug')
     return urls
 
-def obtener_imagenes_articulo(fuente_url, titulo, keyword, categoria, n_extra=2):
-    """
-    Obtiene la imagen destacada + imágenes adicionales para el artículo.
-    
-    Orden de prioridad imagen destacada:
-    1. og:image de la fuente (descargada + watermark)
-    2. Imagen generada con título + categoría
+def crear_imagen_titulo(titulo, categoria='general'):
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        import textwrap
+        W, H = 1600, 900
+        img = Image.new('RGB', (W,H), color='#0f172a')
+        draw = ImageDraw.Draw(img)
+        for i in range(H):
+            ratio = i/H
+            draw.line([(0,i),(W,i)], fill=(int(15+(30-15)*ratio),int(23+(41-23)*ratio),int(42+(69-42)*ratio)))
+        draw.rectangle([(0,0),(W,10)], fill='#dc2626')
+        colores_cat = {
+            'misterios':'#6d28d9','historia':'#92400e','geopolitica':'#1e40af',
+            'innovacion':'#0891b2','tecnologia':'#2563eb','ciencia':'#0891b2',
+            'salud':'#16a34a','economia':'#059669','politica':'#7c3aed',
+            'deportes':'#d97706','entretenimiento':'#db2777','cultura':'#db2777',
+            'medio_ambiente':'#15803d','latinoamerica':'#ea580c','mundo':'#4338ca','general':'#475569',
+        }
+        nombres_cat = {
+            'misterios':'MISTERIOS','historia':'HISTORIA','geopolitica':'GEOPOLÍTICA',
+            'innovacion':'INNOVACIÓN','tecnologia':'TECNOLOGÍA','ciencia':'CIENCIA',
+            'salud':'SALUD','economia':'ECONOMÍA','politica':'POLÍTICA',
+            'deportes':'DEPORTES','entretenimiento':'ENTRETENIMIENTO','cultura':'CULTURA',
+            'medio_ambiente':'MEDIO AMBIENTE','latinoamerica':'LATINOAMÉRICA','mundo':'MUNDO','general':'NOTICIAS',
+        }
+        color_badge = colores_cat.get(categoria,'#475569')
+        texto_badge = nombres_cat.get(categoria,'NOTICIAS')
+        try:
+            font_badge  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
+            font_titulo = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 62)
+            font_marca  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
+            font_sub    = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
+        except: font_badge = font_titulo = font_marca = font_sub = ImageFont.load_default()
+        badge_x, badge_y = 70, 70
+        try:
+            bbox_b = draw.textbbox((0,0), texto_badge, font=font_badge)
+            bw, bh = bbox_b[2]-bbox_b[0], bbox_b[3]-bbox_b[1]
+        except: bw, bh = 160, 32
+        draw.rounded_rectangle([badge_x,badge_y,badge_x+bw+28,badge_y+bh+16],radius=6,fill=color_badge)
+        draw.text((badge_x+14,badge_y+8), texto_badge, font=font_badge, fill='white')
+        chars_pl = 38 if len(titulo) > 80 else 44
+        font_size_t = 52 if len(titulo) > 100 else 62
+        try: font_titulo = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size_t)
+        except: pass
+        tt = textwrap.fill(titulo[:160], width=chars_pl)
+        lineas = tt.split('\n')
+        alto_total = len(lineas) * (font_size_t+14)
+        y_texto = max(160, (H-alto_total)//2-40)
+        for linea in lineas:
+            draw.text((72,y_texto+2), linea, font=font_titulo, fill=(0,0,0,120))
+            y_texto += font_size_t+14
+        y_texto = max(160, (H-alto_total)//2-40)
+        for linea in lineas:
+            draw.text((70,y_texto), linea, font=font_titulo, fill='#f1f5f9')
+            y_texto += font_size_t+14
+        draw.rectangle([(0,H-90),(W,H)], fill='#1e293b')
+        draw.rectangle([(0,H-90),(W,H-87)], fill=color_badge)
+        draw.text((70,H-65), "VERDAD HOY", font=font_marca, fill='#f1f5f9')
+        draw.text((W-420,H-60), "verdadhoy.com", font=font_sub, fill='#94a3b8')
+        img = agregar_watermark(img)
+        p = f'/tmp/gen_{generar_hash(titulo)}.jpg'
+        img.save(p, 'JPEG', quality=92, optimize=True)
+        return p
+    except: return None
 
-    Para imágenes adicionales (dentro del artículo):
-    - Búsqueda DuckDuckGo por keyword + categoría
-    
-    Retorna: (img_destacada_path, [img_adicional_path1, img_adicional_path2, ...])
+def obtener_imagenes_articulo(fuentes_tavily, keyword, categoria, titulo):
     """
-    # ── 1. Imagen destacada ──────────────────────────────
+    Imagen destacada: og:image de primera fuente Tavily → generada
+    Imágenes adicionales: DuckDuckGo
+    """
     img_destacada = None
-    log("Buscando imagen destacada de la fuente...",'info')
-    
-    og_url = extraer_imagen_og(fuente_url)
-    if og_url:
-        log(f"og:image encontrada: {og_url[:60]}",'info')
-        img_destacada = descargar_imagen(og_url)
-    
+
+    # Intentar og:image de cada fuente Tavily
+    for fuente in fuentes_tavily[:3]:
+        url_fuente = fuente.get('url','')
+        if not url_fuente: continue
+        og_url = extraer_imagen_og(url_fuente)
+        if og_url:
+            img_destacada = descargar_imagen(og_url)
+            if img_destacada:
+                log(f"Imagen destacada desde Tavily fuente: OK",'info')
+                break
+
     if not img_destacada:
         log("Sin og:image — generando imagen con título",'advertencia')
         img_destacada = crear_imagen_titulo(titulo, categoria)
 
-    # ── 2. Imágenes adicionales vía DuckDuckGo ───────────
+    # Imágenes adicionales DuckDuckGo
     imagenes_adicionales = []
-    queries_por_cat = {
-        'salud':         [f"{keyword} salud medicina", f"enfermedad tratamiento medico"],
-        'ciencia':       [f"{keyword} ciencia descubrimiento", f"investigacion cientifica laboratorio"],
-        'historia':      [f"{keyword} historia antigua civilizacion", f"arqueologia hallazgo historico"],
-        'misterios':     [f"{keyword} misterio arqueologia", f"fenomeno inexplicable ciencia"],
-        'tecnologia':    [f"{keyword} tecnologia inteligencia artificial", f"innovacion digital futuro"],
-        'innovacion':    [f"{keyword} innovacion startup tecnologia", f"futuro tecnologico"],
-        'economia':      [f"{keyword} economia finanzas latinoamerica", f"mercado dinero inversion"],
-        'geopolitica':   [f"{keyword} geopolitica mapa conflicto", f"diplomacia relaciones internacionales"],
-        'medio_ambiente':[f"{keyword} naturaleza medio ambiente", f"cambio climatico ecosistema"],
-        'cultura':       [f"{keyword} cultura latinoamerica arte", f"tradicion patrimonio"],
-        'latinoamerica': [f"{keyword} america latina pais", f"latinoamerica ciudad"],
-        'politica':      [f"{keyword} politica gobierno", f"democracia ciudadanos"],
-        'deportes':      [f"{keyword} deporte competencia", f"atletismo campeonato"],
-        'entretenimiento':[f"{keyword} entretenimiento cultura pop", f"cine musica latinoamerica"],
+    queries_cat = {
+        'historia':      [f"{keyword} historia", f"civilización latinoamericana"],
+        'misterios':     [f"{keyword} misterio arqueología", f"descubrimiento inexplicable"],
+        'ciencia':       [f"{keyword} ciencia investigación", f"laboratorio científico"],
+        'salud':         [f"{keyword} salud medicina", f"tratamiento médico"],
+        'tecnologia':    [f"{keyword} tecnología", f"innovación digital futuro"],
+        'economia':      [f"{keyword} economía finanzas", f"mercado dinero"],
+        'geopolitica':   [f"{keyword} política mundo", f"mapa conflicto"],
+        'medio_ambiente':[f"{keyword} naturaleza", f"cambio climático ecosistema"],
+        'cultura':       [f"{keyword} cultura latinoamérica", f"tradición arte"],
+        'deportes':      [f"{keyword} deporte", f"competencia deportiva"],
+        'innovacion':    [f"{keyword} innovación startup", f"tecnología futuro"],
+        'entretenimiento':[f"{keyword} entretenimiento", f"cultura pop latina"],
     }
-    queries = queries_por_cat.get(categoria, [f"{keyword} {categoria}", f"{keyword} ilustracion"])
-    
-    urls_encontradas = []
-    for q in queries[:2]:
-        urls_encontradas.extend(buscar_imagenes_duckduckgo(q, max_resultados=3))
-    
-    urls_encontradas = list(dict.fromkeys(urls_encontradas))  # deduplicar
+    queries = queries_cat.get(categoria, [f"{keyword}", f"{keyword} América Latina"])
 
-    for img_url in urls_encontradas[:n_extra * 2]:
-        if len(imagenes_adicionales) >= n_extra: break
-        if og_url and img_url == og_url: continue  # no repetir la destacada
+    urls_imgs = []
+    for q in queries[:2]:
+        urls_imgs.extend(buscar_imagenes_duckduckgo(q, max_resultados=3))
+
+    urls_imgs = list(dict.fromkeys(urls_imgs))
+    for img_url in urls_imgs[:6]:
+        if len(imagenes_adicionales) >= 2: break
         path = descargar_imagen(img_url, min_w=350, min_h=220)
         if path:
             imagenes_adicionales.append(path)
-            log(f"Imagen adicional {len(imagenes_adicionales)}: OK",'info')
 
-    log(f"Imágenes: 1 destacada + {len(imagenes_adicionales)} adicionales",'exito')
+    log(f"Imágenes: 1 destacada + {len(imagenes_adicionales)} adicionales",'info')
     return img_destacada, imagenes_adicionales
 
 # ══════════════════════════════════════════════════════════
-# TAVILY
+# IA V22 — PROMPT EVERGREEN PURO (sin RSS)
 # ══════════════════════════════════════════════════════════
-def buscar_contexto_web(titulo, max_resultados=3):
-    if not TAVILY_API_KEY: return []
-    try:
-        resp = requests.post("https://api.tavily.com/search",
-            json={"api_key":TAVILY_API_KEY,"query":titulo,"search_depth":"basic",
-                  "max_results":max_resultados,"include_answer":False}, timeout=15)
-        data = resp.json()
-        resultados = data.get("results",[])
-        if not resultados: return []
-        return [{"title":r.get("title",""),"url":r.get("url",""),
-                 "content":(r.get("content","") or "")[:600]} for r in resultados]
-    except Exception as e:
-        log(f"Tavily fallo ({e})",'advertencia')
-        return []
-
-# ══════════════════════════════════════════════════════════
-# IA V21 — PROMPT EVERGREEN + TÍTULOS MIXTOS
-# ══════════════════════════════════════════════════════════
-def reescribir_noticia_v21(titulo, contenido, categoria='general', pais_foco='global',
-                            feedback_correccion=None, titulo_sugerido=None):
+def generar_articulo_evergreen(tema_config, fuentes_tavily, answer_tavily, indice=0):
+    """
+    Genera artículo evergreen completo sobre un tema del pool.
+    No depende de noticias del día — usa el tema + contexto Tavily.
+    """
     api_key = OPENAI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY or GEMINI_API_KEY
     if not api_key: return None
+
+    tema_titulo  = tema_config['tema']
+    categoria    = tema_config['categoria']
+    keyword      = tema_config['keyword']
+    pais         = tema_config.get('pais', 'global')
 
     TITULOS_BOX = [
         ('⚡','Lo que debes saber','#ff6b35','#fff3e0'),
@@ -761,77 +780,72 @@ def reescribir_noticia_v21(titulo, contenido, categoria='general', pais_foco='gl
     ]
     emoji_box, texto_box, color_titulo, color_fondo = random.choice(TITULOS_BOX)
 
-    nombres_paises = {
-        'chile':'Chile','argentina':'Argentina','mexico':'Mexico','colombia':'Colombia',
-        'brasil':'Brasil','venezuela':'Venezuela','peru':'Peru','ecuador':'Ecuador',
+    nombre_pais_mapa = {
+        'chile':'Chile','argentina':'Argentina','mexico':'México','colombia':'Colombia',
+        'brasil':'Brasil','venezuela':'Venezuela','peru':'Perú','ecuador':'Ecuador',
         'bolivia':'Bolivia','uruguay':'Uruguay','estados_unidos':'Estados Unidos',
-        'europa':'Europa','asia':'Asia','global':'America Latina',
+        'europa':'Europa','asia':'Asia','global':'América Latina',
     }
-    nombre_pais = nombres_paises.get(pais_foco, 'America Latina')
+    nombre_pais = nombre_pais_mapa.get(pais, 'América Latina')
 
-    # Instrucción de formato de título según turno
-    if es_turno_pregunta():
+    if es_turno_pregunta(indice):
         instruccion_titulo = (
-            "FORMATO TÍTULO (turno PREGUNTA): El título debe ser una pregunta directa. "
-            "Ejemplos: '¿Por qué el alzheimer afecta más a las mujeres en LATAM?', "
-            "'¿Cómo funciona la IA que reemplaza médicos en 2026?', "
-            "'¿Qué es el litio y por qué Chile lo necesita proteger?'. "
-            "Siempre debe tener signos de pregunta ¿? y ser max 60 chars."
+            "FORMATO TÍTULO (turno PREGUNTA): El título DEBE ser una pregunta directa. "
+            "Siempre debe comenzar con ¿ y terminar con ?. Max 65 chars. "
+            f"Ejemplos válidos: '¿Por qué los mayas desaparecieron realmente?', "
+            f"'¿Cómo funciona el bitcoin y por qué LATAM lo adoptó?'."
         )
     else:
         instruccion_titulo = (
-            "FORMATO TÍTULO (turno AFIRMACIÓN): El título debe ser una afirmación con número. "
-            "Ejemplos: '5 causas reales del alzheimer que debes conocer en 2026', "
-            "'7 verdades sobre la IA que cambiarán América Latina este año', "
-            "'3 razones clave por las que el litio define el futuro de Chile'. "
-            "Siempre debe tener un número y una power word. Max 60 chars."
+            "FORMATO TÍTULO (turno AFIRMACIÓN): El título DEBE tener un número. "
+            f"Max 65 chars. "
+            f"Ejemplos válidos: '5 secretos de los mayas que la historia no cuenta', "
+            f"'7 verdades sobre el bitcoin que debes saber en 2026'."
         )
 
-    titulo_hint = f"\nSUGERENCIA DE TÍTULO BASE: {titulo_sugerido}" if titulo_sugerido else ""
+    # Contexto Tavily para el prompt
+    contexto_fuentes = ""
+    if fuentes_tavily:
+        partes = []
+        for i, f in enumerate(fuentes_tavily[:4]):
+            partes.append(f"[Fuente {i+1}] {f['title']}\n{f['content']}")
+        contexto_fuentes = "CONTEXTO DE FUENTES WEB:\n" + "\n\n".join(partes)
+    if answer_tavily:
+        contexto_fuentes += f"\n\nRESPUESTA SÍNTESIS WEB:\n{answer_tavily}"
 
-    bloque_feedback = ""
-    if feedback_correccion:
-        problemas_txt = '\n'.join(f'  - {p}' for p in feedback_correccion)
-        bloque_feedback = f"CORRECCIÓN OBLIGATORIA:\n{problemas_txt}\n"
-
-    bloque_contexto_web = ""
-    if not feedback_correccion:
-        fuentes_web = buscar_contexto_web(titulo)
-        if fuentes_web:
-            fuentes_txt = "\n\n".join(f"Fuente {i+1}: {f['title']}\n{f['content']}" for i,f in enumerate(fuentes_web))
-            bloque_contexto_web = f"CONTEXTO ADICIONAL:\n{fuentes_txt}\n"
+    año = datetime.now().year
 
     prompt = f"""Eres Editor Jefe Digital de VerdadHoy.com. Tono: directo, claro, periodístico. Audiencia: Chile, Argentina, México.
-PAÍS/REGIÓN DE FOCO: {nombre_pais} — ángulo de impacto en {nombre_pais} y América Latina.
 
-MISIÓN: contenido EVERGREEN. Útil hoy y en 6 meses. NO es noticia del día. ES artículo de fondo.
+MISIÓN EVERGREEN: Crear un artículo de FONDO que sea útil HOY y dentro de 6 meses.
+NO es noticia del día. ES artículo explicativo, educativo, de contexto profundo.
+
+TEMA A DESARROLLAR: {tema_titulo}
+KEYWORD PRINCIPAL: {keyword}
+CATEGORÍA: {categoria}
+PAÍS/REGIÓN: {nombre_pais}
+AÑO: {año}
 
 {instruccion_titulo}
-{titulo_hint}
 
-REGLA CLAVE — IGNORAR EL ÁNGULO NOTICIOSO:
-Si la fuente es una noticia del día, IGNORA la coyuntura y usa el TEMA SUBYACENTE.
-Ejemplo: "EEUU pausa visas" → "¿Cómo funciona el sistema de visas de EEUU para latinoamericanos?"
-Ejemplo: "Sube el dólar en Argentina" → "5 formas de proteger tus ahorros cuando sube el dólar"
-Ejemplo: "Nuevo tratamiento contra cáncer" → "¿Qué avances existen contra el cáncer en 2026?"
+{contexto_fuentes}
 
-EXTENSIÓN MÍNIMA: 700 palabras. Incluye SIEMPRE:
-- Explicación de fondo (no solo la noticia)
-- Al menos 3 cifras o datos verificables
-- Ángulo específico para América Latina
-- Sección de qué esperar o qué hacer al respecto
-
-FUENTE/TEMA BASE:
-Título: {titulo}
-Contenido: {contenido[:2500]}
-Categoría: {categoria}
-
-{bloque_contexto_web}
+ESTRUCTURA OBLIGATORIA (mínimo 800 palabras):
+- Párrafo introductorio con keyword en primeras 40 palabras
+- Al menos 4 secciones H2 con id="seccion-N"
+- Al menos 3 datos numéricos o estadísticas verificables
+- Un ángulo específico para América Latina / {nombre_pais}
+- Sección "Qué esperar" o "Qué hacer al respecto"
+- Conclusión con pregunta al lector
 
 REGLAS SEO:
-META: "[KEYWORD] — [dato con número]. [consecuencia]. [cierre]" — 150-160 chars exacto
+- Meta descripción: "[KEYWORD] — [dato con número]. [consecuencia]." — 150-160 chars exacto
+- Slug: max 50 chars en minúsculas con guiones
+- 4 palabras de transición mínimo (sin embargo, además, por otro lado, en consecuencia)
+- Densidad keyword: 1-1.5%
 
-ESTRUCTURA HTML:
+HTML COMPLETO A GENERAR:
+
 <nav class="tabla-contenidos" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin:0 0 24px 0;">
 <p style="margin:0 0 8px 0;font-weight:700;color:#1e293b;font-size:0.9em;">📋 En este artículo</p>
 <ol style="margin:0;padding-left:20px;color:#475569;font-size:0.9em;">
@@ -849,48 +863,26 @@ ESTRUCTURA HTML:
 </ul></div>
 
 <p>[párrafo introductorio — keyword en primeras 40 palabras]</p>
-
 <h2 id="seccion-1">[H2 con keyword]</h2>
 <p>[desarrollo con dato]</p>
 [IMAGEN_ADICIONAL_1]
-
 <h2 id="seccion-2">[H2 con dato numérico]</h2>
 <p>[desarrollo con cifra]</p>
-
 <p style="border-left:3px solid #f59e0b;padding:10px 14px;margin:16px 0;background:#fffbeb;font-style:italic;color:#374151;">[editorial 2-3 oraciones con keyword]</p>
-
-<blockquote style="border-left:3px solid #e5e7eb;padding:12px 16px;margin:20px 0;background:#f9fafb;font-style:italic;color:#4b5563;">
-"[cita o dato estadístico verificable con número y fuente]"
-</blockquote>
-
-<h2 id="seccion-3">[H2: impacto en América Latina]</h2>
-<p>[impacto LATAM con 2 países]</p>
+<blockquote style="border-left:3px solid #e5e7eb;padding:12px 16px;margin:20px 0;background:#f9fafb;font-style:italic;color:#4b5563;">"[dato estadístico o cita verificable con número y fuente]"</blockquote>
+<h2 id="seccion-3">[H2: impacto en {nombre_pais} / América Latina]</h2>
+<p>[impacto LATAM con datos de 2 países]</p>
 [IMAGEN_ADICIONAL_2]
-
-<h2 id="seccion-4">[H2: futuro / conclusión]</h2>
-<p>[proyección futura con año. Pregunta al lector al final.]</p>
-
+<h2 id="seccion-4">[H2: futuro / qué hacer]</h2>
+<p>[proyección {año+1}. Pregunta al lector al final.]</p>
 [ENLACES_INTERNOS]
 
-CHECKLIST:
-- Keyword en título (primeras 3 palabras o en pregunta)
-- 4 H2 con id="seccion-N"
-- Tabla de contenidos
-- Box resumen
-- Blockquote con dato numérico
-- 4 transiciones: sin embargo, además, por otro lado, en consecuencia
-- Meta 150-160 chars
-- Placeholders [IMAGEN_ADICIONAL_1] y [IMAGEN_ADICIONAL_2] en el HTML donde corresponde
-- Mínimo 750 palabras
-
-{bloque_feedback}
-
 RESPONDE SOLO JSON sin markdown:
-{{"titulo_seo":"según formato del turno max 60 chars","slug":"max-50-chars","meta_descripcion":"keyword primero 150-160 chars","contenido_html":"HTML completo con placeholders [IMAGEN_ADICIONAL_1] y [IMAGEN_ADICIONAL_2]","keyword_principal":"2-3 palabras","keywords_secundarias":["kw2","kw3","kw4","kw5"],"categoria":"tecnologia|ciencia|salud|historia|misterios|geopolitica|economia|politica|medio_ambiente|innovacion|cultura|entretenimiento|deportes|latinoamerica|mundo|general","parrafo_nativo":"texto plano parrafo nativo","descripcion_pinterest":"100-150 chars con hashtags"}}"""
+{{"titulo_seo":"según formato del turno max 65 chars","slug":"max-50-chars","meta_descripcion":"keyword primero 150-160 chars","contenido_html":"HTML completo con placeholders","keyword_principal":"2-3 palabras","keywords_secundarias":["kw2","kw3","kw4","kw5"],"categoria":"{categoria}","parrafo_nativo":"texto plano 2-3 oraciones","descripcion_pinterest":"100-150 chars con hashtags"}}"""
 
     def _llamar_api(url_api, headers, modelo, payload):
         try:
-            resp = requests.post(url_api, headers=headers, json=payload, timeout=60)
+            resp = requests.post(url_api, headers=headers, json=payload, timeout=90)
         except Exception as e:
             log(f"IA error de red: {e}",'error'); return None
         try: resp_json = resp.json()
@@ -901,47 +893,44 @@ RESPONDE SOLO JSON sin markdown:
             log(f"IA error: {msg}",'error'); return None
         return resp_json
 
+    proveedores = []
+    if OPENAI_API_KEY:
+        proveedores.append(("OpenAI","https://api.openai.com/v1/chat/completions",
+                            {"Authorization":f"Bearer {OPENAI_API_KEY}","Content-Type":"application/json"},
+                            "gpt-4o-mini"))
+    if OPENROUTER_API_KEY:
+        proveedores.append(("OpenRouter","https://openrouter.ai/api/v1/chat/completions",
+                            {"Authorization":f"Bearer {OPENROUTER_API_KEY}","Content-Type":"application/json"},
+                            "meta-llama/llama-3.3-70b-instruct:free"))
+    if GROQ_API_KEY:
+        proveedores.append(("Groq","https://api.groq.com/openai/v1/chat/completions",
+                            {"Authorization":f"Bearer {GROQ_API_KEY}","Content-Type":"application/json"},
+                            "llama-3.3-70b-versatile"))
+    if GEMINI_API_KEY:
+        proveedores.append(("Gemini","https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+                            {"Authorization":f"Bearer {GEMINI_API_KEY}","Content-Type":"application/json"},
+                            "gemini-2.5-flash"))
+
+    resp_json = None
+    for i,(nombre,url_i,headers_i,modelo_i) in enumerate(proveedores):
+        payload_i = {"model":modelo_i,"messages":[{"role":"user","content":prompt}],"temperature":0.35,"max_tokens":4500}
+        if i > 0: log(f"Reintentando con {nombre}...",'advertencia')
+        resp_json = _llamar_api(url_i, headers_i, modelo_i, payload_i)
+        if resp_json: break
+
+    if not resp_json: return None
+
     try:
-        proveedores = []
-        if OPENAI_API_KEY:
-            proveedores.append(("OpenAI","https://api.openai.com/v1/chat/completions",
-                                {"Authorization":f"Bearer {OPENAI_API_KEY}","Content-Type":"application/json"},
-                                "gpt-4o-mini"))
-        if OPENROUTER_API_KEY:
-            proveedores.append(("OpenRouter","https://openrouter.ai/api/v1/chat/completions",
-                                {"Authorization":f"Bearer {OPENROUTER_API_KEY}","Content-Type":"application/json"},
-                                "meta-llama/llama-3.3-70b-instruct:free"))
-        if GROQ_API_KEY:
-            proveedores.append(("Groq","https://api.groq.com/openai/v1/chat/completions",
-                                {"Authorization":f"Bearer {GROQ_API_KEY}","Content-Type":"application/json"},
-                                "llama-3.3-70b-versatile"))
-        if GEMINI_API_KEY:
-            proveedores.append(("Gemini","https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-                                {"Authorization":f"Bearer {GEMINI_API_KEY}","Content-Type":"application/json"},
-                                "gemini-2.5-flash"))
-
-        resp_json = None
-        for i,(nombre,url_i,headers_i,modelo_i) in enumerate(proveedores):
-            payload_i = {"model":modelo_i,"messages":[{"role":"user","content":prompt}],"temperature":0.35,"max_tokens":4000}
-            if i > 0: log(f"Reintentando con {nombre}...",'advertencia')
-            resp_json = _llamar_api(url_i, headers_i, modelo_i, payload_i)
-            if resp_json: break
-
-        if not resp_json: return None
-
         texto = resp_json["choices"][0]["message"]["content"].strip()
         texto = re.sub(r'^```json\s*|```$','',texto,flags=re.MULTILINE).strip()
         if not texto.endswith('}'): return None
-
         resultado = json.loads(texto)
-        categorias_validas = set(CATEGORIAS_EVERGREEN.keys())
-        cat_ia = resultado.get('categoria','').strip().lower()
-        if cat_ia not in categorias_validas:
-            resultado['categoria'] = categoria if categoria in categorias_validas else 'general'
-        log(f"IA OK — Título: {resultado.get('titulo_seo','')[:60]} | Cat: {resultado.get('categoria')}",'info')
+        # Forzar categoría correcta
+        resultado['categoria'] = categoria
+        log(f"IA OK — '{resultado.get('titulo_seo','')[:60]}' | {resultado.get('categoria')}",'info')
         return resultado
     except Exception as e:
-        log(f"reescribir_noticia_v21 error: {e}",'advertencia')
+        log(f"generar_articulo_evergreen parse error: {e}",'advertencia')
         return None
 
 # ══════════════════════════════════════════════════════════
@@ -965,22 +954,18 @@ def postprocesar_meta(resultado_ia):
     resultado_ia['meta_descripcion'] = meta
     return resultado_ia
 
-def postprocesar_titulo(resultado_ia):
+def postprocesar_titulo(resultado_ia, indice=0):
     titulo = resultado_ia.get('titulo_seo','').strip()
     if not titulo: return resultado_ia
-    # Para preguntas: verificar que tenga ¿?
-    if es_turno_pregunta():
-        if not titulo.startswith('¿'):
-            titulo = '¿' + titulo
-        if not titulo.endswith('?'):
-            titulo = titulo.rstrip('.') + '?'
+    if es_turno_pregunta(indice):
+        if not titulo.startswith('¿'): titulo = '¿' + titulo
+        if not titulo.endswith('?'): titulo = titulo.rstrip('.') + '?'
     else:
-        # Para afirmaciones: verificar número y power word
         if not re.search(r'\d', titulo) and len(titulo) <= 45:
             titulo = f"{titulo}: {datetime.now().year}"
         if not any(pw in titulo.lower() for pw in POWER_WORDS_LISTA) and len(titulo) <= 47:
             titulo = f"{titulo}, clave"
-    resultado_ia['titulo_seo'] = titulo[:60]
+    resultado_ia['titulo_seo'] = titulo[:65]
     return resultado_ia
 
 def postprocesar_densidad(resultado_ia):
@@ -1043,11 +1028,11 @@ def postprocesar_transiciones(resultado_ia):
     resultado_ia['contenido_html'] = contenido_nuevo
     return resultado_ia
 
-def postprocesar_resultado(resultado_ia):
+def postprocesar_resultado(resultado_ia, indice=0):
     resultado_ia = postprocesar_densidad(resultado_ia)
     resultado_ia = postprocesar_transiciones(resultado_ia)
     resultado_ia = postprocesar_meta(resultado_ia)
-    resultado_ia = postprocesar_titulo(resultado_ia)
+    resultado_ia = postprocesar_titulo(resultado_ia, indice)
     return resultado_ia
 
 # ══════════════════════════════════════════════════════════
@@ -1087,71 +1072,6 @@ def obtener_crear_tag_wp(nombre_tag):
     except: pass
     return None
 
-def crear_imagen_titulo(titulo, categoria='general'):
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        import textwrap
-        W, H = 1600, 900
-        img = Image.new('RGB', (W,H), color='#0f172a')
-        draw = ImageDraw.Draw(img)
-        for i in range(H):
-            ratio = i/H
-            draw.line([(0,i),(W,i)], fill=(int(15+(30-15)*ratio),int(23+(41-23)*ratio),int(42+(69-42)*ratio)))
-        draw.rectangle([(0,0),(W,10)], fill='#dc2626')
-        colores_cat = {
-            'misterios':'#6d28d9','historia':'#92400e','geopolitica':'#1e40af',
-            'innovacion':'#0891b2','tecnologia':'#2563eb','ciencia':'#0891b2',
-            'salud':'#16a34a','economia':'#059669','politica':'#7c3aed',
-            'deportes':'#d97706','entretenimiento':'#db2777','cultura':'#db2777',
-            'medio_ambiente':'#15803d','latinoamerica':'#ea580c','mundo':'#4338ca','general':'#475569',
-        }
-        nombres_cat = {
-            'misterios':'MISTERIOS','historia':'HISTORIA','geopolitica':'GEOPOLITICA',
-            'innovacion':'INNOVACION','tecnologia':'TECNOLOGIA','ciencia':'CIENCIA',
-            'salud':'SALUD','economia':'ECONOMIA','politica':'POLITICA',
-            'deportes':'DEPORTES','entretenimiento':'ENTRETENIMIENTO','cultura':'CULTURA',
-            'medio_ambiente':'MEDIO AMBIENTE','latinoamerica':'LATINOAMERICA','mundo':'MUNDO','general':'NOTICIAS',
-        }
-        color_badge = colores_cat.get(categoria,'#475569')
-        texto_badge = nombres_cat.get(categoria,'NOTICIAS')
-        try:
-            font_badge  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
-            font_titulo = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 62)
-            font_marca  = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
-            font_sub    = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 30)
-        except: font_badge = font_titulo = font_marca = font_sub = ImageFont.load_default()
-        badge_x, badge_y = 70, 70
-        try:
-            bbox_b = draw.textbbox((0,0), texto_badge, font=font_badge)
-            bw, bh = bbox_b[2]-bbox_b[0], bbox_b[3]-bbox_b[1]
-        except: bw, bh = 160, 32
-        draw.rounded_rectangle([badge_x,badge_y,badge_x+bw+28,badge_y+bh+16],radius=6,fill=color_badge)
-        draw.text((badge_x+14,badge_y+8), texto_badge, font=font_badge, fill='white')
-        chars_pl = 38 if len(titulo) > 80 else 44
-        font_size_t = 52 if len(titulo) > 100 else 62
-        try: font_titulo = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", font_size_t)
-        except: pass
-        tt = textwrap.fill(titulo[:160], width=chars_pl)
-        lineas = tt.split('\n')
-        alto_total = len(lineas) * (font_size_t+14)
-        y_texto = max(160, (H-alto_total)//2-40)
-        for linea in lineas:
-            draw.text((72,y_texto+2), linea, font=font_titulo, fill=(0,0,0,120))
-            y_texto += font_size_t+14
-        y_texto = max(160, (H-alto_total)//2-40)
-        for linea in lineas:
-            draw.text((70,y_texto), linea, font=font_titulo, fill='#f1f5f9')
-            y_texto += font_size_t+14
-        draw.rectangle([(0,H-90),(W,H)], fill='#1e293b')
-        draw.rectangle([(0,H-90),(W,H-87)], fill=color_badge)
-        draw.text((70,H-65), "VERDAD HOY", font=font_marca, fill='#f1f5f9')
-        draw.text((W-420,H-60), "verdadhoy.com", font=font_sub, fill='#94a3b8')
-        img = agregar_watermark(img)
-        p = f'/tmp/gen_{generar_hash(titulo)}.jpg'
-        img.save(p, 'JPEG', quality=92, optimize=True)
-        return p
-    except: return None
-
 def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descripcion=""):
     if not imagen_path or not os.path.exists(imagen_path): return None
     try:
@@ -1176,7 +1096,6 @@ def subir_imagen_wp(imagen_path, titulo, alt_text="", frase_clave="", meta_descr
     return None
 
 def subir_imagen_adicional_wp(imagen_path, titulo, keyword, numero):
-    """Sube una imagen adicional a WP y retorna (media_id, source_url)."""
     if not imagen_path or not os.path.exists(imagen_path): return None, None
     try:
         nombre = f"verdadhoy-sec{numero}-{generar_hash(titulo+keyword)}.jpg"
@@ -1194,14 +1113,12 @@ def subir_imagen_adicional_wp(imagen_path, titulo, keyword, numero):
                           'caption':f"{titulo[:100]} — Verdad Hoy"},
                     auth=(WP_USER,WP_APP_PASSWORD), timeout=10)
             except: pass
-            log(f"Imagen adicional {numero} subida WP: {media_url[:60]}",'info')
             return media_id, media_url
     except Exception as e:
         log(f"Error subiendo imagen adicional {numero}: {e}",'advertencia')
     return None, None
 
 def html_imagen_adicional(media_url, alt_text, caption=""):
-    """Genera bloque HTML para imagen adicional dentro del artículo."""
     if not media_url: return ""
     caption_html = f'<figcaption style="text-align:center;font-size:0.82em;color:#6b7280;margin-top:6px;">{caption}</figcaption>' if caption else ''
     return (f'<figure style="margin:28px 0;text-align:center;">'
@@ -1235,40 +1152,34 @@ def insertar_enlaces_internos(contenido_html):
     if "[ENLACES_INTERNOS]" in contenido_html: return contenido_html.replace("[ENLACES_INTERNOS]", html_rel)
     return contenido_html + html_rel
 
-def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_destacada_path,
-                                 imagenes_adicionales, fuente_url, pais_foco='global',
-                                 feedback_correccion=None):
+def publicar_borrador_evergreen(tema_config, fuentes_tavily, answer_tavily,
+                                 img_destacada_path, imagenes_adicionales, indice=0):
+    """Genera y publica un borrador basado en tema evergreen predefinido."""
     if not WP_APP_PASSWORD: return None, None
-    if not imagen_destacada_path or not os.path.exists(imagen_destacada_path): return None, None
+    if not img_destacada_path or not os.path.exists(img_destacada_path): return None, None
 
-    # Generar título mixto sugerido
-    titulo_sugerido = generar_titulo_mixto(titulo, categoria)
-
-    resultado_ia = reescribir_noticia_v21(
-        titulo, contenido, categoria, pais_foco,
-        feedback_correccion, titulo_sugerido
-    )
+    resultado_ia = generar_articulo_evergreen(tema_config, fuentes_tavily, answer_tavily, indice)
     if not resultado_ia: return None, None
-    resultado_ia = postprocesar_resultado(resultado_ia)
+    resultado_ia = postprocesar_resultado(resultado_ia, indice)
 
-    keyword        = resultado_ia.get('keyword_principal','')
-    texto_check    = _texto_plano(resultado_ia.get('contenido_html',''))
-    n_palabras     = len(texto_check.split())
-    log(f"Borrador generado: {n_palabras} palabras | keyword: '{keyword}'",'info')
+    keyword    = resultado_ia.get('keyword_principal','')
+    texto_check = _texto_plano(resultado_ia.get('contenido_html',''))
+    n_palabras = len(texto_check.split())
+    log(f"Borrador {indice+1}: {n_palabras} palabras | keyword: '{keyword}'",'info')
     if n_palabras < 200:
         log("Contenido demasiado corto (<200 palabras) — descartando",'advertencia')
         return None, None
 
-    titulo_final       = resultado_ia.get('titulo_seo', titulo).strip()[:60]
-    titulo_seo         = titulo_final + ' | Verdad Hoy'
-    meta_desc          = resultado_ia.get('meta_descripcion','')
-    frase_clave        = resultado_ia.get('keyword_principal','')
-    slug_ia            = resultado_ia.get('slug','')
-    contenido_html     = resultado_ia.get('contenido_html','')
-    categoria_ia       = resultado_ia.get('categoria', categoria)
-    slug_post          = slug_ia if (slug_ia and len(slug_ia) <= 50) else generar_slug_seo(titulo_final)
+    titulo_final   = resultado_ia.get('titulo_seo', tema_config['tema']).strip()[:65]
+    titulo_seo     = titulo_final + ' | Verdad Hoy'
+    meta_desc      = resultado_ia.get('meta_descripcion','')
+    frase_clave    = resultado_ia.get('keyword_principal','')
+    slug_ia        = resultado_ia.get('slug','')
+    contenido_html = resultado_ia.get('contenido_html','')
+    categoria_ia   = resultado_ia.get('categoria', tema_config['categoria'])
+    slug_post      = slug_ia if (slug_ia and len(slug_ia) <= 50) else generar_slug_seo(titulo_final)
 
-    # ── Tabla de contenidos si falta ────────────────────
+    # Tabla de contenidos si falta
     if '<nav' not in contenido_html and 'tabla-contenidos' not in contenido_html:
         h2_raw = re.findall(r'<h2[^>]*>(.*?)</h2>', contenido_html, flags=re.IGNORECASE|re.DOTALL)
         h2_textos = [(str(i+1), re.sub(r'<[^>]+>','',t).strip()) for i,t in enumerate(h2_raw)]
@@ -1279,28 +1190,23 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_destacada_p
                         f'<ol style="margin:0;padding-left:20px;color:#475569;font-size:0.9em;">{items_toc}</ol></nav>')
             contenido_html = toc_html + contenido_html
 
-    # ── Subir imágenes adicionales e inyectar en HTML ───
+    # Subir imágenes adicionales e inyectar
     for i, img_path in enumerate(imagenes_adicionales[:2], start=1):
         placeholder = f"[IMAGEN_ADICIONAL_{i}]"
         if placeholder in contenido_html:
             _, media_url = subir_imagen_adicional_wp(img_path, titulo_final, frase_clave, i)
             if media_url:
-                html_img = html_imagen_adicional(
-                    media_url,
-                    f"{frase_clave} — imagen {i}",
-                    caption=f"{titulo_final[:80]} — Verdad Hoy"
-                )
+                html_img = html_imagen_adicional(media_url, f"{frase_clave} — imagen {i}",
+                                                  caption=f"{titulo_final[:80]} — Verdad Hoy")
                 contenido_html = contenido_html.replace(placeholder, html_img)
             else:
                 contenido_html = contenido_html.replace(placeholder, "")
         else:
             contenido_html = contenido_html.replace(placeholder, "")
-    # Limpiar placeholders sobrantes
     contenido_html = re.sub(r'\[IMAGEN_ADICIONAL_\d+\]', '', contenido_html)
-
     contenido_html = insertar_enlaces_internos(contenido_html)
 
-    # ── Tags ─────────────────────────────────────────────
+    # Tags
     tags_ids = []
     for kw in resultado_ia.get('keywords_secundarias',[])[:5]:
         tag_id = obtener_crear_tag_wp(kw)
@@ -1311,35 +1217,32 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_destacada_p
     if not cat_id: cat_id = obtener_id_categoria_wp('mundo'); slug_cat = 'mundo'
     categorias_ids = [cat_id] if cat_id else []
 
-    # ── Imagen destacada ─────────────────────────────────
-    imagen_id = subir_imagen_wp(imagen_destacada_path, titulo_final,
+    # Imagen destacada
+    imagen_id = subir_imagen_wp(img_destacada_path, titulo_final,
         alt_text=f"{frase_clave} - {titulo_final}"[:125],
         frase_clave=frase_clave, meta_descripcion=meta_desc)
     if not imagen_id: return None, None
 
-    # ── Barra de lectura ─────────────────────────────────
+    # Barra de lectura
     palabras_art = len(_texto_plano(contenido_html).split())
     minutos_lect = max(2, round(palabras_art / 200))
     barra_lectura = f'<p style="font-size:0.82em;color:#6b7280;margin:0 0 20px 0;">🕐 Tiempo de lectura: <strong>{minutos_lect} min</strong></p>'
 
-    nombre_medio = 'Fuente externa'
-    try:
-        dominio = re.sub(r'^(www\.|m\.)','', urlparse(fuente_url).netloc.lower())
-        mapa = {'infobae.com':'Infobae','bbc.com':'BBC Mundo','cnn.com':'CNN','reuters.com':'Reuters','elpais.com':'El País','dw.com':'DW'}
-        for dom,nombre in mapa.items():
-            if dom in dominio: nombre_medio = nombre; break
-        else:
-            partes = dominio.split('.')
-            nombre_medio = partes[-2].capitalize() if len(partes) >= 2 else dominio
-    except: pass
+    # Fuentes Tavily como crédito
+    fuentes_credito = ""
+    if fuentes_tavily:
+        links = [f'<a href="{f["url"]}" target="_blank" rel="noopener" style="color:#1a56db;">{f["title"][:60]}</a>'
+                 for f in fuentes_tavily[:3] if f.get('url')]
+        if links:
+            fuentes_credito = f'<p style="font-size:0.85em;color:#6b7280;">Fuentes consultadas: {" · ".join(links)}</p>'
 
     contenido_final = f"""
 {barra_lectura}
 {contenido_html}
 <hr>
+{fuentes_credito}
 <p style="font-size:0.9em;color:#374151;">
-  <strong>Investigación y redacción:</strong> Equipo Editorial Verdad Hoy<br>
-  <strong>Fuente consultada:</strong> <a href="{fuente_url}" target="_blank" rel="noopener" style="color:#1a56db;">{nombre_medio}</a>
+  <strong>Investigación y redacción:</strong> Equipo Editorial Verdad Hoy
 </p>
 <p style="font-size:0.9em;color:#6b7280;font-style:italic;border-left:3px solid #e5e7eb;padding:8px 12px;margin:12px 0;">
   En Verdad Hoy encontrarás análisis, contexto y la información que realmente importa sobre América Latina y el mundo.
@@ -1362,7 +1265,7 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_destacada_p
         if 'id' in r:
             post_id = r['id']
             url_articulo = r.get('link', f"{WP_URL}/?p={post_id}")
-            log(f"BORRADOR creado: {WP_URL}/wp-admin/post.php?post={post_id}&action=edit",'exito')
+            log(f"BORRADOR {indice+1} creado: {WP_URL}/wp-admin/post.php?post={post_id}&action=edit",'exito')
             try:
                 rm_payload = {'objectID':post_id,'objectType':'post',
                     'meta':{'rank_math_focus_keyword':frase_clave,'rank_math_title':titulo_seo,
@@ -1371,272 +1274,116 @@ def publicar_borrador_wordpress(titulo, contenido, categoria, imagen_destacada_p
                 if r_rm.status_code in (200,201): log("Rank Math SEO guardado",'exito')
             except: pass
             return url_articulo, slug_cat
-        else: log(f"Error WP: {r.get('message','desconocido')}",'error')
-    except Exception as e: log(f"Excepcion WP: {e}",'error')
+        else:
+            log(f"Error WP: {r.get('message','desconocido')}",'error')
+    except Exception as e:
+        log(f"Excepcion WP: {e}",'error')
     return None, None
 
 # ══════════════════════════════════════════════════════════
-# FUENTES
-# ══════════════════════════════════════════════════════════
-def extraer_contenido(url):
-    if not url: return None
-    try:
-        r = requests.get(url, headers={'User-Agent':'Mozilla/5.0'}, timeout=20)
-        s = BeautifulSoup(r.content, 'html.parser')
-        for e in s(['script','style','nav','header','footer']): e.decompose()
-        for selector in ['article','[class*="article-content"]','[class*="entry-content"]','[class*="post-content"]']:
-            art = s.select_one(selector)
-            if art:
-                ps = [p for p in art.find_all('p') if len(p.get_text()) > 40]
-                if len(ps) >= 2:
-                    txt = ' '.join([limpiar_texto(p.get_text()) for p in ps])
-                    if len(txt) > 200: return txt[:5000]
-        return None
-    except: return None
-
-def deduplicar_batch(noticias):
-    urls_vistas = set(); titulos_vistos = []; resultado = []
-    for n in noticias:
-        url_n = normalizar_url(n.get('url',''))
-        titulo = n.get('titulo','')
-        if not url_n or not titulo: continue
-        if url_n in urls_vistas: continue
-        if any(similitud_titulos(titulo,t) > 0.78 for t in titulos_vistos): continue
-        urls_vistas.add(url_n); titulos_vistos.append(titulo); resultado.append(n)
-    return resultado
-
-def obtener_rss_ampliado():
-    fuentes = [
-        ('https://www.infobae.com/arc/outboundfeeds/rss/salud/','Infobae Salud'),
-        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ciencia/portada','El Pais Ciencia'),
-        ('https://www.bbc.com/mundo/topics/cidjknjekjxt/rss.xml','BBC Salud Ciencia'),
-        ('https://www.nationalgeographicla.com/rss.xml','National Geographic ES'),
-        ('https://feeds.xataka.com/xataka','Xataka'),
-        ('https://hipertextual.com/feed','Hipertextual'),
-        ('https://www.technologyreview.com/feed/','MIT Tech Review'),
-        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/tecnologia/portada','El Pais Tecnologia'),
-        ('https://www.nationalgeographic.com.es/rss/all','NatGeo ES'),
-        ('https://arqueologiamexicana.mx/feed','Arqueologia Mexicana'),
-        ('https://www.muyinteresante.es/rss','Muy Interesante'),
-        ('https://www.muyhistoria.es/rss','Muy Historia'),
-        ('https://www.cientifica.online/feed','Cientifica Online'),
-        ('https://www.infobae.com/arc/outboundfeeds/rss/economia/','Infobae Economia'),
-        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/economia/portada','El Pais Economia'),
-        ('https://www.dw.com/es/ciencia-y-tecnologia/s-30688/rss','DW Ciencia'),
-        ('http://feeds.bbci.co.uk/mundo/rss.xml','BBC Mundo'),
-        ('https://www.infobae.com/arc/outboundfeeds/rss/america/','Infobae America'),
-        ('https://www.eltiempo.com/rss/portada.xml','El Tiempo CO'),
-        ('https://www.emol.com/rss/','Emol Chile'),
-        ('https://www.cooperativa.cl/noticias/site/tax/port/all/rss_3___1.xml','Cooperativa CL'),
-        ('https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/internacional/portada','El Pais Internacional'),
-        ('https://www.dw.com/es/mundo/s-30684/rss','DW Mundo'),
-        ('http://feeds.bbci.co.uk/mundo/internacional/rss.xml','BBC Internacional'),
-        ('https://feeds.france24.com/es/','France 24 ES'),
-        ('https://www.lavanguardia.com/historiayvida/rss','Historia y Vida'),
-    ]
-    noticias = []
-    for url_feed, nombre in fuentes:
-        try:
-            r = requests.get(url_feed, headers={'User-Agent':'Mozilla/5.0'}, timeout=10)
-            if r.status_code != 200: continue
-            feed = feedparser.parse(r.content)
-            if not feed or not feed.entries: continue
-            for e in feed.entries[:10]:
-                t = e.get('title','')
-                if not t: continue
-                t = re.sub(r'\s*-\s*[^-]*$','',t)
-                l = e.get('link','')
-                if not l: continue
-                d = re.sub(r'<[^>]+>','',e.get('summary','') or e.get('description',''))
-                img = None
-                if hasattr(e,'media_content') and e.media_content: img = e.media_content[0].get('url')
-                if not img:
-                    for enc in getattr(e,'enclosures',[]):
-                        if enc.get('type','').startswith('image'): img = enc.get('href') or enc.get('url'); break
-                titulo_limpio = limpiar_texto(t)
-                desc_limpia = limpiar_texto(d)
-                relevancia = calcular_relevancia_evergreen(titulo_limpio, desc_limpia)
-                noticias.append({'titulo':titulo_limpio,'descripcion':desc_limpia,'url':l,
-                                 'imagen_rss':img,  # guardamos URL, no descargamos aún
-                                 'fuente':f"RSS:{nombre}",'fecha':e.get('published'),
-                                 'relevancia':relevancia,'tema':detectar_tema(titulo_limpio,desc_limpia)})
-        except Exception as e: log(f"RSS error ({nombre}): {e}",'advertencia')
-    log(f"RSS: {len(noticias)} noticias",'info')
-    return noticias
-
-def obtener_newsapi_evergreen():
-    if not NEWS_API_KEY: return []
-    queries = [
-        'cancer causas prevencion America Latina investigacion',
-        'alzheimer diabetes tratamiento cientifico 2026',
-        'inteligencia artificial que es como funciona explicacion',
-        'IA empleos trabajo futuro America Latina impacto',
-        'historia antigua civilizaciones precolombinas secretos',
-        'mayas incas aztecas descubrimiento arqueologico reciente',
-        'misterio cientifico sin resolver descubrimiento',
-        'inflacion por que sube dolar America Latina explicacion',
-        'criptomoneda bitcoin como funciona para principiantes',
-        'geopolitica latinoamerica poder influencia historia',
-        'por que existe conflicto origen historia explicacion',
-        'espacio NASA descubrimiento planeta universo 2026',
-    ]
-    noticias = []
-    for q in queries:
-        try:
-            r = requests.get('https://newsapi.org/v2/everything',
-                params={'apiKey':NEWS_API_KEY,'q':q,'language':'es','sortBy':'relevancy','pageSize':5},
-                timeout=15).json()
-            if r.get('status') == 'ok':
-                for a in r.get('articles',[]):
-                    t = a.get('title','')
-                    if not t or '[Removed]' in t: continue
-                    d = a.get('description','')
-                    titulo_limpio = limpiar_texto(t)
-                    desc_limpia = limpiar_texto(d)
-                    relevancia = calcular_relevancia_evergreen(titulo_limpio, desc_limpia)
-                    noticias.append({'titulo':titulo_limpio,'descripcion':desc_limpia,
-                                     'url':a.get('url',''),'imagen_rss':a.get('urlToImage'),
-                                     'fuente':f"NewsAPI:{a.get('source',{}).get('name','')}",
-                                     'fecha':a.get('publishedAt'),'relevancia':relevancia,
-                                     'tema':detectar_tema(titulo_limpio,desc_limpia)})
-        except Exception as e: log(f"NewsAPI error: {e}",'advertencia')
-    log(f"NewsAPI: {len(noticias)} noticias",'info')
-    return noticias
-
-# ══════════════════════════════════════════════════════════
-# MAIN V21
+# MAIN V22
 # ══════════════════════════════════════════════════════════
 def main():
     print("\n" + "="*60)
     print(f"VERDAD HOY BOT - {VERSION_BOT}")
-    print(f"  Modo: 1 borrador por corrida | 3 corridas/día")
-    print(f"  Horarios: 07:00, 13:00, 19:00 UTC")
+    print(f"  Modo: {MAX_BORRADORES_DIA} borradores por corrida")
+    print(f"  Workflow: 1 corrida/día (recomendado 10:00 UTC)")
+    print(f"  Temas: pool evergreen predefinido ({len(POOL_EVERGREEN)} temas)")
     print(f"  Títulos: MIXTOS (preguntas + afirmaciones con número)")
-    print(f"  Imágenes: destacada (fuente/generada) + adicionales en artículo")
     print(f"  {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
     print("="*60)
 
-    # Evitar doble publicación en la misma hora
-    if ya_corrio_esta_hora():
-        log("Ya se ejecutó en esta hora UTC — saltando para evitar duplicados",'advertencia')
-        return None
-
-    if not puede_publicar_wp():
-        return None
-
     h = cargar_historial()
-    rotacion = cargar_rotacion()
-    paises_ciclo = seleccionar_paises_ciclo(rotacion, n=1)
-    pais = paises_ciclo[0]
-    log(f"País de esta corrida: {pais}",'info')
-    log(f"Turno título: {'PREGUNTA' if es_turno_pregunta() else 'AFIRMACIÓN CON NÚMERO'}",'info')
+    rotacion = cargar_rotacion_temas()
 
-    noticias = []
-    noticias.extend(obtener_rss_ampliado())
-    if NEWS_API_KEY: noticias.extend(obtener_newsapi_evergreen())
-    if not noticias: log("Sin noticias disponibles",'error'); return None
-
-    # Filtrar evergreen y spam
-    noticias_filtradas = []
-    for n in noticias:
-        tema = n.get('tema') or detectar_tema(n.get('titulo',''), n.get('descripcion',''))
-        if not es_evergreen(tema): continue
-        es_spam, _ = es_contenido_spam(n.get('titulo',''), n.get('descripcion',''))
-        if es_spam: continue
-        n['tema'] = tema
-        noticias_filtradas.append(n)
-
-    log(f"Noticias evergreen disponibles: {len(noticias_filtradas)}",'info')
-    noticias_filtradas = deduplicar_batch(noticias_filtradas)
-    noticias_filtradas.sort(key=lambda x: x.get('relevancia',0), reverse=True)
-
-    # Buscar candidata para el país asignado
-    candidata = None
-    for n in noticias_filtradas:
-        url = n.get('url','')
-        titulo = n.get('titulo','')
-        if noticia_es_de_pais(titulo, n.get('descripcion',''), pais):
-            dup, _ = noticia_ya_publicada(h, url, titulo, n.get('descripcion',''))
-            if not dup:
-                candidata = n
-                break
-
-    # Fallback: cualquier noticia evergreen no publicada
-    if not candidata:
-        log(f"Sin candidata específica para '{pais}' — usando pool general",'advertencia')
-        for n in noticias_filtradas:
-            url = n.get('url','')
-            titulo = n.get('titulo','')
-            dup, _ = noticia_ya_publicada(h, url, titulo, n.get('descripcion',''))
-            if not dup:
-                candidata = n
-                break
-
-    if not candidata:
-        log("Sin noticias nuevas disponibles — todas ya publicadas",'advertencia')
+    # Seleccionar temas del pool evergreen
+    temas_dia = seleccionar_temas_dia(rotacion, n=MAX_BORRADORES_DIA)
+    if not temas_dia:
+        log("Sin temas disponibles en el pool", 'error')
         return None
 
-    titulo  = candidata.get('titulo','')
-    url     = candidata.get('url','')
-    desc    = candidata.get('descripcion','')
-    tema    = candidata.get('tema','general')
+    log(f"Temas seleccionados para hoy:", 'info')
+    for i, t in enumerate(temas_dia):
+        log(f"  [{i+1}] {t['tema']} ({t['categoria']})", 'info')
 
-    log(f"\n[{pais.upper()}] {titulo[:70]}",'info')
-    log(f"  Tema: {tema} | Relevancia: {candidata.get('relevancia',0)}",'info')
+    borradores_ok = 0
+    urls_publicadas = []
 
-    # Contenido
-    cont_web = extraer_contenido(url)
-    if cont_web and len(cont_web) >= 200: contenido_ok = cont_web
-    elif desc and len(desc) >= 150: contenido_ok = desc
-    elif cont_web: contenido_ok = (cont_web + ' ' + (desc or ''))
-    elif desc: contenido_ok = desc
-    else: log("Contenido insuficiente",'advertencia'); return None
+    for indice, tema_config in enumerate(temas_dia):
+        log(f"\n{'='*50}", 'info')
+        log(f"PROCESANDO TEMA {indice+1}/{len(temas_dia)}: {tema_config['tema'][:60]}", 'info')
+        log(f"  Categoría: {tema_config['categoria']} | Keyword: {tema_config['keyword']}", 'info')
 
-    # ── IMÁGENES V21 ──────────────────────────────────────
-    # Imagen destacada: og:image de fuente → generada
-    # Imágenes adicionales: DuckDuckGo por keyword+categoría
-    keyword_base = titulo.split()[:3]
-    keyword_str  = ' '.join(keyword_base)
-    img_destacada, imagenes_adicionales = obtener_imagenes_articulo(
-        fuente_url=url,
-        titulo=titulo,
-        keyword=keyword_str,
-        categoria=tema,
-        n_extra=2
-    )
+        # Verificar si ya publicamos este tema
+        dup, razon = tema_ya_publicado(h, tema_config['keyword'], tema_config['tema'])
+        if dup:
+            log(f"Tema ya publicado ({razon}) — saltando", 'advertencia')
+            # Marcar como usado de todas formas para no seleccionarlo de nuevo
+            registrar_tema_publicado(rotacion, tema_config)
+            continue
 
-    if not img_destacada:
-        log("Sin imagen destacada — abortando",'advertencia')
-        return None
+        # Buscar contexto web con Tavily
+        fuentes_tavily, answer_tavily = buscar_contexto_evergreen(
+            tema_config['tema'], tema_config['keyword'], n_resultados=5
+        )
 
-    # Publicar borrador
-    url_wp, slug_cat = publicar_borrador_wordpress(
-        titulo=titulo,
-        contenido=contenido_ok,
-        categoria=tema,
-        imagen_destacada_path=img_destacada,
-        imagenes_adicionales=imagenes_adicionales,
-        fuente_url=url,
-        pais_foco=pais
-    )
+        # Obtener imágenes
+        img_destacada, imagenes_adicionales = obtener_imagenes_articulo(
+            fuentes_tavily=fuentes_tavily,
+            keyword=tema_config['keyword'],
+            categoria=tema_config['categoria'],
+            titulo=tema_config['tema']
+        )
 
-    # Limpiar archivos temporales
-    for img_path in [img_destacada] + imagenes_adicionales:
-        try:
-            if img_path and os.path.exists(img_path): os.remove(img_path)
-        except: pass
+        if not img_destacada:
+            log("Sin imagen destacada — usando generada", 'advertencia')
+            img_destacada = crear_imagen_titulo(tema_config['tema'], tema_config['categoria'])
 
-    if url_wp:
-        registrar_borrador()
-        h['estadisticas']['total_borradores'] = h['estadisticas'].get('total_borradores',0) + 1
-        h = guardar_en_historial(h, url, titulo, (desc+' '+contenido_ok[:400]).strip())
-        registrar_paises_usados(rotacion, [pais])
-        log(f"\n✅ BORRADOR PUBLICADO — {url_wp}",'exito')
-        log(f"   País: {pais} | Tema: {tema} | Turno: {'pregunta' if es_turno_pregunta() else 'afirmación'}",'info')
-        return True
-    else:
-        log("No se pudo crear el borrador",'error')
-        return None
+        if not img_destacada:
+            log("No se pudo obtener imagen — saltando tema", 'error')
+            continue
+
+        # Publicar borrador
+        url_wp, slug_cat = publicar_borrador_evergreen(
+            tema_config=tema_config,
+            fuentes_tavily=fuentes_tavily,
+            answer_tavily=answer_tavily,
+            img_destacada_path=img_destacada,
+            imagenes_adicionales=imagenes_adicionales,
+            indice=indice
+        )
+
+        # Limpiar archivos temporales
+        for img_path in [img_destacada] + imagenes_adicionales:
+            try:
+                if img_path and os.path.exists(img_path): os.remove(img_path)
+            except: pass
+
+        if url_wp:
+            borradores_ok += 1
+            urls_publicadas.append(url_wp)
+            # Registrar en historial y rotación
+            h = guardar_en_historial(h, url_wp, tema_config['tema'],
+                                      tema_config['keyword'], tema_config['tema'])
+            registrar_tema_publicado(rotacion, tema_config)
+            log(f"✅ Borrador {borradores_ok}/{MAX_BORRADORES_DIA} — {url_wp}", 'exito')
+        else:
+            log(f"No se pudo crear borrador para tema {indice+1}", 'error')
+            # Registrar de todas formas para no reintentar este ciclo
+            registrar_tema_publicado(rotacion, tema_config)
+
+        # Pausa entre borradores para no saturar las APIs
+        if indice < len(temas_dia) - 1:
+            log("Esperando 10s antes del siguiente tema...", 'info')
+            time.sleep(10)
+
+    print("\n" + "="*60)
+    log(f"CORRIDA COMPLETADA: {borradores_ok}/{MAX_BORRADORES_DIA} borradores creados", 'exito' if borradores_ok > 0 else 'advertencia')
+    for i, url in enumerate(urls_publicadas):
+        log(f"  [{i+1}] {url}", 'info')
+    print("="*60)
+
+    return borradores_ok > 0
 
 if __name__ == "__main__":
     try:
@@ -1646,4 +1393,4 @@ if __name__ == "__main__":
         log(f"Error crítico: {e}",'error')
         import traceback
         traceback.print_exc()
-        exit(1)
+        exit(1)v

@@ -1,12 +1,12 @@
 {
-  "fecha": "2026-08-30",
-  "ciclo": 6,
+  "fecha": "2026-08-31",
+  "ciclo": 7,
   "paises_usados_hoy": [
-    "venezuela"
+    "chile"
   ],
   "conteo_por_pais": {
     "argentina": 1,
-    "chile": 1,
+    "chile": 2,
     "estados_unidos": 1,
     "mexico": 1,
     "global": 1,

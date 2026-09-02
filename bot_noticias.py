@@ -1,19 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Bot de Noticias - V22.0.0
-CAMBIOS VS V21:
-  - MAX_BORRADORES_DIA = 3 (3 por corrida única diaria a las 10:00 UTC)
-  - TEMAS EVERGREEN PREDEFINIDOS: pool de 60+ temas LATAM — el bot elige 3 al día
-  - SIN DEPENDENCIA DE RSS para el tema: el tema lo define el pool, Tavily busca contexto
-  - RSS solo como fuente de datos secundaria para enriquecer el contenido
-  - Eliminada la función ya_corrio_esta_hora() que bloqueaba corridas
-  - Títulos MIXTOS mantenidos (preguntas + afirmaciones con número)
-  - Imagen destacada = og:image de fuente Tavily + watermark (generada como fallback)
-  - Imágenes adicionales dentro del artículo (hasta 2 vía DuckDuckGo)
-  - Workflow recomendado: 1 corrida/día a las 10:00 UTC que publica 3 borradores
+Bot de Noticias - V22.0.1
+CAMBIOS VS V22:
+  - MAX_BORRADORES_DIA = 2 (2 borradores por corrida)
+  - Fix: SyntaxError en exit(1)v
 """
-VERSION_BOT = "V22.0.0"
+VERSION_BOT = "V22.0.1"
 
 import requests, feedparser, re, hashlib, json, os, random, time, unicodedata
 from datetime import datetime, timedelta, timezone
@@ -21,16 +14,11 @@ from bs4 import BeautifulSoup
 from difflib import SequenceMatcher
 from urllib.parse import urlparse
 
-MAX_BORRADORES_DIA = 3   # 3 borradores por corrida
+MAX_BORRADORES_DIA = 2   # 2 borradores por corrida
 ROTACION_TEMAS_PATH = 'estado_rotacion_temas.json'
 ROTACION_PAISES_PATH = 'estado_rotacion_paises.json'
 
-# ══════════════════════════════════════════════════════════
-# POOL EVERGREEN PREDEFINIDO — 60+ temas LATAM
-# El bot elige de aquí, NO de RSS/noticias del día
-# ══════════════════════════════════════════════════════════
 POOL_EVERGREEN = [
-    # HISTORIA Y CIVILIZACIONES
     {'tema': 'Los secretos de los mayas que aún no se han descifrado', 'categoria': 'historia', 'pais': 'mexico', 'keyword': 'mayas'},
     {'tema': 'Por qué los incas construyeron Machu Picchu y qué pasó con ellos', 'categoria': 'historia', 'pais': 'peru', 'keyword': 'incas Machu Picchu'},
     {'tema': 'Los aztecas y Tenochtitlán: la ciudad más grande del mundo medieval', 'categoria': 'historia', 'pais': 'mexico', 'keyword': 'aztecas Tenochtitlán'},
@@ -41,15 +29,11 @@ POOL_EVERGREEN = [
     {'tema': 'Simón Bolívar: quién fue realmente y qué logró en América Latina', 'categoria': 'historia', 'pais': 'global', 'keyword': 'Simón Bolívar'},
     {'tema': 'La historia del Canal de Panamá y por qué cambió al mundo', 'categoria': 'historia', 'pais': 'global', 'keyword': 'Canal de Panamá historia'},
     {'tema': 'Civilizaciones precolombinas que existían antes de que llegaran los europeos', 'categoria': 'historia', 'pais': 'global', 'keyword': 'civilizaciones precolombinas'},
-
-    # MISTERIOS Y ARQUEOLOGÍA
     {'tema': 'Las líneas de Nazca: qué son, cómo se hicieron y para qué servían', 'categoria': 'misterios', 'pais': 'peru', 'keyword': 'líneas de Nazca'},
     {'tema': 'El misterio de la ciudad perdida de El Dorado y dónde podría estar', 'categoria': 'misterios', 'pais': 'global', 'keyword': 'El Dorado ciudad perdida'},
     {'tema': 'Hallazgos arqueológicos recientes que cambian la historia de América Latina', 'categoria': 'misterios', 'pais': 'global', 'keyword': 'hallazgos arqueológicos América Latina'},
     {'tema': 'Los moais de la Isla de Pascua: cómo los movieron y qué significan', 'categoria': 'misterios', 'pais': 'chile', 'keyword': 'moais Isla de Pascua'},
     {'tema': 'Fenómenos inexplicables en América Latina que la ciencia no ha resuelto', 'categoria': 'misterios', 'pais': 'global', 'keyword': 'fenómenos inexplicables América Latina'},
-
-    # CIENCIA Y SALUD
     {'tema': 'Por qué el cáncer sigue siendo tan difícil de curar y qué avances hay', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'cáncer tratamiento avances'},
     {'tema': 'Qué es el Alzheimer y cómo afecta a las familias latinoamericanas', 'categoria': 'salud', 'pais': 'global', 'keyword': 'Alzheimer América Latina'},
     {'tema': 'La diabetes en América Latina: por qué somos de los más afectados del mundo', 'categoria': 'salud', 'pais': 'global', 'keyword': 'diabetes América Latina'},
@@ -58,8 +42,6 @@ POOL_EVERGREEN = [
     {'tema': 'El microbioma intestinal: por qué los bacterias en tu barriga importan', 'categoria': 'salud', 'pais': 'global', 'keyword': 'microbioma intestinal salud'},
     {'tema': 'Medicamentos más importantes descubiertos en América Latina', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'medicamentos descubrimientos América Latina'},
     {'tema': 'Por qué América Latina tiene tasas altas de hipertensión y qué hacer', 'categoria': 'salud', 'pais': 'global', 'keyword': 'hipertensión América Latina'},
-
-    # TECNOLOGÍA E IA
     {'tema': 'Qué es la inteligencia artificial y cómo cambia tu trabajo en LATAM', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'inteligencia artificial trabajo LATAM'},
     {'tema': 'Cómo la IA está reemplazando empleos en América Latina y cuáles sobrevivirán', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'IA empleos América Latina'},
     {'tema': 'Qué es el bitcoin y por qué algunos países de LATAM lo adoptaron', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'bitcoin América Latina'},
@@ -67,8 +49,6 @@ POOL_EVERGREEN = [
     {'tema': 'Deepfakes: qué son, cómo detectarlos y por qué son peligrosos en política LATAM', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'deepfakes política LATAM'},
     {'tema': 'Startups latinoamericanas que cambiaron la región: los casos de éxito', 'categoria': 'innovacion', 'pais': 'global', 'keyword': 'startups latinoamericanas éxito'},
     {'tema': 'Cómo funciona la computación cuántica y qué significa para el futuro', 'categoria': 'tecnologia', 'pais': 'global', 'keyword': 'computación cuántica futuro'},
-
-    # ECONOMÍA Y RECURSOS
     {'tema': 'Por qué el litio de Chile y Bolivia es clave para el futuro del mundo', 'categoria': 'economia', 'pais': 'chile', 'keyword': 'litio Chile Bolivia'},
     {'tema': 'Qué es la inflación y por qué destroza los ahorros en América Latina', 'categoria': 'economia', 'pais': 'global', 'keyword': 'inflación América Latina'},
     {'tema': 'El cobre chileno: cuánto vale, quién lo compra y por qué importa', 'categoria': 'economia', 'pais': 'chile', 'keyword': 'cobre Chile economía'},
@@ -77,8 +57,6 @@ POOL_EVERGREEN = [
     {'tema': 'El petróleo venezolano: por qué siendo tan rico Venezuela está en crisis', 'categoria': 'economia', 'pais': 'venezuela', 'keyword': 'petróleo Venezuela crisis'},
     {'tema': 'Qué es el BRICS y por qué varios países de LATAM quieren entrar', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'BRICS América Latina'},
     {'tema': 'La soya brasileña y cómo Brasil se convirtió en potencia agrícola mundial', 'categoria': 'economia', 'pais': 'brasil', 'keyword': 'soya Brasil agrícola'},
-
-    # SEGURIDAD Y GEOPOLÍTICA
     {'tema': 'Por qué América Latina es la región más violenta del mundo', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'violencia América Latina'},
     {'tema': 'El Tren de Aragua: origen, expansión y por qué llegó a Chile y EEUU', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'Tren de Aragua'},
     {'tema': 'Cárteles mexicanos: cómo operan y por qué controlan tantos países', 'categoria': 'geopolitica', 'pais': 'mexico', 'keyword': 'cárteles mexicanos expansión'},
@@ -87,22 +65,16 @@ POOL_EVERGREEN = [
     {'tema': 'Influencia de China en América Latina: inversiones, deudas y poder', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'China América Latina inversión'},
     {'tema': 'La migración latinoamericana a EEUU: causas, riesgos y datos reales', 'categoria': 'geopolitica', 'pais': 'global', 'keyword': 'migración latinoamericana EEUU'},
     {'tema': 'Por qué Colombia no ha podido acabar con las FARC en décadas', 'categoria': 'geopolitica', 'pais': 'colombia', 'keyword': 'FARC Colombia conflicto'},
-
-    # MEDIO AMBIENTE
     {'tema': 'La Amazonía en peligro: cuánta selva se pierde cada año y qué significa', 'categoria': 'medio_ambiente', 'pais': 'brasil', 'keyword': 'Amazonía deforestación'},
     {'tema': 'Cambio climático en Chile: glaciares que desaparecen y sequías históricas', 'categoria': 'medio_ambiente', 'pais': 'chile', 'keyword': 'cambio climático Chile glaciares'},
     {'tema': 'Por qué América Latina sufre más el cambio climático que otras regiones', 'categoria': 'medio_ambiente', 'pais': 'global', 'keyword': 'cambio climático América Latina'},
     {'tema': 'La minería de litio en el desierto de Atacama y su impacto ambiental', 'categoria': 'medio_ambiente', 'pais': 'chile', 'keyword': 'minería litio Atacama impacto'},
     {'tema': 'Especies en extinción en América Latina que puedes perder en tu vida', 'categoria': 'medio_ambiente', 'pais': 'global', 'keyword': 'extinción especies América Latina'},
-
-    # CULTURA Y SOCIEDAD
     {'tema': 'Por qué la cumbia se extendió por toda América Latina y el mundo', 'categoria': 'cultura', 'pais': 'global', 'keyword': 'cumbia América Latina historia'},
     {'tema': 'El fútbol en América Latina: por qué es más que un deporte', 'categoria': 'deportes', 'pais': 'global', 'keyword': 'fútbol América Latina cultura'},
     {'tema': 'Machismo en América Latina: origen histórico y cómo está cambiando', 'categoria': 'cultura', 'pais': 'global', 'keyword': 'machismo América Latina'},
     {'tema': 'Boom del anime en América Latina: por qué somos de los mayores consumidores', 'categoria': 'entretenimiento', 'pais': 'global', 'keyword': 'anime América Latina'},
     {'tema': 'La brecha educativa en América Latina: por qué nuestros hijos aprenden menos', 'categoria': 'cultura', 'pais': 'global', 'keyword': 'educación brecha América Latina'},
-
-    # ESPACIO Y FÍSICA
     {'tema': 'Qué hay más allá del universo observable y qué dice la ciencia', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'universo observable límites'},
     {'tema': 'NASA y la carrera espacial 2026: qué misiones están activas ahora', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'NASA misiones espaciales 2026'},
     {'tema': 'Agujeros negros: qué son, cómo se forman y qué pasaría si te cae uno encima', 'categoria': 'ciencia', 'pais': 'global', 'keyword': 'agujeros negros ciencia'},
@@ -145,7 +117,7 @@ CUOTAS_PATH    = 'estado_cuotas.json'
 UMBRAL_SIMILITUD_TITULO    = 0.72
 UMBRAL_SIMILITUD_CONTENIDO = 0.62
 MAX_TITULOS_HISTORIA       = 500
-DIAS_HISTORIAL             = 60   # más largo para no repetir temas
+DIAS_HISTORIAL             = 60
 
 PALABRAS_TRANSICION = [
     'sin embargo','ademas','por otro lado','en consecuencia','a su vez',
@@ -319,61 +291,42 @@ def generar_slug_seo(titulo, max_chars=50):
 # ══════════════════════════════════════════════════════════
 def cargar_rotacion_temas():
     datos = cargar_json(ROTACION_TEMAS_PATH, {
-        'temas_publicados': [],   # lista de keywords ya publicadas
+        'temas_publicados': [],
         'fecha_ultimo_reset': '',
         'conteo_por_categoria': {}
     })
     return datos
 
-def seleccionar_temas_dia(rotacion, n=3):
-    """
-    Selecciona N temas del pool que NO se hayan publicado aún.
-    Prioriza categorías con menos artículos publicados.
-    Dentro de la misma sesión, no repite categoría si hay alternativas.
-    """
+def seleccionar_temas_dia(rotacion, n=2):
     publicados = set(rotacion.get('temas_publicados', []))
     conteo_cat = rotacion.get('conteo_por_categoria', {})
-
-    # Filtrar temas no publicados
     disponibles = [t for t in POOL_EVERGREEN if t['keyword'] not in publicados]
-
-    # Si ya publicamos más de 80% del pool, resetear
     if len(disponibles) < len(POOL_EVERGREEN) * 0.2:
         log(f"Pool evergreen casi agotado ({len(disponibles)} restantes) — reseteando ciclo", 'advertencia')
         rotacion['temas_publicados'] = []
         rotacion['conteo_por_categoria'] = {}
         guardar_json(ROTACION_TEMAS_PATH, rotacion)
         disponibles = list(POOL_EVERGREEN)
-
     if not disponibles:
         return []
-
-    # Ordenar por: menor conteo de categoría primero + randomness
     def score_tema(t):
         cat_count = conteo_cat.get(t['categoria'], 0)
         return cat_count + random.uniform(0, 2)
-
     disponibles_ordenados = sorted(disponibles, key=score_tema)
-
-    # Seleccionar N temas evitando repetir categoría en la misma sesión
     seleccionados = []
     categorias_usadas = set()
     for tema in disponibles_ordenados:
         if len(seleccionados) >= n:
             break
-        # Preferir no repetir categoría en la misma corrida
         if tema['categoria'] not in categorias_usadas or len(seleccionados) < n:
             seleccionados.append(tema)
             categorias_usadas.add(tema['categoria'])
-
-    # Si no alcanzamos n por restricción de categorías, completar sin restricción
     if len(seleccionados) < n:
         for tema in disponibles_ordenados:
             if tema not in seleccionados:
                 seleccionados.append(tema)
             if len(seleccionados) >= n:
                 break
-
     return seleccionados[:n]
 
 def registrar_tema_publicado(rotacion, tema):
@@ -387,10 +340,9 @@ def registrar_tema_publicado(rotacion, tema):
     guardar_json(ROTACION_TEMAS_PATH, rotacion)
 
 # ══════════════════════════════════════════════════════════
-# TÍTULOS MIXTOS — preguntas + afirmaciones con número
+# TÍTULOS MIXTOS
 # ══════════════════════════════════════════════════════════
 def es_turno_pregunta(indice=0):
-    """Alterna entre pregunta y afirmación según índice del artículo."""
     return indice % 2 == 0
 
 PREFIJOS_PREGUNTA = [
@@ -469,7 +421,6 @@ def _limpiar_historial_antiguo(h):
         h['hashes_permanentes'] = h['hashes_permanentes'][-800:]
 
 def tema_ya_publicado(h, keyword, tema_titulo):
-    """Verifica si ya publicamos sobre este keyword o un tema muy similar."""
     hash_t = generar_hash(keyword)
     todos_hashes = set(h.get('hashes',[])) | set(h.get('hashes_permanentes',[]))
     if hash_t in todos_hashes: return True, "keyword_duplicado"
@@ -502,25 +453,20 @@ def puede_publicar_wp(borradores_esta_corrida):
     return borradores_esta_corrida < MAX_BORRADORES_DIA
 
 # ══════════════════════════════════════════════════════════
-# TAVILY — contexto web para el tema evergreen
+# TAVILY
 # ══════════════════════════════════════════════════════════
 def buscar_contexto_evergreen(tema_titulo, keyword, n_resultados=5):
-    """
-    Busca contexto web actualizado para generar artículo evergreen.
-    Retorna lista de resultados con título, url, contenido.
-    """
     if not TAVILY_API_KEY:
         log("Sin TAVILY_API_KEY — sin contexto web", 'advertencia')
         return [], ""
     try:
-        # Query más específica que el título genérico
         query = f"{keyword} historia explicación datos América Latina"
         resp = requests.post("https://api.tavily.com/search",
             json={"api_key": TAVILY_API_KEY,
                   "query": query,
-                  "search_depth": "advanced",   # más profundo para evergreen
+                  "search_depth": "advanced",
                   "max_results": n_resultados,
-                  "include_answer": True,        # incluir respuesta sintetizada
+                  "include_answer": True,
                   "include_raw_content": False},
             timeout=20)
         data = resp.json()
@@ -703,13 +649,7 @@ def crear_imagen_titulo(titulo, categoria='general'):
     except: return None
 
 def obtener_imagenes_articulo(fuentes_tavily, keyword, categoria, titulo):
-    """
-    Imagen destacada: og:image de primera fuente Tavily → generada
-    Imágenes adicionales: DuckDuckGo
-    """
     img_destacada = None
-
-    # Intentar og:image de cada fuente Tavily
     for fuente in fuentes_tavily[:3]:
         url_fuente = fuente.get('url','')
         if not url_fuente: continue
@@ -719,12 +659,9 @@ def obtener_imagenes_articulo(fuentes_tavily, keyword, categoria, titulo):
             if img_destacada:
                 log(f"Imagen destacada desde Tavily fuente: OK",'info')
                 break
-
     if not img_destacada:
         log("Sin og:image — generando imagen con título",'advertencia')
         img_destacada = crear_imagen_titulo(titulo, categoria)
-
-    # Imágenes adicionales DuckDuckGo
     imagenes_adicionales = []
     queries_cat = {
         'historia':      [f"{keyword} historia", f"civilización latinoamericana"],
@@ -741,29 +678,22 @@ def obtener_imagenes_articulo(fuentes_tavily, keyword, categoria, titulo):
         'entretenimiento':[f"{keyword} entretenimiento", f"cultura pop latina"],
     }
     queries = queries_cat.get(categoria, [f"{keyword}", f"{keyword} América Latina"])
-
     urls_imgs = []
     for q in queries[:2]:
         urls_imgs.extend(buscar_imagenes_duckduckgo(q, max_resultados=3))
-
     urls_imgs = list(dict.fromkeys(urls_imgs))
     for img_url in urls_imgs[:6]:
         if len(imagenes_adicionales) >= 2: break
         path = descargar_imagen(img_url, min_w=350, min_h=220)
         if path:
             imagenes_adicionales.append(path)
-
     log(f"Imágenes: 1 destacada + {len(imagenes_adicionales)} adicionales",'info')
     return img_destacada, imagenes_adicionales
 
 # ══════════════════════════════════════════════════════════
-# IA V22 — PROMPT EVERGREEN PURO (sin RSS)
+# IA — GENERACIÓN EVERGREEN
 # ══════════════════════════════════════════════════════════
 def generar_articulo_evergreen(tema_config, fuentes_tavily, answer_tavily, indice=0):
-    """
-    Genera artículo evergreen completo sobre un tema del pool.
-    No depende de noticias del día — usa el tema + contexto Tavily.
-    """
     api_key = OPENAI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY or GEMINI_API_KEY
     if not api_key: return None
 
@@ -803,7 +733,6 @@ def generar_articulo_evergreen(tema_config, fuentes_tavily, answer_tavily, indic
             f"'7 verdades sobre el bitcoin que debes saber en 2026'."
         )
 
-    # Contexto Tavily para el prompt
     contexto_fuentes = ""
     if fuentes_tavily:
         partes = []
@@ -925,7 +854,6 @@ RESPONDE SOLO JSON sin markdown:
         texto = re.sub(r'^```json\s*|```$','',texto,flags=re.MULTILINE).strip()
         if not texto.endswith('}'): return None
         resultado = json.loads(texto)
-        # Forzar categoría correcta
         resultado['categoria'] = categoria
         log(f"IA OK — '{resultado.get('titulo_seo','')[:60]}' | {resultado.get('categoria')}",'info')
         return resultado
@@ -1154,7 +1082,6 @@ def insertar_enlaces_internos(contenido_html):
 
 def publicar_borrador_evergreen(tema_config, fuentes_tavily, answer_tavily,
                                  img_destacada_path, imagenes_adicionales, indice=0):
-    """Genera y publica un borrador basado en tema evergreen predefinido."""
     if not WP_APP_PASSWORD: return None, None
     if not img_destacada_path or not os.path.exists(img_destacada_path): return None, None
 
@@ -1179,7 +1106,6 @@ def publicar_borrador_evergreen(tema_config, fuentes_tavily, answer_tavily,
     categoria_ia   = resultado_ia.get('categoria', tema_config['categoria'])
     slug_post      = slug_ia if (slug_ia and len(slug_ia) <= 50) else generar_slug_seo(titulo_final)
 
-    # Tabla de contenidos si falta
     if '<nav' not in contenido_html and 'tabla-contenidos' not in contenido_html:
         h2_raw = re.findall(r'<h2[^>]*>(.*?)</h2>', contenido_html, flags=re.IGNORECASE|re.DOTALL)
         h2_textos = [(str(i+1), re.sub(r'<[^>]+>','',t).strip()) for i,t in enumerate(h2_raw)]
@@ -1190,7 +1116,6 @@ def publicar_borrador_evergreen(tema_config, fuentes_tavily, answer_tavily,
                         f'<ol style="margin:0;padding-left:20px;color:#475569;font-size:0.9em;">{items_toc}</ol></nav>')
             contenido_html = toc_html + contenido_html
 
-    # Subir imágenes adicionales e inyectar
     for i, img_path in enumerate(imagenes_adicionales[:2], start=1):
         placeholder = f"[IMAGEN_ADICIONAL_{i}]"
         if placeholder in contenido_html:
@@ -1206,7 +1131,6 @@ def publicar_borrador_evergreen(tema_config, fuentes_tavily, answer_tavily,
     contenido_html = re.sub(r'\[IMAGEN_ADICIONAL_\d+\]', '', contenido_html)
     contenido_html = insertar_enlaces_internos(contenido_html)
 
-    # Tags
     tags_ids = []
     for kw in resultado_ia.get('keywords_secundarias',[])[:5]:
         tag_id = obtener_crear_tag_wp(kw)
@@ -1217,18 +1141,15 @@ def publicar_borrador_evergreen(tema_config, fuentes_tavily, answer_tavily,
     if not cat_id: cat_id = obtener_id_categoria_wp('mundo'); slug_cat = 'mundo'
     categorias_ids = [cat_id] if cat_id else []
 
-    # Imagen destacada
     imagen_id = subir_imagen_wp(img_destacada_path, titulo_final,
         alt_text=f"{frase_clave} - {titulo_final}"[:125],
         frase_clave=frase_clave, meta_descripcion=meta_desc)
     if not imagen_id: return None, None
 
-    # Barra de lectura
     palabras_art = len(_texto_plano(contenido_html).split())
     minutos_lect = max(2, round(palabras_art / 200))
     barra_lectura = f'<p style="font-size:0.82em;color:#6b7280;margin:0 0 20px 0;">🕐 Tiempo de lectura: <strong>{minutos_lect} min</strong></p>'
 
-    # Fuentes Tavily como crédito
     fuentes_credito = ""
     if fuentes_tavily:
         links = [f'<a href="{f["url"]}" target="_blank" rel="noopener" style="color:#1a56db;">{f["title"][:60]}</a>'
@@ -1281,7 +1202,7 @@ def publicar_borrador_evergreen(tema_config, fuentes_tavily, answer_tavily,
     return None, None
 
 # ══════════════════════════════════════════════════════════
-# MAIN V22
+# MAIN V22.0.1
 # ══════════════════════════════════════════════════════════
 def main():
     print("\n" + "="*60)
@@ -1296,7 +1217,6 @@ def main():
     h = cargar_historial()
     rotacion = cargar_rotacion_temas()
 
-    # Seleccionar temas del pool evergreen
     temas_dia = seleccionar_temas_dia(rotacion, n=MAX_BORRADORES_DIA)
     if not temas_dia:
         log("Sin temas disponibles en el pool", 'error')
@@ -1314,20 +1234,16 @@ def main():
         log(f"PROCESANDO TEMA {indice+1}/{len(temas_dia)}: {tema_config['tema'][:60]}", 'info')
         log(f"  Categoría: {tema_config['categoria']} | Keyword: {tema_config['keyword']}", 'info')
 
-        # Verificar si ya publicamos este tema
         dup, razon = tema_ya_publicado(h, tema_config['keyword'], tema_config['tema'])
         if dup:
             log(f"Tema ya publicado ({razon}) — saltando", 'advertencia')
-            # Marcar como usado de todas formas para no seleccionarlo de nuevo
             registrar_tema_publicado(rotacion, tema_config)
             continue
 
-        # Buscar contexto web con Tavily
         fuentes_tavily, answer_tavily = buscar_contexto_evergreen(
             tema_config['tema'], tema_config['keyword'], n_resultados=5
         )
 
-        # Obtener imágenes
         img_destacada, imagenes_adicionales = obtener_imagenes_articulo(
             fuentes_tavily=fuentes_tavily,
             keyword=tema_config['keyword'],
@@ -1343,7 +1259,6 @@ def main():
             log("No se pudo obtener imagen — saltando tema", 'error')
             continue
 
-        # Publicar borrador
         url_wp, slug_cat = publicar_borrador_evergreen(
             tema_config=tema_config,
             fuentes_tavily=fuentes_tavily,
@@ -1353,7 +1268,6 @@ def main():
             indice=indice
         )
 
-        # Limpiar archivos temporales
         for img_path in [img_destacada] + imagenes_adicionales:
             try:
                 if img_path and os.path.exists(img_path): os.remove(img_path)
@@ -1362,23 +1276,21 @@ def main():
         if url_wp:
             borradores_ok += 1
             urls_publicadas.append(url_wp)
-            # Registrar en historial y rotación
             h = guardar_en_historial(h, url_wp, tema_config['tema'],
                                       tema_config['keyword'], tema_config['tema'])
             registrar_tema_publicado(rotacion, tema_config)
             log(f"✅ Borrador {borradores_ok}/{MAX_BORRADORES_DIA} — {url_wp}", 'exito')
         else:
             log(f"No se pudo crear borrador para tema {indice+1}", 'error')
-            # Registrar de todas formas para no reintentar este ciclo
             registrar_tema_publicado(rotacion, tema_config)
 
-        # Pausa entre borradores para no saturar las APIs
         if indice < len(temas_dia) - 1:
             log("Esperando 10s antes del siguiente tema...", 'info')
             time.sleep(10)
 
     print("\n" + "="*60)
-    log(f"CORRIDA COMPLETADA: {borradores_ok}/{MAX_BORRADORES_DIA} borradores creados", 'exito' if borradores_ok > 0 else 'advertencia')
+    log(f"CORRIDA COMPLETADA: {borradores_ok}/{MAX_BORRADORES_DIA} borradores creados",
+        'exito' if borradores_ok > 0 else 'advertencia')
     for i, url in enumerate(urls_publicadas):
         log(f"  [{i+1}] {url}", 'info')
     print("="*60)
@@ -1393,4 +1305,4 @@ if __name__ == "__main__":
         log(f"Error crítico: {e}",'error')
         import traceback
         traceback.print_exc()
-        exit(1)v
+        exit(1)

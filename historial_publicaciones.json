@@ -72,7 +72,9 @@
     "https://verdadhoy.com/?p=4161",
     "https://verdadhoy.com/?p=4175",
     "https://verdadhoy.com/?p=4185",
-    "https://verdadhoy.com/?p=4187"
+    "https://verdadhoy.com/?p=4187",
+    "https://verdadhoy.com/?p=4196",
+    "https://verdadhoy.com/?p=4198"
   ],
   "hashes": [
     "f2cc44e742425b7e701fc5c7672a1e8f",
@@ -147,7 +149,9 @@
     "81d09d64d5ad2161e59ab61bb28cec48",
     "8dc52f1b6b1a986ff5085b920090b08e",
     "26615e3126e5e9d25abb3efbac29d09d",
-    "0b04903ab6f87368f7f71a4b60e67b85"
+    "0b04903ab6f87368f7f71a4b60e67b85",
+    "f25d9731cad85f2580c4a5363bfdf442",
+    "91fd31ef0f642bc04b95bdc419b3ee13"
   ],
   "timestamps": [
     "2026-08-17T15:23:36.992992",
@@ -222,7 +226,9 @@
     "2026-09-03T11:52:07.883827",
     "2026-09-03T16:56:46.790615",
     "2026-09-03T21:29:17.784861",
-    "2026-09-03T21:30:04.684756"
+    "2026-09-03T21:30:04.684756",
+    "2026-09-04T11:51:39.150170",
+    "2026-09-04T11:52:28.556967"
   ],
   "titulos": [
     "Colombia cambia de aliados en pleno seísmo: De la Espriella corteja a Israel, Marruecos y EEUU con el Golán y el Sáhara.",
@@ -297,7 +303,9 @@
     "La conquista española de América Latina: causas y consecuencias reales",
     "Los secretos de los mayas que aún no se han descifrado",
     "Simón Bolívar: quién fue realmente y qué logró en América Latina",
-    "Qué es el BRICS y por qué varios países de LATAM quieren entrar"
+    "Qué es el BRICS y por qué varios países de LATAM quieren entrar",
+    "Por qué Colombia no ha podido acabar con las FARC en décadas",
+    "Por qué América Latina sufre más el cambio climático que otras regiones"
   ],
   "descripciones": [
     "El presidente colombiano ha reconocido en siete días la soberanía marroquí sobre el Sáhara y la israelí sobre los Altos del Golán. También ha autorizado operaciones militares estadounidenses en su territorio y ha pedido rescatistas solo a cuatro países afine…. El presidente de Colombia, Abelardo de la Espriella, comparece desde el Palacio de San Carlos, en Bogotá. Jose Vargas. Abelardo de la Espriella asume la presidencia de Colombia tras una ajustada victoria y pone fin a políticas de Gustavo Petro. Un terremoto de magnitud 7,4 sacude el occidente colombiano, dejando cientos de muertos y mile",
@@ -372,7 +380,9 @@
     "La conquista española de América Latina: causas y consecuencias reales",
     "Los secretos de los mayas que aún no se han descifrado",
     "Simón Bolívar: quién fue realmente y qué logró en América Latina",
-    "Qué es el BRICS y por qué varios países de LATAM quieren entrar"
+    "Qué es el BRICS y por qué varios países de LATAM quieren entrar",
+    "Por qué Colombia no ha podido acabar con las FARC en décadas",
+    "Por qué América Latina sufre más el cambio climático que otras regiones"
   ],
   "hashes_contenido": [
     "27d2b0185620a6e26b555bfffc2505f2",
@@ -447,7 +457,9 @@
     "fddb9cafb890814cec540af9e51bff16",
     "237e20adf9280e837a1266a3d99429f3",
     "44e3e3ec7d5840e23d2193bbd5f3df67",
-    "31a0724c53ad0eac69ee9e60090e5d70"
+    "31a0724c53ad0eac69ee9e60090e5d70",
+    "cd7c743c1188e5f50982c8330b16902f",
+    "43e973691c51b158c81e87b215ce9ff7"
   ],
   "hashes_permanentes": [
     "18d5725bd4df4d8e0e413d4f8d2636a3",
@@ -958,13 +970,15 @@
     "81d09d64d5ad2161e59ab61bb28cec48",
     "8dc52f1b6b1a986ff5085b920090b08e",
     "26615e3126e5e9d25abb3efbac29d09d",
-    "0b04903ab6f87368f7f71a4b60e67b85"
+    "0b04903ab6f87368f7f71a4b60e67b85",
+    "f25d9731cad85f2580c4a5363bfdf442",
+    "91fd31ef0f642bc04b95bdc419b3ee13"
   ],
   "estadisticas": {
-    "total_publicadas": 1130,
+    "total_publicadas": 1132,
     "total_fb": 226,
     "total_wp": 991,
-    "total_borradores": 33
+    "total_borradores": 35
   },
   "urls_normalizadas": [
     "elespanol.com/mundo/america/20260816/colombia-cambia-aliados-pleno-seismo-espriella-corteja-israel-marruecos-eeuu-golan-sahara/1003744353549_0",
@@ -1031,6 +1045,8 @@
     "elpais.com/opinion/2026-08-22/la-ruta-de-la-seda-artica-de-china-ya-es-una-realidad",
     "cooperativa.cl/noticias/pais/policial/crimen-organizado/cayo-en-lima-r15-un-presunto-lider-del-tren-de-aragua-en-chile/2026-08-29/174137",
     "cooperativa.cl/noticias/pais/presidente-kast/aranceles-de-trump-kast-apuesta-por-resguardar-el-tlc-con-estados-unidos/2026-08-31/093512",
+    "verdadhoy.com",
+    "verdadhoy.com",
     "verdadhoy.com",
     "verdadhoy.com",
     "verdadhoy.com",
